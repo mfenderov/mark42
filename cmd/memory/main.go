@@ -657,6 +657,51 @@ func init() {
 	rootCmd.AddCommand(migrateCmd)
 }
 
+// --- Upgrade command (schema migrations) ---
+
+var upgradeCmd = &cobra.Command{
+	Use:   "upgrade",
+	Short: "Run database schema migrations",
+	Long:  "Applies pending schema migrations to upgrade the database to the latest version.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		beforeVersion, err := store.GetSchemaVersion()
+		if err != nil {
+			return err
+		}
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		afterVersion, err := store.GetSchemaVersion()
+		if err != nil {
+			return err
+		}
+
+		println(titleStyle.Render("Schema Upgrade"))
+		println()
+		if beforeVersion == afterVersion {
+			println("  " + dimStyle.Render("Status:") + "  " + successStyle.Render("Already up to date"))
+		} else {
+			println("  " + dimStyle.Render("Before:") + "  Version " + itoa(beforeVersion))
+			println("  " + dimStyle.Render("After:") + "   Version " + successStyle.Render(itoa(afterVersion)))
+		}
+		println("  " + dimStyle.Render("Path:") + "    " + dbPath)
+
+		return nil
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(upgradeCmd)
+}
+
 // --- Helpers ---
 
 func printEntity(e *storage.Entity) {
