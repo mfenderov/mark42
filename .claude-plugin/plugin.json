@@ -1,0 +1,9 @@
+{
+  "name": "claude-memory",
+  "description": "SQLite-backed memory system with CLAUDE.md management. Replaces auto-memory with FTS5 search, knowledge graph persistence, and semantic search capabilities.",
+  "version": "1.0.0",
+  "author": {
+    "name": "mfenderov"
+  },
+  "license": "MIT"
+}

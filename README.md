@@ -72,11 +72,12 @@ A **local SQLite database** with:
 
 ## Roadmap
 
-### Phase 1: Foundation (Current)
-- [ ] SQLite schema for knowledge graph
-- [ ] FTS5 full-text search
-- [ ] MCP server with standard Memory API
-- [ ] Drop-in replacement for existing Memory MCP
+### Phase 1: Foundation ✅ Complete
+- [x] SQLite schema for knowledge graph
+- [x] FTS5 full-text search (BM25 ranking)
+- [x] MCP server with standard Memory API (JSON-RPC 2.0 over stdio)
+- [x] CLI tool for database management
+- [x] Claude Code plugin structure (hooks, agents, skills, commands)
 
 ### Phase 2: Semantic Search
 - [ ] sqlite-vec integration
@@ -95,20 +96,19 @@ A **local SQLite database** with:
 ```bash
 # Clone and build
 cd ~/dev/private/claude-memory
-go build -o claude-memory ./cmd/server
+make build-all
 
-# Configure in ~/.claude/.mcp.json
-{
-  "mcpServers": {
-    "memory": {
-      "command": "~/dev/private/claude-memory/claude-memory",
-      "args": ["--db", "~/.claude/memory.db"]
-    }
-  }
-}
+# Register the MCP server with Claude Code
+claude mcp add --scope user --transport stdio sqlite-memory -- \
+  /path/to/claude-memory/bin/claude-memory-server
 
-# Restart Claude Code - memory tools now use SQLite backend
+# Verify server is connected
+# Use /mcp command in Claude Code to check status
+
+# Restart Claude Code - mcp__sqlite-memory__* tools now available
 ```
+
+**Note**: Plugin `.mcp.json` files are NOT auto-discovered by Claude Code. You must use `claude mcp add` to register MCP servers explicitly. The server config is stored in `~/.claude.json`.
 
 ## API Compatibility
 

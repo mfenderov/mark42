@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sqlite-memory": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/claude-memory-server",
+      "args": [],
+      "env": {
+        "CLAUDE_MEMORY_DB": "~/.claude/memory.db"
+      }
+    }
+  }
+}
