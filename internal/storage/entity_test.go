@@ -156,3 +156,123 @@ func TestDeleteEntity_CascadesObservations(t *testing.T) {
 		t.Errorf("expected 0 observations after cascade delete, got %d", count)
 	}
 }
+
+// --- Versioning tests ---
+
+func TestCreateOrUpdateEntity_NewEntity(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	entity, err := store.CreateOrUpdateEntity("TDD", "pattern", []string{"Test-Driven Development"})
+	if err != nil {
+		t.Fatalf("CreateOrUpdateEntity failed: %v", err)
+	}
+
+	if entity.Name != "TDD" {
+		t.Errorf("expected name 'TDD', got %q", entity.Name)
+	}
+	if entity.Version != 1 {
+		t.Errorf("expected version 1, got %d", entity.Version)
+	}
+	if !entity.IsLatest {
+		t.Error("expected IsLatest to be true")
+	}
+}
+
+func TestCreateOrUpdateEntity_UpdateCreatesVersion(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	// Create v1
+	v1, err := store.CreateOrUpdateEntity("TDD", "pattern", []string{"original fact"})
+	if err != nil {
+		t.Fatalf("CreateOrUpdateEntity v1 failed: %v", err)
+	}
+
+	// Create v2 (same name)
+	v2, err := store.CreateOrUpdateEntity("TDD", "pattern", []string{"updated fact"})
+	if err != nil {
+		t.Fatalf("CreateOrUpdateEntity v2 failed: %v", err)
+	}
+
+	// v2 should be a new version
+	if v2.Version != 2 {
+		t.Errorf("expected version 2, got %d", v2.Version)
+	}
+	if v2.SupersedesID != v1.ID {
+		t.Errorf("expected supersedes_id %d, got %d", v1.ID, v2.SupersedesID)
+	}
+	if !v2.IsLatest {
+		t.Error("expected v2 IsLatest to be true")
+	}
+
+	// GetEntity should return v2 (latest)
+	entity, _ := store.GetEntity("TDD")
+	if entity.ID != v2.ID {
+		t.Errorf("GetEntity should return latest version, got ID %d instead of %d", entity.ID, v2.ID)
+	}
+}
+
+func TestGetEntityHistory(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	// Create 3 versions
+	store.CreateOrUpdateEntity("TDD", "pattern", []string{"v1 fact"})
+	store.CreateOrUpdateEntity("TDD", "pattern", []string{"v2 fact"})
+	store.CreateOrUpdateEntity("TDD", "pattern", []string{"v3 fact"})
+
+	history, err := store.GetEntityHistory("TDD")
+	if err != nil {
+		t.Fatalf("GetEntityHistory failed: %v", err)
+	}
+
+	if len(history) != 3 {
+		t.Errorf("expected 3 versions in history, got %d", len(history))
+	}
+
+	// Should be ordered newest first
+	if history[0].Version != 3 {
+		t.Errorf("expected newest version (3) first, got %d", history[0].Version)
+	}
+	if history[2].Version != 1 {
+		t.Errorf("expected oldest version (1) last, got %d", history[2].Version)
+	}
+}
+
+func TestListEntities_OnlyLatest(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	// Create entity with multiple versions
+	store.CreateOrUpdateEntity("TDD", "pattern", []string{"v1"})
+	store.CreateOrUpdateEntity("TDD", "pattern", []string{"v2"})
+	store.CreateOrUpdateEntity("Other", "pattern", []string{"obs"})
+
+	// ListEntities should only return latest versions
+	entities, err := store.ListEntities("")
+	if err != nil {
+		t.Fatalf("ListEntities failed: %v", err)
+	}
+
+	// Should have 2 entities (TDD latest + Other), not 3
+	if len(entities) != 2 {
+		t.Errorf("expected 2 entities (latest only), got %d", len(entities))
+	}
+}

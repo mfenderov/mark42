@@ -71,27 +71,53 @@ func (s *Store) ListTables() []string {
 
 func (s *Store) initSchema() error {
 	schema := `
-	-- Core entities table
+	-- Core entities table (Phase 2 schema with versioning)
 	CREATE TABLE IF NOT EXISTS entities (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT UNIQUE NOT NULL,
+		name TEXT NOT NULL,
 		entity_type TEXT NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		-- Versioning fields (Phase 2.3)
+		supersedes_id INTEGER REFERENCES entities(id),
+		is_latest BOOLEAN DEFAULT 1,
+		version INTEGER DEFAULT 1,
+		-- Multi-project scoping (Phase 2)
+		container_tag TEXT
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
 	CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+	CREATE INDEX IF NOT EXISTS idx_entities_latest ON entities(name, is_latest);
+	CREATE INDEX IF NOT EXISTS idx_entities_container ON entities(container_tag);
 
-	-- Observations attached to entities
+	-- Observations attached to entities (Phase 2 schema with fact types)
 	CREATE TABLE IF NOT EXISTS observations (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
 		content TEXT NOT NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		-- Fact type: 'static' (permanent), 'dynamic' (session), 'session_turn'
+		fact_type TEXT DEFAULT 'dynamic',
+		-- Memory decay fields (Phase 2)
+		importance REAL DEFAULT 1.0,
+		forget_after TIMESTAMP,
+		last_accessed TIMESTAMP,
 		UNIQUE(entity_id, content)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_id);
+	CREATE INDEX IF NOT EXISTS idx_observations_fact_type ON observations(fact_type);
+
+	-- Observation embeddings for vector search (Phase 2)
+	CREATE TABLE IF NOT EXISTS observation_embeddings (
+		observation_id INTEGER PRIMARY KEY REFERENCES observations(id) ON DELETE CASCADE,
+		embedding BLOB NOT NULL,
+		model TEXT NOT NULL,
+		dimensions INTEGER NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_embeddings_model ON observation_embeddings(model);
 
 	-- Relations between entities
 	CREATE TABLE IF NOT EXISTS relations (

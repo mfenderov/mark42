@@ -88,6 +88,65 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     6,
+		Description: "Phase 2.3: Remove UNIQUE constraint on entities.name for versioning",
+		Up: func(db *sql.DB) error {
+			// SQLite doesn't support dropping constraints, so we recreate the table
+			_, err := db.Exec(`
+				-- Create new table without UNIQUE constraint
+				CREATE TABLE IF NOT EXISTS entities_new (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					name TEXT NOT NULL,
+					entity_type TEXT NOT NULL,
+					created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					supersedes_id INTEGER REFERENCES entities_new(id),
+					is_latest BOOLEAN DEFAULT 1,
+					version INTEGER DEFAULT 1,
+					container_tag TEXT
+				);
+
+				-- Copy existing data
+				INSERT INTO entities_new (id, name, entity_type, created_at, supersedes_id, is_latest, version, container_tag)
+				SELECT id, name, entity_type, created_at, supersedes_id, COALESCE(is_latest, 1), COALESCE(version, 1), container_tag
+				FROM entities;
+
+				-- Drop old table
+				DROP TABLE entities;
+
+				-- Rename new table
+				ALTER TABLE entities_new RENAME TO entities;
+
+				-- Recreate indexes
+				CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+				CREATE INDEX IF NOT EXISTS idx_entities_latest ON entities(name, is_latest);
+				CREATE INDEX IF NOT EXISTS idx_entities_container ON entities(container_tag);
+
+				-- Recreate FTS triggers
+				DROP TRIGGER IF EXISTS entities_ai;
+				DROP TRIGGER IF EXISTS entities_ad;
+				DROP TRIGGER IF EXISTS entities_au;
+
+				CREATE TRIGGER entities_ai AFTER INSERT ON entities BEGIN
+					INSERT INTO entities_fts(rowid, name, entity_type)
+					VALUES (new.id, new.name, new.entity_type);
+				END;
+
+				CREATE TRIGGER entities_ad AFTER DELETE ON entities BEGIN
+					INSERT INTO entities_fts(entities_fts, rowid, name, entity_type)
+					VALUES('delete', old.id, old.name, old.entity_type);
+				END;
+
+				CREATE TRIGGER entities_au AFTER UPDATE ON entities BEGIN
+					INSERT INTO entities_fts(entities_fts, rowid, name, entity_type)
+					VALUES('delete', old.id, old.name, old.entity_type);
+					INSERT INTO entities_fts(rowid, name, entity_type)
+					VALUES (new.id, new.name, new.entity_type);
+				END;
+			`)
+			return err
+		},
+	},
 }
 
 // getCurrentVersion returns the current schema version.
