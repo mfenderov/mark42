@@ -16,10 +16,10 @@ const (
 
 // ObservationWithMeta represents an observation with metadata.
 type ObservationWithMeta struct {
-	EntityName string
-	EntityType string
-	Content    string
-	FactType   FactType
+	EntityName string   `db:"entity_name"`
+	EntityType string   `db:"entity_type"`
+	Content    string   `db:"content"`
+	FactType   FactType `db:"fact_type"`
 }
 
 // ContextByFactType holds observations grouped by fact type for context injection.
@@ -71,35 +71,24 @@ func (s *Store) AddObservationWithType(entityName, content string, factType Fact
 
 // GetObservationsByFactType returns all observations of a specific fact type.
 func (s *Store) GetObservationsByFactType(factType FactType) ([]ObservationWithMeta, error) {
-	rows, err := s.db.Query(`
-		SELECT e.name, e.entity_type, o.content, COALESCE(o.fact_type, 'dynamic') as fact_type
+	var results []ObservationWithMeta
+	err := s.db.Select(&results, `
+		SELECT e.name as entity_name, e.entity_type, o.content,
+		       COALESCE(o.fact_type, 'dynamic') as fact_type
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE o.fact_type = ?
 		ORDER BY o.created_at DESC
 	`, string(factType))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []ObservationWithMeta
-	for rows.Next() {
-		var obs ObservationWithMeta
-		var ft string
-		if err := rows.Scan(&obs.EntityName, &obs.EntityType, &obs.Content, &ft); err != nil {
-			return nil, err
-		}
-		obs.FactType = FactType(ft)
-		results = append(results, obs)
-	}
-	return results, nil
+	return results, err
 }
 
 // GetContextByFactType returns all observations grouped by fact type for context injection.
 func (s *Store) GetContextByFactType() (*ContextByFactType, error) {
-	rows, err := s.db.Query(`
-		SELECT e.name, e.entity_type, o.content, COALESCE(o.fact_type, 'dynamic') as fact_type
+	var observations []ObservationWithMeta
+	err := s.db.Select(&observations, `
+		SELECT e.name as entity_name, e.entity_type, o.content,
+		       COALESCE(o.fact_type, 'dynamic') as fact_type
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		ORDER BY
@@ -114,17 +103,10 @@ func (s *Store) GetContextByFactType() (*ContextByFactType, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
+	// Group by fact type
 	context := &ContextByFactType{}
-	for rows.Next() {
-		var obs ObservationWithMeta
-		var ft string
-		if err := rows.Scan(&obs.EntityName, &obs.EntityType, &obs.Content, &ft); err != nil {
-			return nil, err
-		}
-		obs.FactType = FactType(ft)
-
+	for _, obs := range observations {
 		switch obs.FactType {
 		case FactTypeStatic:
 			context.Static = append(context.Static, obs)
@@ -133,7 +115,7 @@ func (s *Store) GetContextByFactType() (*ContextByFactType, error) {
 		case FactTypeSessionTurn:
 			context.SessionTurn = append(context.SessionTurn, obs)
 		default:
-			context.Dynamic = append(context.Dynamic, obs) // Default to dynamic
+			context.Dynamic = append(context.Dynamic, obs)
 		}
 	}
 	return context, nil

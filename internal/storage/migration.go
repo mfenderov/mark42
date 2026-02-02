@@ -199,7 +199,7 @@ func (s *Store) Migrate() error {
 
 		log.Printf("Applying migration %d: %s", m.Version, m.Description)
 
-		if err := m.Up(s.db); err != nil {
+		if err := m.Up(s.db.DB); err != nil {
 			// Some ALTER TABLE statements may fail if column exists
 			// This is OK for idempotent migrations
 			log.Printf("Migration %d warning (may be already applied): %v", m.Version, err)

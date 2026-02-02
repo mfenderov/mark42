@@ -11,15 +11,15 @@ var ErrNotFound = errors.New("not found")
 
 // Entity represents a node in the knowledge graph.
 type Entity struct {
-	ID           int64
-	Name         string
-	Type         string
-	Observations []string
-	CreatedAt    time.Time
+	ID           int64     `db:"id"`
+	Name         string    `db:"name"`
+	Type         string    `db:"entity_type"`
+	Observations []string  `db:"-"` // Loaded separately, not a column
+	CreatedAt    time.Time `db:"created_at"`
 	// Versioning fields (Phase 2.3)
-	Version      int
-	IsLatest     bool
-	SupersedesID int64 // ID of previous version (0 if none)
+	Version      int   `db:"version"`
+	IsLatest     bool  `db:"is_latest"`
+	SupersedesID int64 `db:"supersedes_id"` // ID of previous version (0 if none)
 }
 
 // ErrEntityExists is returned when attempting to create an entity that already exists.
@@ -164,8 +164,12 @@ func (s *Store) CreateOrUpdateEntity(name, entityType string, observations []str
 
 // GetEntityHistory returns all versions of an entity, newest first.
 func (s *Store) GetEntityHistory(name string) ([]*Entity, error) {
-	rows, err := s.db.Query(`
-		SELECT id, name, entity_type, created_at, COALESCE(version, 1), COALESCE(is_latest, 1), COALESCE(supersedes_id, 0)
+	var entities []Entity
+	err := s.db.Select(&entities, `
+		SELECT id, name, entity_type, created_at,
+		       COALESCE(version, 1) as version,
+		       COALESCE(is_latest, 1) as is_latest,
+		       COALESCE(supersedes_id, 0) as supersedes_id
 		FROM entities
 		WHERE name = ?
 		ORDER BY version DESC
@@ -173,41 +177,31 @@ func (s *Store) GetEntityHistory(name string) ([]*Entity, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var entities []*Entity
-	for rows.Next() {
-		var e Entity
-		var supersedesID sql.NullInt64
-		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.CreatedAt, &e.Version, &e.IsLatest, &supersedesID); err != nil {
-			return nil, err
-		}
-		if supersedesID.Valid {
-			e.SupersedesID = supersedesID.Int64
-		}
-		entities = append(entities, &e)
-	}
 
 	if len(entities) == 0 {
 		return nil, ErrNotFound
 	}
 
-	return entities, nil
+	// Convert to pointer slice for API compatibility
+	result := make([]*Entity, len(entities))
+	for i := range entities {
+		result[i] = &entities[i]
+	}
+	return result, nil
 }
 
 // GetEntity retrieves an entity by name, including its observations.
 // Returns the latest version only.
 func (s *Store) GetEntity(name string) (*Entity, error) {
 	var entity Entity
-	var supersedesID sql.NullInt64
-	err := s.db.QueryRow(
-		`SELECT id, name, entity_type, created_at, COALESCE(version, 1), COALESCE(is_latest, 1), COALESCE(supersedes_id, 0)
-		 FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)`,
-		name,
-	).Scan(&entity.ID, &entity.Name, &entity.Type, &entity.CreatedAt, &entity.Version, &entity.IsLatest, &supersedesID)
-	if supersedesID.Valid {
-		entity.SupersedesID = supersedesID.Int64
-	}
+	err := s.db.Get(&entity, `
+		SELECT id, name, entity_type, created_at,
+		       COALESCE(version, 1) as version,
+		       COALESCE(is_latest, 1) as is_latest,
+		       COALESCE(supersedes_id, 0) as supersedes_id
+		FROM entities
+		WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)`,
+		name)
 
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -217,21 +211,11 @@ func (s *Store) GetEntity(name string) (*Entity, error) {
 	}
 
 	// Load observations
-	rows, err := s.db.Query(
+	err = s.db.Select(&entity.Observations,
 		"SELECT content FROM observations WHERE entity_id = ? ORDER BY created_at",
-		entity.ID,
-	)
+		entity.ID)
 	if err != nil {
 		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var content string
-		if err := rows.Scan(&content); err != nil {
-			return nil, err
-		}
-		entity.Observations = append(entity.Observations, content)
 	}
 
 	return &entity, nil
@@ -240,37 +224,36 @@ func (s *Store) GetEntity(name string) (*Entity, error) {
 // ListEntities returns all entities, optionally filtered by type.
 // Only returns latest versions.
 func (s *Store) ListEntities(entityType string) ([]*Entity, error) {
-	var rows *sql.Rows
+	var entities []Entity
 	var err error
 
+	query := `SELECT id, name, entity_type, created_at,
+	                 COALESCE(version, 1) as version,
+	                 COALESCE(is_latest, 1) as is_latest,
+	                 COALESCE(supersedes_id, 0) as supersedes_id
+	          FROM entities WHERE is_latest = 1 OR is_latest IS NULL ORDER BY name`
+
 	if entityType == "" {
-		rows, err = s.db.Query(
-			`SELECT id, name, entity_type, created_at, COALESCE(version, 1), COALESCE(is_latest, 1)
-			 FROM entities WHERE is_latest = 1 OR is_latest IS NULL ORDER BY name`,
-		)
+		err = s.db.Select(&entities, query)
 	} else {
-		rows, err = s.db.Query(
-			`SELECT id, name, entity_type, created_at, COALESCE(version, 1), COALESCE(is_latest, 1)
-			 FROM entities WHERE entity_type = ? AND (is_latest = 1 OR is_latest IS NULL) ORDER BY name`,
-			entityType,
-		)
+		query = `SELECT id, name, entity_type, created_at,
+		                COALESCE(version, 1) as version,
+		                COALESCE(is_latest, 1) as is_latest,
+		                COALESCE(supersedes_id, 0) as supersedes_id
+		         FROM entities WHERE entity_type = ? AND (is_latest = 1 OR is_latest IS NULL) ORDER BY name`
+		err = s.db.Select(&entities, query, entityType)
 	}
 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var entities []*Entity
-	for rows.Next() {
-		var e Entity
-		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.CreatedAt, &e.Version, &e.IsLatest); err != nil {
-			return nil, err
-		}
-		entities = append(entities, &e)
+	// Convert to pointer slice for API compatibility
+	result := make([]*Entity, len(entities))
+	for i := range entities {
+		result[i] = &entities[i]
 	}
-
-	return entities, nil
+	return result, nil
 }
 
 // DeleteEntity removes an entity and its observations (via CASCADE).

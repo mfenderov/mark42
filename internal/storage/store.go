@@ -1,21 +1,26 @@
 package storage
 
 import (
-	"database/sql"
 	"fmt"
 
+	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
 
 // Store manages the SQLite database for memory storage.
 type Store struct {
-	db   *sql.DB
+	db   *sqlx.DB
 	path string
+}
+
+// DB returns the underlying sqlx.DB for direct access when needed.
+func (s *Store) DB() *sqlx.DB {
+	return s.db
 }
 
 // NewStore creates a new Store, initializing the database and schema.
 func NewStore(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sqlx.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

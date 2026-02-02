@@ -104,9 +104,11 @@ func (s *Store) ReadGraph() (*Graph, error) {
 		e.Observations = obs
 	}
 
-	// Load all relations
-	rows, err := s.db.Query(`
-		SELECT e_from.name, e_to.name, r.relation_type, r.created_at
+	// Load all relations using sqlx
+	var relList []Relation
+	err = s.db.Select(&relList, `
+		SELECT e_from.name as from_name, e_to.name as to_name,
+		       r.relation_type, r.created_at
 		FROM relations r
 		JOIN entities e_from ON r.from_entity_id = e_from.id
 		JOIN entities e_to ON r.to_entity_id = e_to.id
@@ -115,15 +117,11 @@ func (s *Store) ReadGraph() (*Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var relations []*Relation
-	for rows.Next() {
-		var r Relation
-		if err := rows.Scan(&r.From, &r.To, &r.Type, &r.CreatedAt); err != nil {
-			return nil, err
-		}
-		relations = append(relations, &r)
+	// Convert to pointer slice
+	relations := make([]*Relation, len(relList))
+	for i := range relList {
+		relations[i] = &relList[i]
 	}
 
 	return &Graph{
@@ -133,24 +131,11 @@ func (s *Store) ReadGraph() (*Graph, error) {
 }
 
 func (s *Store) loadObservations(entityID int64) ([]string, error) {
-	rows, err := s.db.Query(
-		"SELECT content FROM observations WHERE entity_id = ? ORDER BY created_at",
-		entityID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	var observations []string
-	for rows.Next() {
-		var content string
-		if err := rows.Scan(&content); err != nil {
-			return nil, err
-		}
-		observations = append(observations, content)
-	}
-	return observations, nil
+	err := s.db.Select(&observations,
+		"SELECT content FROM observations WHERE entity_id = ? ORDER BY created_at",
+		entityID)
+	return observations, err
 }
 
 // prepareFTSQuery escapes special characters and formats for FTS5.
