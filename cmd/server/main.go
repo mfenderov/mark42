@@ -38,6 +38,16 @@ func main() {
 	// Create handler
 	handler := mcp.NewHandler(store)
 
+	// Optionally enable semantic search with embeddings
+	embedderURL := os.Getenv("CLAUDE_MEMORY_EMBEDDER_URL")
+	if embedderURL == "" {
+		embedderURL = storage.DefaultOllamaBaseURL() // Try Ollama by default
+	}
+	if embedderURL != "disabled" {
+		embedder := storage.NewEmbeddingClient(embedderURL)
+		handler.WithEmbedder(embedder)
+	}
+
 	// Run server
 	server := &Server{handler: handler}
 	if err := server.Run(); err != nil {

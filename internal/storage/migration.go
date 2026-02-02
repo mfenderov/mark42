@@ -71,6 +71,23 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     5,
+		Description: "Phase 2: Add observation_embeddings table for vector search",
+		Up: func(db *sql.DB) error {
+			_, err := db.Exec(`
+				CREATE TABLE IF NOT EXISTS observation_embeddings (
+					observation_id INTEGER PRIMARY KEY REFERENCES observations(id) ON DELETE CASCADE,
+					embedding BLOB NOT NULL,
+					model TEXT NOT NULL,
+					dimensions INTEGER NOT NULL,
+					created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+				);
+				CREATE INDEX IF NOT EXISTS idx_embeddings_model ON observation_embeddings(model);
+			`)
+			return err
+		},
+	},
 }
 
 // getCurrentVersion returns the current schema version.

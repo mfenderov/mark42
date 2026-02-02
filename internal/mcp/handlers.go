@@ -1,20 +1,29 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/mfenderov/claude-memory/internal/storage"
 )
 
 // Handler processes MCP tool calls using the storage layer.
 type Handler struct {
-	store *storage.Store
+	store    *storage.Store
+	embedder *storage.EmbeddingClient // Optional: enables semantic search
 }
 
 // NewHandler creates a new MCP handler with the given store.
 func NewHandler(store *storage.Store) *Handler {
 	return &Handler{store: store}
+}
+
+// WithEmbedder adds an embedding client for semantic search.
+func (h *Handler) WithEmbedder(client *storage.EmbeddingClient) *Handler {
+	h.embedder = client
+	return h
 }
 
 // Tools returns the list of available memory tools.
@@ -343,6 +352,19 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
+	// Try hybrid search (FTS + vector) if embedder is available
+	if h.embedder != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, h.embedder, 20)
+		if err == nil && len(results) > 0 {
+			return h.formatHybridResults(results)
+		}
+		// Fall through to FTS-only on error
+	}
+
+	// Fallback: FTS-only search
 	results, err := h.store.SearchWithLimit(input.Query, 20)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
@@ -356,6 +378,59 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 			"entityType":   r.Type,
 			"observations": r.Observations,
 		}
+	}
+
+	data, err := json.Marshal(entities)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal results: %w", err)
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
+// formatHybridResults converts FusedResults to MCP output format.
+func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallResult, error) {
+	// Group results by entity to match expected output format
+	entityMap := make(map[string]*struct {
+		Name         string
+		Type         string
+		Observations []string
+		Score        float64
+	})
+
+	for _, r := range results {
+		key := r.EntityName
+		if existing, ok := entityMap[key]; ok {
+			// Add observation to existing entity
+			existing.Observations = append(existing.Observations, r.Content)
+			if r.FusionScore > existing.Score {
+				existing.Score = r.FusionScore
+			}
+		} else {
+			entityMap[key] = &struct {
+				Name         string
+				Type         string
+				Observations []string
+				Score        float64
+			}{
+				Name:         r.EntityName,
+				Type:         r.EntityType,
+				Observations: []string{r.Content},
+				Score:        r.FusionScore,
+			}
+		}
+	}
+
+	// Convert to output format
+	entities := make([]map[string]interface{}, 0, len(entityMap))
+	for _, e := range entityMap {
+		entities = append(entities, map[string]interface{}{
+			"name":         e.Name,
+			"entityType":   e.Type,
+			"observations": e.Observations,
+		})
 	}
 
 	data, err := json.Marshal(entities)
