@@ -6,6 +6,10 @@ import (
 	"testing"
 )
 
+// ExpectedMigrationCount is the total number of goose migrations.
+// Update this when adding new migrations.
+const ExpectedMigrationCount int64 = 6
+
 func TestMigrate_CreatesSchemaVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_migrate.db")
@@ -28,9 +32,8 @@ func TestMigrate_CreatesSchemaVersion(t *testing.T) {
 	}
 
 	// Should be at latest migration
-	expectedVersion := len(migrations)
-	if version != expectedVersion {
-		t.Errorf("expected version %d, got %d", expectedVersion, version)
+	if version != ExpectedMigrationCount {
+		t.Errorf("expected version %d, got %d", ExpectedMigrationCount, version)
 	}
 }
 
@@ -59,9 +62,8 @@ func TestMigrate_Idempotent(t *testing.T) {
 		t.Fatalf("failed to get schema version: %v", err)
 	}
 
-	expectedVersion := len(migrations)
-	if version != expectedVersion {
-		t.Errorf("expected version %d after two runs, got %d", expectedVersion, version)
+	if version != ExpectedMigrationCount {
+		t.Errorf("expected version %d after two runs, got %d", ExpectedMigrationCount, version)
 	}
 }
 
@@ -163,12 +165,11 @@ func TestMigrate_PersistsAcrossRestart(t *testing.T) {
 	}
 
 	version, _ := store2.GetSchemaVersion()
-	if version != len(migrations) {
-		t.Errorf("expected version %d, got %d", len(migrations), version)
+	if version != ExpectedMigrationCount {
+		t.Errorf("expected version %d, got %d", ExpectedMigrationCount, version)
 	}
 }
 
 func TestMain(m *testing.M) {
-	// Suppress log output during tests
 	os.Exit(m.Run())
 }

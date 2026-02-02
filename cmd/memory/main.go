@@ -691,8 +691,8 @@ var upgradeCmd = &cobra.Command{
 		if beforeVersion == afterVersion {
 			println("  " + dimStyle.Render("Status:") + "  " + successStyle.Render("Already up to date"))
 		} else {
-			println("  " + dimStyle.Render("Before:") + "  Version " + itoa(beforeVersion))
-			println("  " + dimStyle.Render("After:") + "   Version " + successStyle.Render(itoa(afterVersion)))
+			println("  " + dimStyle.Render("Before:") + "  Version " + fmt.Sprintf("%d", beforeVersion))
+			println("  " + dimStyle.Render("After:") + "   Version " + successStyle.Render(fmt.Sprintf("%d", afterVersion)))
 		}
 		println("  " + dimStyle.Render("Path:") + "    " + dbPath)
 
