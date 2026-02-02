@@ -89,6 +89,7 @@ func (h *Handler) Tools() []Tool {
 							Properties: map[string]Property{
 								"entityName": {Type: "string", Description: "Entity name to add observations to"},
 								"contents":   {Type: "array", Description: "Observation contents", Items: &Items{Type: "string"}},
+								"factType":   {Type: "string", Description: "Optional fact type: 'static' (permanent), 'dynamic' (session), 'session_turn' (conversation)"},
 							},
 							Required: []string{"entityName", "contents"},
 						},
@@ -262,8 +263,20 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 
 	var added int
 	for _, obs := range input.Observations {
+		// Determine fact type (default to dynamic for API compatibility)
+		factType := storage.FactTypeDynamic
+		if obs.FactType != "" {
+			factType = storage.FactType(obs.FactType)
+		}
+
 		for _, content := range obs.Contents {
-			if err := h.store.AddObservation(obs.EntityName, content); err == nil {
+			var err error
+			if factType != storage.FactTypeDynamic {
+				err = h.store.AddObservationWithType(obs.EntityName, content, factType)
+			} else {
+				err = h.store.AddObservation(obs.EntityName, content)
+			}
+			if err == nil {
 				added++
 			}
 		}

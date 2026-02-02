@@ -150,6 +150,7 @@ type AddObservationsInput struct {
 type ObservationInput struct {
 	EntityName string   `json:"entityName"`
 	Contents   []string `json:"contents"`
+	FactType   string   `json:"factType,omitempty"` // Optional: "static", "dynamic", "session_turn"
 }
 
 type DeleteEntitiesInput struct {
