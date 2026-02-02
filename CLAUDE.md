@@ -6,13 +6,13 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 
 **Purpose**: Replace JSON-based Memory MCP with SQLite-backed implementation offering superior search capabilities (FTS5 + future vector search).
 
-**Status**: Phase 1 - Foundation (FTS5 full-text search)
+**Status**: Phase 2 Complete - Semantic Search (FTS5 + Vector Hybrid Search)
 
 **Key differentiators**:
 - Privacy-first: All data stays local (no cloud, no telemetry)
 - Single-file portability: One `memory.db` file for backup/sync
 - Drop-in replacement: Same MCP API as `@modelcontextprotocol/server-memory`
-- Incremental complexity: Start with FTS5, add vectors when needed
+- Incremental complexity: FTS5 + vector hybrid search with RRF fusion
 
 ## Quick Reference
 
@@ -44,38 +44,49 @@ cmd/
   ├── memory/main.go   → CLI entry point (cobra, lipgloss)
   └── server/main.go   → MCP server entry point (JSON-RPC over stdio)
 internal/
-  ├── storage/         → SQLite operations (Store, Entity, Relation, Observation, Search)
+  ├── storage/         → SQLite operations (sqlx-based)
   │   ├── store.go     → Database initialization, schema, lifecycle
-  │   ├── entity.go    → Entity CRUD with transactions
-  │   ├── observation.go → Observation add/delete operations
+  │   ├── entity.go    → Entity CRUD with versioning support
+  │   ├── observation.go → Observation add/delete with fact types
   │   ├── relation.go  → Relation CRUD (bidirectional queries)
-  │   └── search.go    → FTS5 search with BM25 ranking
+  │   ├── search.go    → FTS5 search with BM25 ranking
+  │   ├── hybrid.go    → Hybrid search (FTS5 + vector with RRF fusion)
+  │   ├── embedding.go → Ollama/DMR embedding client
+  │   ├── vector.go    → Vector storage and cosine similarity
+  │   ├── fusion.go    → RRF and weighted score fusion
+  │   ├── migration.go → Goose migration runner
+  │   └── migrations/  → Goose Go migrations (001-006)
   └── mcp/             → MCP protocol implementation
       ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
-      └── handlers.go  → Tool handlers (create_entities, search_nodes, etc.)
+      └── handlers.go  → Tool handlers with hybrid search support
 .claude-plugin/
-  ├── plugin.json      → Plugin metadata
-  ├── .mcp.json        → MCP server configuration
-  └── hooks/           → Lifecycle hooks (post-tool-use, stop, session-start)
+  └── plugin.json      → Plugin metadata
+.mcp.json              → MCP server configuration
+hooks/                 → Lifecycle hooks
+  ├── hooks.json       → Hook configuration
+  ├── post-tool-use.py → Tracks file modifications (Edit, Write, Bash)
+  ├── session-start.py → Loads context from SQLite
+  └── stop.py          → Triggers memory sync on session end
 agents/                → Specialized agents (memory-updater, knowledge-extractor)
 skills/                → Skill definitions (memory-processor, codebase-analyzer)
 commands/              → Command documentation (init, status, sync, calibrate)
 ```
 
-**Data flow**: Claude Code (stdio) → MCP Server (Go, JSON-RPC) → Storage Layer → SQLite (FTS5 + sqlite-vec)
+**Data flow**: Claude Code (stdio) → MCP Server (Go, JSON-RPC) → Storage Layer → SQLite (FTS5 + embeddings)
 
 **Storage patterns**:
-- Transactions for atomic operations (CreateEntity uses tx.Begin/Commit/Rollback)
-- Foreign key cascades (ON DELETE CASCADE for observations/relations)
-- Duplicate prevention (INSERT OR IGNORE, UNIQUE constraints)
-- WAL mode enabled for better concurrency
+- **sqlx** for struct scanning (db tags, no manual Scan calls)
+- **goose** for migrations (versioned, idempotent, rollback support)
+- Transactions for atomic operations
+- Foreign key cascades (ON DELETE CASCADE)
+- WAL mode for better concurrency
 - FTS5 kept in sync via triggers
 
-**MCP integration**:
-- JSON-RPC 2.0 protocol over stdio
-- Standard Memory MCP API compatible
-- Tool handlers map to storage operations
-- Hooks for auto-memory capture (Edit, Write, Bash)
+**Phase 2 Features**:
+- Hybrid search with RRF fusion (k=60)
+- Ollama embeddings (nomic-embed-text)
+- Fact types: static, dynamic, session_turn
+- Entity versioning (supersedes_id, is_latest, version)
 <!-- END AUTO-MANAGED -->
 
 See `docs/ARCHITECTURE.md` for:
@@ -166,6 +177,8 @@ The project includes a complete Claude Code plugin implementation:
 | Package | Purpose |
 |---------|---------|
 | `modernc.org/sqlite` | Pure Go SQLite driver (no CGO) |
+| `github.com/jmoiron/sqlx` | SQL extensions with struct scanning |
+| `github.com/pressly/goose/v3` | Database migrations |
 | `github.com/spf13/cobra` | CLI framework for commands |
 | `github.com/charmbracelet/lipgloss` | Terminal styling for output |
 | `github.com/charmbracelet/log` | Structured logging |
@@ -188,56 +201,64 @@ The project includes a complete Claude Code plugin implementation:
 
 ## Roadmap
 
-**Phase 1 (Current)**: Foundation
+**Phase 1**: Foundation ✅
 - ✅ SQLite schema for knowledge graph (entities, observations, relations)
 - ✅ FTS5 full-text search with BM25 ranking
 - ✅ Storage layer complete (CRUD operations)
 - ✅ MCP server with standard Memory API (JSON-RPC 2.0 over stdio)
 - ✅ Claude Code plugin structure (agents, skills, commands, hooks)
-- 🔲 Plugin installation and testing
-- 🔲 Drop-in replacement for JSON Memory MCP verified
 
-**Phase 2**: Semantic Search
-- sqlite-vec integration
-- Ollama embedding generation (nomic-embed-text)
-- Hybrid search (keyword + vector with weighted fusion)
-- Relevance tuning
+**Phase 2 (Complete)**: Semantic Search ✅
+- ✅ Hybrid search infrastructure (FTS5 + vector with RRF fusion)
+- ✅ Ollama embedding client (nomic-embed-text compatible)
+- ✅ Static/dynamic fact types for context injection
+- ✅ Entity versioning (version chains, is_latest flag)
+- ✅ sqlx for struct scanning (eliminates manual SQL parsing)
+- ✅ goose for database migrations (versioned, idempotent)
 
-**Phase 3**: Intelligence
+**Phase 3**: Intelligence (Future)
 - Auto-context injection at session start
 - Importance scoring for memories
 - Decay/consolidation of old memories
 - Cross-session continuity
+
+**Pending**:
+- 🔲 Plugin installation and end-to-end testing
+- 🔲 Drop-in replacement for JSON Memory MCP verified
+- 🔲 Wire `CreateOrUpdateEntity` to MCP for versioning
+- 🔲 Add `get_context` MCP tool for fact-type-aware retrieval
 
 ## Go Conventions
 
 <!-- AUTO-MANAGED: conventions -->
 **Error handling**:
 - Return `ErrNotFound` for missing entities (defined in `entity.go`)
+- Return `ErrEntityExists` for duplicate entity creation
 - Wrap errors with context: `fmt.Errorf("failed to X: %w", err)`
 - Check `sql.ErrNoRows` and convert to domain error
+
+**sqlx patterns**:
+- Use `db.Get(&struct, query)` for single-row queries
+- Use `db.Select(&slice, query)` for multi-row queries
+- Add `db:"column_name"` tags to structs for column mapping
+- Column aliases in SQL must match db tags
+
+**Migrations (goose)**:
+- Go migrations in `internal/storage/migrations/`
+- All migrations must be idempotent (check before alter)
+- Use `goose.AddMigrationContext()` in init()
+- Run with `store.Migrate()` or `store.MigrateWithLogging()`
 
 **Transaction safety**:
 - Use `defer tx.Rollback()` immediately after `Begin()`
 - Explicit `tx.Commit()` on success
 - Pattern: Begin → defer Rollback → operations → Commit
 
-**SQL patterns**:
-- `INSERT OR IGNORE` for duplicate prevention
-- `UNIQUE` constraints over application-level checks
-- Foreign keys with `ON DELETE CASCADE`
-- Join entity IDs back to names in queries
-
-**CLI structure**:
-- Cobra command tree with subcommands (entity, obs, rel, search, graph)
-- Lipgloss styles for terminal output (entityStyle, typeStyle, obsStyle)
-- Charmbracelet log for structured logging
-- Default DB path: `~/.claude/memory.db`
-
 **Testing**:
 - Table-driven tests in `*_test.go` files
 - Integration tests use real SQLite (not mocks)
-- Test files in same package as implementation (`storage_test`)
+- Test files in same package (`storage_test`)
+- `ExpectedMigrationCount` constant for migration tests
 <!-- END AUTO-MANAGED -->
 
 ## Design Principles
