@@ -60,13 +60,13 @@ internal/
       ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
       └── handlers.go  → Tool handlers with hybrid search support
 .claude-plugin/
-  └── plugin.json      → Plugin metadata
-.mcp.json              → MCP server configuration
-hooks/                 → Lifecycle hooks
+  ├── plugin.json      → Plugin metadata
   ├── hooks.json       → Hook configuration
-  ├── post-tool-use.py → Tracks file modifications (Edit, Write, Bash)
-  ├── session-start.py → Loads context from SQLite
-  └── stop.py          → Triggers memory sync on session end
+  └── hooks/           → Lifecycle hooks
+      ├── post-tool-use.py → Tracks file modifications (Edit, Write, Bash)
+      ├── session-start.py → Loads context from SQLite
+      └── stop.py          → Triggers memory sync on session end
+.mcp.json              → MCP server configuration
 agents/                → Specialized agents (memory-updater, knowledge-extractor)
 skills/                → Skill definitions (memory-processor, codebase-analyzer)
 commands/              → Command documentation (init, status, sync, calibrate)
