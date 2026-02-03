@@ -184,6 +184,18 @@ func (h *Handler) Tools() []Tool {
 				Required: []string{"names"},
 			},
 		},
+		{
+			Name:        "get_context",
+			Description: "Get memories optimized for context injection, ordered by importance and fact type",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"projectName":   {Type: "string", Description: "Current project name for boosting relevant memories"},
+					"tokenBudget":   {Type: "integer", Description: "Maximum tokens to include (default: 2000)"},
+					"minImportance": {Type: "number", Description: "Minimum importance score (0-1, default: 0.3)"},
+				},
+			},
+		},
 	}
 }
 
@@ -208,6 +220,8 @@ func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, 
 		return h.searchNodes(args)
 	case "open_nodes":
 		return h.openNodes(args)
+	case "get_context":
+		return h.getContext(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -482,5 +496,34 @@ func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
 
 	return &ToolCallResult{
 		Content: []ContentBlock{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
+func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {
+	var input GetContextInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	cfg := storage.DefaultContextConfig()
+	if input.TokenBudget > 0 {
+		cfg.TokenBudget = input.TokenBudget
+	}
+	if input.MinImportance > 0 {
+		cfg.MinImportance = input.MinImportance
+	}
+
+	results, err := h.store.GetContextForInjection(cfg, input.ProjectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	formatted := storage.FormatContextResults(results)
+	if formatted == "" {
+		formatted = "No relevant memories found."
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: formatted}},
 	}, nil
 }

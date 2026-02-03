@@ -420,6 +420,125 @@ func init() {
 	searchCmd.Flags().String("format", "default", "output format: default, json, context")
 }
 
+// --- Hybrid Search command ---
+
+var hybridSearchCmd = &cobra.Command{
+	Use:   "hybrid-search <query>",
+	Short: "Search using FTS5 + vector semantic search",
+	Long: `Search entities using hybrid FTS5 + vector semantic search.
+
+Combines keyword matching (FTS5 BM25) with semantic similarity (embeddings)
+using Reciprocal Rank Fusion (RRF) for best results.
+
+Requires Ollama to be running with an embedding model for vector search.
+Falls back to FTS-only search if Ollama is unavailable.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		// Run migrations to ensure embedding table exists
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		limit, _ := cmd.Flags().GetInt("limit")
+		format, _ := cmd.Flags().GetString("format")
+		model, _ := cmd.Flags().GetString("model")
+		url, _ := cmd.Flags().GetString("url")
+
+		// Create embedding client
+		client := storage.NewEmbeddingClient(url)
+		client.SetModel(model)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		results, err := store.HybridSearchWithEmbedder(ctx, args[0], client, limit)
+		if err != nil {
+			return err
+		}
+
+		if len(results) == 0 {
+			logger.Info("No results found", "query", args[0])
+			return nil
+		}
+
+		switch format {
+		case "json":
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(results)
+		case "context":
+			// Group results by entity for context output
+			entityMap := make(map[string]struct {
+				Type         string
+				Observations []string
+				MaxScore     float64
+			})
+			for _, r := range results {
+				if e, ok := entityMap[r.EntityName]; ok {
+					e.Observations = append(e.Observations, r.Content)
+					if r.FusionScore > e.MaxScore {
+						e.MaxScore = r.FusionScore
+					}
+					entityMap[r.EntityName] = e
+				} else {
+					entityMap[r.EntityName] = struct {
+						Type         string
+						Observations []string
+						MaxScore     float64
+					}{
+						Type:         r.EntityType,
+						Observations: []string{r.Content},
+						MaxScore:     r.FusionScore,
+					}
+				}
+			}
+			for name, e := range entityMap {
+				println("## " + entityStyle.Render(name) + " " + typeStyle.Render("("+e.Type+")"))
+				for _, obs := range e.Observations {
+					println("- " + obs)
+				}
+				println()
+			}
+		default:
+			// Default: show results with scores
+			println(titleStyle.Render("Hybrid Search Results"))
+			println()
+			for _, r := range results {
+				score := fmt.Sprintf("%.4f", r.FusionScore)
+				// Build sources list from SourceScores map
+				var sources []string
+				for source := range r.SourceScores {
+					sources = append(sources, source)
+				}
+				sourcesStr := strings.Join(sources, ", ")
+				println(entityStyle.Render(r.EntityName) + " " +
+					typeStyle.Render("("+r.EntityType+")") + " " +
+					dimStyle.Render("["+score+"] ["+sourcesStr+"]"))
+				println("  " + obsStyle.Render(r.Content))
+				println()
+			}
+		}
+		return nil
+	},
+}
+
+func init() {
+	defaultOllamaURL := storage.DefaultOllamaBaseURL()
+
+	hybridSearchCmd.Flags().Int("limit", 10, "maximum number of results")
+	hybridSearchCmd.Flags().String("format", "default", "output format: default, json, context")
+	hybridSearchCmd.Flags().String("model", "nomic-embed-text", "embedding model for vector search")
+	hybridSearchCmd.Flags().String("url", defaultOllamaURL, "Ollama API URL")
+
+	rootCmd.AddCommand(hybridSearchCmd)
+}
+
 // --- Graph command ---
 
 var graphCmd = &cobra.Command{
@@ -894,6 +1013,539 @@ func init() {
 	embedCmd.AddCommand(embedGenerateCmd)
 	embedCmd.AddCommand(embedStatsCmd)
 	rootCmd.AddCommand(embedCmd)
+}
+
+// --- Importance commands ---
+
+var importanceCmd = &cobra.Command{
+	Use:   "importance",
+	Short: "Manage memory importance scores",
+}
+
+var importanceRecalculateCmd = &cobra.Command{
+	Use:   "recalculate",
+	Short: "Recalculate importance scores for all memories",
+	Long: `Recalculate importance scores based on:
+- Recency (how recently accessed)
+- Centrality (how connected via relations)
+- Fact type (static facts get bonus)
+
+This helps prioritize which memories to include in context injection.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		// Run migrations to ensure schema is up to date
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		start := time.Now()
+		updated, err := store.RecalculateImportance()
+		if err != nil {
+			return err
+		}
+		elapsed := time.Since(start)
+
+		println(titleStyle.Render("Importance Recalculation"))
+		println()
+		println("  " + dimStyle.Render("Updated:") + " " + successStyle.Render(itoa(updated)) + " observations")
+		println("  " + dimStyle.Render("Time:") + "    " + successStyle.Render(elapsed.String()))
+
+		return nil
+	},
+}
+
+var importanceStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show importance score statistics",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		// Get importance distribution
+		type stats struct {
+			Total     int     `db:"total"`
+			AvgScore  float64 `db:"avg_score"`
+			MinScore  float64 `db:"min_score"`
+			MaxScore  float64 `db:"max_score"`
+			HighCount int     `db:"high_count"`
+			LowCount  int     `db:"low_count"`
+		}
+		var s stats
+		err = store.DB().Get(&s, `
+			SELECT
+				COUNT(*) as total,
+				COALESCE(AVG(importance), 0) as avg_score,
+				COALESCE(MIN(importance), 0) as min_score,
+				COALESCE(MAX(importance), 0) as max_score,
+				SUM(CASE WHEN importance >= 0.7 THEN 1 ELSE 0 END) as high_count,
+				SUM(CASE WHEN importance < 0.3 THEN 1 ELSE 0 END) as low_count
+			FROM observations o
+			JOIN entities e ON e.id = o.entity_id
+			WHERE e.is_latest = 1
+		`)
+		if err != nil {
+			return err
+		}
+
+		println(titleStyle.Render("Importance Statistics"))
+		println()
+		println("  " + dimStyle.Render("Total observations:") + " " + itoa(s.Total))
+		println("  " + dimStyle.Render("Average score:") + "      " + fmt.Sprintf("%.3f", s.AvgScore))
+		println("  " + dimStyle.Render("Min score:") + "          " + fmt.Sprintf("%.3f", s.MinScore))
+		println("  " + dimStyle.Render("Max score:") + "          " + fmt.Sprintf("%.3f", s.MaxScore))
+		println()
+		println("  " + dimStyle.Render("High importance (≥0.7):") + " " + successStyle.Render(itoa(s.HighCount)))
+		println("  " + dimStyle.Render("Low importance (<0.3):") + "  " + dimStyle.Render(itoa(s.LowCount)))
+
+		return nil
+	},
+}
+
+func init() {
+	importanceCmd.AddCommand(importanceRecalculateCmd)
+	importanceCmd.AddCommand(importanceStatsCmd)
+	rootCmd.AddCommand(importanceCmd)
+}
+
+// --- Context command ---
+
+var contextCmd = &cobra.Command{
+	Use:   "context",
+	Short: "Get memories optimized for context injection",
+	Long: `Get memories optimized for context injection at session start.
+
+Orders by fact type (static > dynamic > session_turn), then by importance.
+Respects token budget to avoid context overflow.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		// Run migrations
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		tokenBudget, _ := cmd.Flags().GetInt("token-budget")
+		minImportance, _ := cmd.Flags().GetFloat64("min-importance")
+		projectName, _ := cmd.Flags().GetString("project")
+
+		cfg := storage.DefaultContextConfig()
+		if tokenBudget > 0 {
+			cfg.TokenBudget = tokenBudget
+		}
+		if minImportance > 0 {
+			cfg.MinImportance = minImportance
+		}
+
+		results, err := store.GetContextForInjection(cfg, projectName)
+		if err != nil {
+			return err
+		}
+
+		if len(results) == 0 {
+			logger.Info("No relevant memories found")
+			return nil
+		}
+
+		formatted := storage.FormatContextResults(results)
+		estimatedTokens := storage.EstimateTokens(formatted)
+
+		println(titleStyle.Render("Context for Injection"))
+		println(dimStyle.Render(fmt.Sprintf("[%d estimated tokens, %d memories]", estimatedTokens, len(results))))
+		println()
+		print(formatted)
+
+		return nil
+	},
+}
+
+func init() {
+	contextCmd.Flags().Int("token-budget", 2000, "maximum tokens to include")
+	contextCmd.Flags().Float64("min-importance", 0.3, "minimum importance score (0-1)")
+	contextCmd.Flags().String("project", "", "project name for boosting relevant memories")
+
+	rootCmd.AddCommand(contextCmd)
+}
+
+// --- Decay commands ---
+
+var decayCmd = &cobra.Command{
+	Use:   "decay",
+	Short: "Manage memory decay and archival",
+}
+
+var decayStatsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "Show decay statistics",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		stats, err := store.GetDecayStats()
+		if err != nil {
+			return err
+		}
+
+		println(titleStyle.Render("Decay Statistics"))
+		println()
+		println("  " + dimStyle.Render("Total observations:") + "     " + itoa(stats.TotalObservations))
+		println("  " + dimStyle.Render("Low importance (<0.3):") + "  " + dimStyle.Render(itoa(stats.LowImportance)))
+		println("  " + dimStyle.Render("Archived:") + "               " + itoa(stats.ArchivedCount))
+		println("  " + dimStyle.Render("Expired (past date):") + "    " + dimStyle.Render(itoa(stats.ExpiredCount)))
+		println("  " + dimStyle.Render("Average importance:") + "     " + fmt.Sprintf("%.3f", stats.AvgImportance))
+
+		return nil
+	},
+}
+
+var decaySoftCmd = &cobra.Command{
+	Use:   "apply",
+	Short: "Apply soft decay to importance scores",
+	Long:  "Reduces importance scores based on recency of access.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		threshold, _ := cmd.Flags().GetFloat64("threshold")
+
+		start := time.Now()
+		affected, err := store.ApplySoftDecay(threshold)
+		if err != nil {
+			return err
+		}
+		elapsed := time.Since(start)
+
+		println(titleStyle.Render("Soft Decay Applied"))
+		println()
+		println("  " + dimStyle.Render("Affected:") + " " + successStyle.Render(itoa(affected)) + " observations")
+		println("  " + dimStyle.Render("Time:") + "     " + successStyle.Render(elapsed.String()))
+
+		return nil
+	},
+}
+
+var decayArchiveCmd = &cobra.Command{
+	Use:   "archive",
+	Short: "Archive old, low-importance memories",
+	Long:  "Moves memories to archive table based on age and importance.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		days, _ := cmd.Flags().GetInt("days")
+		minImportance, _ := cmd.Flags().GetFloat64("min-importance")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		cfg := storage.DefaultDecayConfig()
+		cfg.ArchiveAfterDays = days
+		cfg.MinImportanceToKeep = minImportance
+
+		if dryRun {
+			// Show what would be archived
+			stats, err := store.GetDecayStats()
+			if err != nil {
+				return err
+			}
+			println(titleStyle.Render("Archive Preview (Dry Run)"))
+			println()
+			println("  " + dimStyle.Render("Would archive approximately:") + " " + itoa(stats.LowImportance) + " observations")
+			println("  " + dimStyle.Render("(Run without --dry-run to execute)"))
+			return nil
+		}
+
+		start := time.Now()
+		archived, err := store.ArchiveOldMemories(cfg)
+		if err != nil {
+			return err
+		}
+		elapsed := time.Since(start)
+
+		println(titleStyle.Render("Archive Complete"))
+		println()
+		println("  " + dimStyle.Render("Archived:") + " " + successStyle.Render(itoa(archived)) + " observations")
+		println("  " + dimStyle.Render("Time:") + "     " + successStyle.Render(elapsed.String()))
+
+		return nil
+	},
+}
+
+var decayForgetCmd = &cobra.Command{
+	Use:   "forget",
+	Short: "Delete expired memories",
+	Long:  "Deletes memories that have passed their forget_after date.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		expired, _ := cmd.Flags().GetBool("expired")
+		archiveDays, _ := cmd.Flags().GetInt("archive-days")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		var deleted int
+
+		if expired {
+			if dryRun {
+				stats, _ := store.GetDecayStats()
+				println(titleStyle.Render("Forget Preview (Dry Run)"))
+				println()
+				println("  " + dimStyle.Render("Expired to delete:") + " " + itoa(stats.ExpiredCount))
+				return nil
+			}
+
+			count, err := store.ForgetExpiredMemories()
+			if err != nil {
+				return err
+			}
+			deleted += count
+		}
+
+		if archiveDays > 0 {
+			count, err := store.ForgetOldArchivedMemories(archiveDays)
+			if err != nil {
+				return err
+			}
+			deleted += count
+		}
+
+		println(titleStyle.Render("Forget Complete"))
+		println()
+		println("  " + dimStyle.Render("Deleted:") + " " + successStyle.Render(itoa(deleted)) + " memories")
+
+		return nil
+	},
+}
+
+func init() {
+	decaySoftCmd.Flags().Float64("threshold", 0.3, "minimum importance to apply decay")
+
+	decayArchiveCmd.Flags().Int("days", 90, "archive memories older than this")
+	decayArchiveCmd.Flags().Float64("min-importance", 0.1, "archive below this importance")
+	decayArchiveCmd.Flags().Bool("dry-run", false, "preview without executing")
+
+	decayForgetCmd.Flags().Bool("expired", false, "delete memories past forget_after date")
+	decayForgetCmd.Flags().Int("archive-days", 0, "delete archived memories older than this")
+	decayForgetCmd.Flags().Bool("dry-run", false, "preview without executing")
+
+	decayCmd.AddCommand(decayStatsCmd)
+	decayCmd.AddCommand(decaySoftCmd)
+	decayCmd.AddCommand(decayArchiveCmd)
+	decayCmd.AddCommand(decayForgetCmd)
+	rootCmd.AddCommand(decayCmd)
+}
+
+// --- Working directory (container tag) commands ---
+
+var workdirCmd = &cobra.Command{
+	Use:   "workdir",
+	Short: "Manage working directory (project) scoping",
+	Long: `Manage working directory awareness for multi-project memory scoping.
+
+Entities can be tagged with a container (project) identifier.
+During search and context injection, entities matching the current
+project receive a score boost (1.5x by default).`,
+}
+
+var workdirSetCmd = &cobra.Command{
+	Use:   "set <entity> <container-tag>",
+	Short: "Set the container tag for an entity",
+	Long: `Set the container tag (project identifier) for an entity.
+
+Example:
+  claude-memory workdir set "Go Conventions" "claude-memory"
+
+This associates the entity with the specified project.`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		entityName := args[0]
+		containerTag := args[1]
+
+		if err := store.SetContainerTag(entityName, containerTag); err != nil {
+			if err == storage.ErrNotFound {
+				logger.Error("Entity not found", "name", entityName)
+				os.Exit(1)
+			}
+			return err
+		}
+
+		logger.Info("Set container tag",
+			"entity", entityStyle.Render(entityName),
+			"tag", typeStyle.Render(containerTag))
+		return nil
+	},
+}
+
+var workdirGetCmd = &cobra.Command{
+	Use:   "get <entity>",
+	Short: "Get the container tag for an entity",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		entityName := args[0]
+
+		tag, err := store.GetContainerTag(entityName)
+		if err != nil {
+			if err == storage.ErrNotFound {
+				logger.Error("Entity not found", "name", entityName)
+				os.Exit(1)
+			}
+			return err
+		}
+
+		if tag == "" {
+			logger.Info("No container tag set", "entity", entityName)
+		} else {
+			println(entityStyle.Render(entityName) + " " + dimStyle.Render("→") + " " + typeStyle.Render(tag))
+		}
+		return nil
+	},
+}
+
+var workdirListCmd = &cobra.Command{
+	Use:   "list <container-tag>",
+	Short: "List all entities with a specific container tag",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		containerTag := args[0]
+
+		entities, err := store.GetEntitiesByContainerTag(containerTag)
+		if err != nil {
+			return err
+		}
+
+		if len(entities) == 0 {
+			logger.Info("No entities found with tag", "tag", containerTag)
+			return nil
+		}
+
+		println(titleStyle.Render("Entities in " + containerTag))
+		println()
+		for _, e := range entities {
+			println("  " + entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
+		}
+		return nil
+	},
+}
+
+var workdirSearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search with container tag boosting",
+	Long: `Search with working directory awareness.
+
+Entities matching the specified container tag receive a 1.5x score boost.
+This helps surface project-specific memories first.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		limit, _ := cmd.Flags().GetInt("limit")
+		containerTag, _ := cmd.Flags().GetString("tag")
+		boost, _ := cmd.Flags().GetFloat64("boost")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		results, err := store.HybridSearchWithBoost(ctx, args[0], nil, limit, containerTag, boost)
+		if err != nil {
+			return err
+		}
+
+		if len(results) == 0 {
+			logger.Info("No results found", "query", args[0])
+			return nil
+		}
+
+		println(titleStyle.Render("Search Results") + " " + dimStyle.Render("(boosted: "+containerTag+")"))
+		println()
+		for _, r := range results {
+			score := fmt.Sprintf("%.4f", r.FusionScore)
+			println(entityStyle.Render(r.EntityName) + " " +
+				typeStyle.Render("("+r.EntityType+")") + " " +
+				dimStyle.Render("["+score+"]"))
+			println("  " + obsStyle.Render(r.Content))
+			println()
+		}
+		return nil
+	},
+}
+
+func init() {
+	workdirSearchCmd.Flags().Int("limit", 10, "maximum number of results")
+	workdirSearchCmd.Flags().String("tag", "", "container tag to boost (required)")
+	workdirSearchCmd.Flags().Float64("boost", 1.5, "score multiplier for matching entities")
+
+	workdirCmd.AddCommand(workdirSetCmd)
+	workdirCmd.AddCommand(workdirGetCmd)
+	workdirCmd.AddCommand(workdirListCmd)
+	workdirCmd.AddCommand(workdirSearchCmd)
+	rootCmd.AddCommand(workdirCmd)
 }
 
 // --- Helpers ---

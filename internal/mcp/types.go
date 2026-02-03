@@ -177,3 +177,9 @@ type SearchNodesInput struct {
 type OpenNodesInput struct {
 	Names []string `json:"names"`
 }
+
+type GetContextInput struct {
+	ProjectName   string  `json:"projectName,omitempty"`
+	TokenBudget   int     `json:"tokenBudget,omitempty"`
+	MinImportance float64 `json:"minImportance,omitempty"`
+}
