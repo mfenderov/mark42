@@ -11,8 +11,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
-	"github.com/mfenderov/claude-memory/internal/storage"
 	"github.com/spf13/cobra"
+
+	"github.com/mfenderov/claude-memory/internal/storage"
 )
 
 var (
@@ -79,7 +80,7 @@ func init() {
 
 func getStore() (*storage.Store, error) {
 	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	return storage.NewStore(dbPath)
@@ -826,9 +827,9 @@ func init() {
 // --- Embed commands ---
 
 var (
-	ollamaURL   string
-	embedModel  string
-	embedBatch  int
+	ollamaURL  string
+	embedModel string
+	embedBatch int
 )
 
 var embedCmd = &cobra.Command{
@@ -1562,4 +1563,3 @@ func printEntity(e *storage.Entity) {
 func itoa(i int) string {
 	return fmt.Sprintf("%d", i)
 }
-

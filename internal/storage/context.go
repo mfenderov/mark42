@@ -24,12 +24,12 @@ func DefaultContextConfig() ContextConfig {
 
 // ContextResult represents a memory selected for context injection.
 type ContextResult struct {
-	EntityName  string  `db:"entity_name"`
-	EntityType  string  `db:"entity_type"`
-	Content     string  `db:"content"`
-	FactType    string  `db:"fact_type"`
-	Importance  float64 `db:"importance"`
-	FinalScore  float64 // After fact type priority and project boost
+	EntityName string  `db:"entity_name"`
+	EntityType string  `db:"entity_type"`
+	Content    string  `db:"content"`
+	FactType   string  `db:"fact_type"`
+	Importance float64 `db:"importance"`
+	FinalScore float64 // After fact type priority and project boost
 }
 
 // GetContextForInjection retrieves memories optimized for context injection.

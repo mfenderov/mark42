@@ -15,7 +15,7 @@ import (
 func init() {
 	// Set goose to use our custom table name and dialect
 	goose.SetTableName("goose_db_version")
-	goose.SetDialect("sqlite3")
+	_ = goose.SetDialect("sqlite3")
 }
 
 // Migrate runs all pending migrations using goose.

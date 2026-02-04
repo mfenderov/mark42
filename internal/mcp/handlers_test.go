@@ -976,10 +976,10 @@ func TestHandler_GetContext(t *testing.T) {
 			},
 		},
 		{
-			name:        "invalid JSON",
-			setup:       func(s *storage.Store) { s.Migrate() },
-			args:        `{invalid}`,
-			wantErr:     true,
+			name:    "invalid JSON",
+			setup:   func(s *storage.Store) { s.Migrate() },
+			args:    `{invalid}`,
+			wantErr: true,
 		},
 	}
 
@@ -1136,4 +1136,3 @@ func TestHandler_EmptyInputs(t *testing.T) {
 		})
 	}
 }
-

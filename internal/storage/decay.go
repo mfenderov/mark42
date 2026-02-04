@@ -6,10 +6,10 @@ import (
 
 // DecayConfig holds configuration for memory decay operations.
 type DecayConfig struct {
-	SoftDecayThreshold   float64 // Importance below which to apply soft decay
-	ArchiveAfterDays     int     // Days after which to archive low-importance memories
-	ForgetAfterDays      int     // Days after which to delete expired memories
-	MinImportanceToKeep  float64 // Minimum importance to avoid archival
+	SoftDecayThreshold  float64 // Importance below which to apply soft decay
+	ArchiveAfterDays    int     // Days after which to archive low-importance memories
+	ForgetAfterDays     int     // Days after which to delete expired memories
+	MinImportanceToKeep float64 // Minimum importance to avoid archival
 }
 
 // DefaultDecayConfig returns the default decay configuration.
@@ -47,7 +47,6 @@ func (s *Store) ApplySoftDecay(threshold float64) (int, error) {
 		WHERE importance >= ? AND importance < 1.0
 		AND entity_id IN (SELECT id FROM entities WHERE is_latest = 1)
 	`, cfg.DecayConstant, threshold)
-
 	if err != nil {
 		return 0, err
 	}
@@ -96,7 +95,6 @@ func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 		AND COALESCE(o.last_accessed, o.created_at) < ?
 		AND o.fact_type != 'static'
 	`, cfg.MinImportanceToKeep, cutoffDate.Format("2006-01-02 15:04:05"))
-
 	if err != nil {
 		return 0, err
 	}
@@ -130,7 +128,6 @@ func (s *Store) ForgetExpiredMemories() (int, error) {
 		WHERE forget_after IS NOT NULL
 		AND forget_after < datetime('now')
 	`)
-
 	if err != nil {
 		return 0, err
 	}
@@ -147,7 +144,6 @@ func (s *Store) ForgetOldArchivedMemories(days int) (int, error) {
 		DELETE FROM archived_observations
 		WHERE archived_at < ?
 	`, cutoffDate.Format("2006-01-02 15:04:05"))
-
 	if err != nil {
 		return 0, err
 	}

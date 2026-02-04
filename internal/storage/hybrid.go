@@ -91,7 +91,6 @@ func (s *Store) ftsSearch(query string, limit int) ([]RankedItem, error) {
 		ORDER BY c.score
 		LIMIT ?
 	`, ftsQuery, ftsQuery, limit)
-
 	if err != nil {
 		// If FTS query fails, return empty
 		if strings.Contains(err.Error(), "fts5") {

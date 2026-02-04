@@ -37,7 +37,6 @@ func (s *Store) AddObservation(entityName, content string) error {
 		"SELECT id FROM entities WHERE name = ?",
 		entityName,
 	).Scan(&entityID)
-
 	if err != nil {
 		return ErrNotFound
 	}
@@ -57,7 +56,6 @@ func (s *Store) AddObservationWithType(entityName, content string, factType Fact
 		"SELECT id FROM entities WHERE name = ?",
 		entityName,
 	).Scan(&entityID)
-
 	if err != nil {
 		return ErrNotFound
 	}
@@ -169,7 +167,6 @@ func (s *Store) DeleteObservation(entityName, content string) error {
 		"SELECT id FROM entities WHERE name = ?",
 		entityName,
 	).Scan(&entityID)
-
 	if err != nil {
 		return ErrNotFound
 	}

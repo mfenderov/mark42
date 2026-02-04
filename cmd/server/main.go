@@ -22,7 +22,7 @@ func main() {
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		logError("failed to create database directory: %v", err)
 		os.Exit(1)
 	}
@@ -146,7 +146,7 @@ func (s *Server) handleToolsCall(req *mcp.Request) {
 	s.sendResult(req.ID, result)
 }
 
-func (s *Server) sendResult(id interface{}, result interface{}) {
+func (s *Server) sendResult(id, result any) {
 	resp := mcp.Response{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -155,7 +155,7 @@ func (s *Server) sendResult(id interface{}, result interface{}) {
 	s.send(resp)
 }
 
-func (s *Server) sendError(id interface{}, code int, message string, data interface{}) {
+func (s *Server) sendError(id any, code int, message string, data any) {
 	resp := mcp.Response{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -177,6 +177,6 @@ func (s *Server) send(resp mcp.Response) {
 	fmt.Println(string(data))
 }
 
-func logError(format string, args ...interface{}) {
+func logError(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "[claude-memory] "+format+"\n", args...)
 }

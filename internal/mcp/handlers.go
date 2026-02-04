@@ -398,9 +398,9 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 	}
 
 	// Convert to entity list for output
-	entities := make([]map[string]interface{}, len(results))
+	entities := make([]map[string]any, len(results))
 	for i, r := range results {
-		entities[i] = map[string]interface{}{
+		entities[i] = map[string]any{
 			"name":         r.Name,
 			"entityType":   r.Type,
 			"observations": r.Observations,
@@ -451,9 +451,9 @@ func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallR
 	}
 
 	// Convert to output format
-	entities := make([]map[string]interface{}, 0, len(entityMap))
+	entities := make([]map[string]any, 0, len(entityMap))
 	for _, e := range entityMap {
-		entities = append(entities, map[string]interface{}{
+		entities = append(entities, map[string]any{
 			"name":         e.Name,
 			"entityType":   e.Type,
 			"observations": e.Observations,
@@ -476,13 +476,13 @@ func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	var entities []map[string]interface{}
+	var entities []map[string]any
 	for _, name := range input.Names {
 		entity, err := h.store.GetEntity(name)
 		if err != nil {
 			continue
 		}
-		entities = append(entities, map[string]interface{}{
+		entities = append(entities, map[string]any{
 			"name":         entity.Name,
 			"entityType":   entity.Type,
 			"observations": entity.Observations,

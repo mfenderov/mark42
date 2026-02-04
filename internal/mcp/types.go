@@ -6,22 +6,22 @@ import "encoding/json"
 
 type Request struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id,omitempty"`
+	ID      any             `json:"id,omitempty"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
 }
 
 type Response struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *Error      `json:"error,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      any    `json:"id,omitempty"`
+	Result  any    `json:"result,omitempty"`
+	Error   *Error `json:"error,omitempty"`
 }
 
 type Error struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // Standard JSON-RPC error codes
@@ -36,13 +36,13 @@ const (
 // MCP Protocol types
 
 type InitializeParams struct {
-	ProtocolVersion string         `json:"protocolVersion"`
-	Capabilities    Capabilities   `json:"capabilities"`
-	ClientInfo      ClientInfo     `json:"clientInfo"`
+	ProtocolVersion string       `json:"protocolVersion"`
+	Capabilities    Capabilities `json:"capabilities"`
+	ClientInfo      ClientInfo   `json:"clientInfo"`
 }
 
 type Capabilities struct {
-	Roots   *RootsCapability   `json:"roots,omitempty"`
+	Roots    *RootsCapability    `json:"roots,omitempty"`
 	Sampling *SamplingCapability `json:"sampling,omitempty"`
 }
 
@@ -58,9 +58,9 @@ type ClientInfo struct {
 }
 
 type InitializeResult struct {
-	ProtocolVersion string           `json:"protocolVersion"`
+	ProtocolVersion string             `json:"protocolVersion"`
 	Capabilities    ServerCapabilities `json:"capabilities"`
-	ServerInfo      ServerInfo       `json:"serverInfo"`
+	ServerInfo      ServerInfo         `json:"serverInfo"`
 }
 
 type ServerCapabilities struct {
@@ -91,9 +91,9 @@ type InputSchema struct {
 }
 
 type Property struct {
-	Type        string   `json:"type"`
-	Description string   `json:"description,omitempty"`
-	Items       *Items   `json:"items,omitempty"`
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+	Items       *Items `json:"items,omitempty"`
 }
 
 type Items struct {

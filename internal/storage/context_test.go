@@ -168,9 +168,9 @@ func TestFormatContextResults_Empty(t *testing.T) {
 
 func TestEstimateTokens(t *testing.T) {
 	tests := []struct {
-		text        string
-		minTokens   int
-		maxTokens   int
+		text      string
+		minTokens int
+		maxTokens int
 	}{
 		{"", 0, 0},
 		{"Hello world!", 2, 4},

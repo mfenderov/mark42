@@ -330,7 +330,7 @@ func TestMigrateCommand_JSONFormat(t *testing.T) {
 		"relations": []
 	}`
 	jsonFile := filepath.Join(tmpDir, "memory.json")
-	if err := os.WriteFile(jsonFile, []byte(jsonData), 0644); err != nil {
+	if err := os.WriteFile(jsonFile, []byte(jsonData), 0o644); err != nil {
 		t.Fatalf("failed to write JSON file: %v", err)
 	}
 
@@ -381,7 +381,7 @@ func TestMigrateCommand_NDJSONFormat(t *testing.T) {
 	ndjsonData := `{"type":"entity","name":"NDJSONEntity","entityType":"ndjson","observations":["obs1"]}
 {"type":"relation","from":"NDJSONEntity","to":"Other","relationType":"knows"}`
 	ndjsonFile := filepath.Join(tmpDir, "memory.ndjson")
-	if err := os.WriteFile(ndjsonFile, []byte(ndjsonData), 0644); err != nil {
+	if err := os.WriteFile(ndjsonFile, []byte(ndjsonData), 0o644); err != nil {
 		t.Fatalf("failed to write NDJSON file: %v", err)
 	}
 

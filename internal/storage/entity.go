@@ -278,6 +278,6 @@ func (s *Store) DeleteEntity(name string) error {
 // CountObservations returns the total number of observations (for testing).
 func (s *Store) CountObservations() int {
 	var count int
-	s.db.QueryRow("SELECT COUNT(*) FROM observations").Scan(&count)
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM observations").Scan(&count)
 	return count
 }

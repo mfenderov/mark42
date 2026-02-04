@@ -56,7 +56,6 @@ func (s *Store) SearchWithLimit(query string, limit int) ([]*SearchResult, error
 		ORDER BY c.score
 		LIMIT ?
 	`, ftsQuery, ftsQuery, limit)
-
 	if err != nil {
 		// If FTS query fails (invalid syntax), return empty results
 		if strings.Contains(err.Error(), "fts5") {

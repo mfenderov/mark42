@@ -13,7 +13,7 @@ func TestEmbeddingClient_CreateEmbedding(t *testing.T) {
 		if r.URL.Path != "/embeddings" {
 			t.Errorf("expected path /embeddings, got %s", r.URL.Path)
 		}
-		if r.Method != "POST" {
+		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 

@@ -32,11 +32,10 @@ run: build
 ## Development
 
 lint:
-	golangci-lint run ./...
+	go tool golangci-lint run
 
 fmt:
-	go fmt ./...
-	goimports -w .
+	go tool golangci-lint fmt
 
 tidy:
 	go mod tidy

@@ -16,10 +16,10 @@ type ImportanceConfig struct {
 // DefaultImportanceConfig returns the default importance scoring configuration.
 func DefaultImportanceConfig() ImportanceConfig {
 	return ImportanceConfig{
-		DecayConstant:    30,   // 50% decay after ~21 days
-		RecencyWeight:    0.4,  // 40% weight on recency
-		FrequencyWeight:  0.3,  // 30% weight on frequency
-		CentralityWeight: 0.3,  // 30% weight on centrality
+		DecayConstant:    30,  // 50% decay after ~21 days
+		RecencyWeight:    0.4, // 40% weight on recency
+		FrequencyWeight:  0.3, // 30% weight on frequency
+		CentralityWeight: 0.3, // 30% weight on centrality
 	}
 }
 

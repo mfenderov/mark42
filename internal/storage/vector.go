@@ -38,7 +38,6 @@ func (s *Store) StoreEmbedding(observationID int64, embedding []float64, model s
 		INSERT OR REPLACE INTO observation_embeddings (observation_id, embedding, model, dimensions)
 		VALUES (?, ?, ?, ?)
 	`, observationID, blob, model, len(embedding))
-
 	if err != nil {
 		return fmt.Errorf("storing embedding: %w", err)
 	}
@@ -225,7 +224,7 @@ func (s *Store) BatchStoreEmbeddings(observations []ObservationWithID, embedding
 }
 
 // EmbeddingStats returns statistics about stored embeddings.
-func (s *Store) EmbeddingStats() (total int, withEmbeddings int, err error) {
+func (s *Store) EmbeddingStats() (total, withEmbeddings int, err error) {
 	err = s.db.QueryRow("SELECT COUNT(*) FROM observations").Scan(&total)
 	if err != nil {
 		return 0, 0, err

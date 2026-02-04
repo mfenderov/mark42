@@ -1,0 +1,84 @@
+version: "2"
+run:
+  tests: true
+linters:
+  enable:
+    - containedctx
+    - copyloopvar
+    - errcheck
+    - gocritic
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - nolintlint
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - (net/http.ResponseWriter).Write
+        - (*github.com/pressly/goose/v3).SetDialect
+    gocritic:
+      disabled-checks:
+        - dupImport
+        - hugeParam
+        - rangeValCopy
+        - unnamedResult
+        - appendAssign
+        - octalLiteral
+        - paramTypeCombine
+        - ifElseChain
+        - exitAfterDefer
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+        - name: package-comments
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+issues:
+  max-same-issues: 3
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+  settings:
+    gci:
+      custom-order: true
+      sections:
+        - standard
+        - default
+        - prefix(github.com/mfenderov/claude-memory)
+    gofmt:
+      rewrite-rules:
+        - pattern: 'interface{}'
+          replacement: 'any'
+    gofumpt:
+      extra-rules: true

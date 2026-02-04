@@ -28,10 +28,10 @@ func TestRecencyDecay(t *testing.T) {
 	cfg := storage.DefaultImportanceConfig()
 
 	tests := []struct {
-		name          string
-		daysSince     float64
-		wantMinDecay  float64 // Minimum acceptable decay
-		wantMaxDecay  float64 // Maximum acceptable decay
+		name         string
+		daysSince    float64
+		wantMinDecay float64 // Minimum acceptable decay
+		wantMaxDecay float64 // Maximum acceptable decay
 	}{
 		{
 			name:         "just accessed",
