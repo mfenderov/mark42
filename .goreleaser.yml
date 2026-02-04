@@ -21,18 +21,30 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      - .claude-plugin/**/*
-      - agents/**/*
-      - skills/**/*
-      - commands/**/*
-      - hooks/**/*
-      - hooks.json
-      - .mcp.json
-      - README.md
-      - LICENSE
+      # Plugin manifest
+      - src: .claude-plugin/plugin.json
+        dst: .claude-plugin/
+      # Agents
+      - src: agents/*.md
+        dst: agents/
+      # Skills (explicit paths since nested)
+      - src: skills/codebase-analyzer/SKILL.md
+        dst: skills/codebase-analyzer/
+      - src: skills/memory-processor/SKILL.md
+        dst: skills/memory-processor/
+      # Commands
+      - src: commands/*.md
+        dst: commands/
+      # Hooks
+      - src: hooks/*.py
+        dst: hooks/
+      - src: hooks.json
+      - src: .mcp.json
+      - src: README.md
+      - src: LICENSE
 
 brews:
   - name: claude-memory
