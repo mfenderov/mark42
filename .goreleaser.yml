@@ -40,7 +40,8 @@ archives:
         dst: hooks/
       # Root config files
       - hooks.json
-      - .mcp.json
+      # NOTE: .mcp.json excluded - ${CLAUDE_PLUGIN_ROOT} variable not resolved by Claude Code
+      # Users must run: claude mcp add mark42 --scope user --transport stdio -- ~/.claude/plugins/local/claude-memory/bin/claude-memory-server
       - README.md
       - LICENSE
 
@@ -65,7 +66,6 @@ brews:
       (share/"claude-memory").install "commands"
       (share/"claude-memory").install "hooks"
       (share/"claude-memory").install "hooks.json"
-      (share/"claude-memory").install ".mcp.json"
     post_install: |
       # Create Claude Code plugin directory structure
       plugin_dir = Pathname.new(Dir.home) / ".claude" / "plugins" / "local" / "claude-memory"
@@ -82,7 +82,6 @@ brews:
       ln_s share/"claude-memory"/"commands", plugin_dir/"commands"
       ln_s share/"claude-memory"/"hooks", plugin_dir/"hooks"
       ln_s share/"claude-memory"/"hooks.json", plugin_dir/"hooks.json"
-      ln_s share/"claude-memory"/".mcp.json", plugin_dir/".mcp.json"
 
       # Symlink binaries
       ln_s bin/"claude-memory", plugin_dir/"bin"/"claude-memory"
@@ -91,6 +90,10 @@ brews:
       # Ensure memory database directory exists (but NEVER touch the database itself)
       memory_dir = Pathname.new(Dir.home) / ".claude"
       memory_dir.mkpath
+
+      # Try to register MCP server (may fail in Homebrew sandbox - see caveats)
+      server_path = plugin_dir / "bin" / "claude-memory-server"
+      system "claude", "mcp", "add", "mark42", "--scope", "user", "--transport", "stdio", "--", server_path.to_s
     caveats: |
       Claude Memory plugin installed!
 
@@ -107,10 +110,18 @@ brews:
 
       Plugin location: ~/.claude/plugins/local/claude-memory/
 
-      To activate:
-        1. Restart Claude Code
-        2. The MCP server "mark42" will start automatically
-        3. Hooks will fire on SessionStart, PostToolUse, Stop
+      ══════════════════════════════════════════════════════════════
+      IMPORTANT: Register the MCP server (one-time setup)
+      ══════════════════════════════════════════════════════════════
+
+      Run this command to enable the "mark42" memory server:
+
+        claude mcp add mark42 --scope user --transport stdio -- \\
+          ~/.claude/plugins/local/claude-memory/bin/claude-memory-server
+
+      Then restart Claude Code. The hooks will fire automatically.
+
+      ══════════════════════════════════════════════════════════════
 
       Available commands: /init, /status, /sync, /calibrate
 
