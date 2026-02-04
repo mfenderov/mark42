@@ -26,25 +26,23 @@ archives:
     files:
       # Plugin manifest
       - src: .claude-plugin/plugin.json
-        dst: .claude-plugin/
-      # Agents
+        dst: .claude-plugin/plugin.json
+      # Agents (flat directory with .md files)
       - src: agents/*.md
         dst: agents/
-      # Skills (explicit paths since nested)
-      - src: skills/codebase-analyzer/SKILL.md
-        dst: skills/codebase-analyzer/
-      - src: skills/memory-processor/SKILL.md
-        dst: skills/memory-processor/
-      # Commands
+      # Skills (nested structure)
+      - src: skills/**/SKILL.md
+      # Commands (flat directory with .md files)
       - src: commands/*.md
         dst: commands/
-      # Hooks
+      # Hooks (flat directory with .py files)
       - src: hooks/*.py
         dst: hooks/
-      - src: hooks.json
-      - src: .mcp.json
-      - src: README.md
-      - src: LICENSE
+      # Root config files
+      - hooks.json
+      - .mcp.json
+      - README.md
+      - LICENSE
 
 brews:
   - name: claude-memory
