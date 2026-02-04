@@ -1,0 +1,120 @@
+version: 2
+
+builds:
+  - id: cli
+    main: ./cmd/memory
+    binary: claude-memory
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+
+  - id: server
+    main: ./cmd/server
+    binary: claude-memory-server
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - .claude-plugin/**/*
+      - agents/**/*
+      - skills/**/*
+      - commands/**/*
+      - hooks/**/*
+      - hooks.json
+      - .mcp.json
+      - README.md
+      - LICENSE
+
+brews:
+  - name: claude-memory
+    repository:
+      owner: mfenderov
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/mfenderov/claude-memory
+    description: "Local, privacy-first RAG memory system for Claude Code"
+    license: MIT
+    directory: Formula
+    install: |
+      bin.install "claude-memory"
+      bin.install "claude-memory-server"
+
+      # Install plugin assets to share directory (Homebrew-managed)
+      (share/"claude-memory").install ".claude-plugin"
+      (share/"claude-memory").install "agents"
+      (share/"claude-memory").install "skills"
+      (share/"claude-memory").install "commands"
+      (share/"claude-memory").install "hooks"
+      (share/"claude-memory").install "hooks.json"
+      (share/"claude-memory").install ".mcp.json"
+    post_install: |
+      # Create Claude Code plugin directory structure
+      plugin_dir = Pathname.new(Dir.home) / ".claude" / "plugins" / "local" / "claude-memory"
+      plugin_dir.mkpath
+      (plugin_dir / "bin").mkpath
+
+      # Symlink plugin files from share directory
+      ln_sf share/"claude-memory"/".claude-plugin", plugin_dir/".claude-plugin"
+      ln_sf share/"claude-memory"/"agents", plugin_dir/"agents"
+      ln_sf share/"claude-memory"/"skills", plugin_dir/"skills"
+      ln_sf share/"claude-memory"/"commands", plugin_dir/"commands"
+      ln_sf share/"claude-memory"/"hooks", plugin_dir/"hooks"
+      ln_sf share/"claude-memory"/"hooks.json", plugin_dir/"hooks.json"
+      ln_sf share/"claude-memory"/"mcp.json", plugin_dir/".mcp.json"
+
+      # Symlink binaries
+      ln_sf bin/"claude-memory", plugin_dir/"bin"/"claude-memory"
+      ln_sf bin/"claude-memory-server", plugin_dir/"bin"/"claude-memory-server"
+
+      # Ensure memory database directory exists (but NEVER touch the database itself)
+      memory_dir = Pathname.new(Dir.home) / ".claude"
+      memory_dir.mkpath
+    caveats: |
+      Claude Memory plugin installed!
+
+      ══════════════════════════════════════════════════════════════
+      YOUR MEMORY IS SAFE
+      ══════════════════════════════════════════════════════════════
+
+      Database location: ~/.claude/memory.db
+
+      This file contains YOUR knowledge graph and is NEVER touched by
+      brew install, upgrade, or uninstall. Your memories persist forever.
+
+      ══════════════════════════════════════════════════════════════
+
+      Plugin location: ~/.claude/plugins/local/claude-memory/
+
+      To activate:
+        1. Restart Claude Code
+        2. The MCP server "mark42" will start automatically
+        3. Hooks will fire on SessionStart, PostToolUse, Stop
+
+      Available commands: /init, /status, /sync, /calibrate
+
+      Verify installation:
+        claude-memory version
+        claude-memory stats
+
+      Backup recommendation:
+        cp ~/.claude/memory.db ~/.claude/memory.db.backup
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

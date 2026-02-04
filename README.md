@@ -99,13 +99,13 @@ cd ~/dev/private/claude-memory
 make build-all
 
 # Register the MCP server with Claude Code
-claude mcp add --scope user --transport stdio sqlite-memory -- \
+claude mcp add --scope user --transport stdio mark42 -- \
   /path/to/claude-memory/bin/claude-memory-server
 
 # Verify server is connected
 # Use /mcp command in Claude Code to check status
 
-# Restart Claude Code - mcp__sqlite-memory__* tools now available
+# Restart Claude Code - mcp__mark42__* tools now available
 ```
 
 **Note**: Plugin `.mcp.json` files are NOT auto-discovered by Claude Code. You must use `claude mcp add` to register MCP servers explicitly. The server config is stored in `~/.claude.json`.

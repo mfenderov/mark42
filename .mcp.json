@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "sqlite-memory": {
+    "mark42": {
       "command": "${CLAUDE_PLUGIN_ROOT}/bin/claude-memory-server",
       "args": [],
       "env": {
