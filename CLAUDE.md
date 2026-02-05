@@ -188,6 +188,7 @@ The project includes a complete Claude Code plugin implementation:
 | Tool | Storage Layer | MCP Handler | Status |
 |------|---------------|-------------|--------|
 | `create_entities` | ✅ CreateEntity | ✅ DONE | Implemented |
+| `create_or_update_entities` | ✅ CreateOrUpdateEntity | ✅ DONE | Versioning support |
 | `create_relations` | ✅ CreateRelation | ✅ DONE | Implemented |
 | `add_observations` | ✅ AddObservation | ✅ DONE | Implemented |
 | `delete_entities` | ✅ DeleteEntity | ✅ DONE | Implemented |
@@ -196,8 +197,9 @@ The project includes a complete Claude Code plugin implementation:
 | `read_graph` | ✅ ReadGraph | ✅ DONE | Implemented |
 | `search_nodes` | ✅ Search | ✅ DONE | Implemented |
 | `open_nodes` | ✅ GetEntity | ✅ DONE | Implemented |
+| `get_context` | ✅ GetContextForInjection | ✅ DONE | Context injection |
 
-**All MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 11 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
@@ -222,11 +224,11 @@ The project includes a complete Claude Code plugin implementation:
 - Decay/consolidation of old memories
 - Cross-session continuity
 
-**Pending**:
-- 🔲 Plugin installation and end-to-end testing
-- 🔲 Drop-in replacement for JSON Memory MCP verified
-- 🔲 Wire `CreateOrUpdateEntity` to MCP for versioning
-- 🔲 Add `get_context` MCP tool for fact-type-aware retrieval
+**Completed (Phase 2)**:
+- ✅ Plugin installation and end-to-end testing (integration tests in `test/integration/`)
+- ✅ Drop-in replacement for JSON Memory MCP verified (all tools + `docs/MIGRATION_GUIDE.md`)
+- ✅ Wire `CreateOrUpdateEntity` to MCP for versioning (`create_or_update_entities` tool)
+- ✅ Add `get_context` MCP tool for fact-type-aware retrieval
 
 ## Go Conventions
 

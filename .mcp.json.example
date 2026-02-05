@@ -1,10 +1,11 @@
 {
   "mcpServers": {
-    "mark42": {
+    "claude-memory": {
+      "type": "stdio",
       "command": "${CLAUDE_PLUGIN_ROOT}/bin/claude-memory-server",
       "args": [],
       "env": {
-        "CLAUDE_MEMORY_DB": "~/.claude/memory.db"
+        "CLAUDE_MEMORY_DB": "${HOME}/.claude/memory.db"
       }
     }
   }

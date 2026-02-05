@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mfenderov/claude-memory/internal/storage"
@@ -44,6 +45,29 @@ func (h *Handler) Tools() []Tool {
 								"name":         {Type: "string", Description: "Entity name"},
 								"entityType":   {Type: "string", Description: "Entity type"},
 								"observations": {Type: "array", Description: "Initial observations", Items: &Items{Type: "string"}},
+							},
+							Required: []string{"name", "entityType", "observations"},
+						},
+					},
+				},
+				Required: []string{"entities"},
+			},
+		},
+		{
+			Name:        "create_or_update_entities",
+			Description: "Create new entities or update existing ones with versioning support. If an entity exists, creates a new version.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"entities": {
+						Type:        "array",
+						Description: "Array of entities to create or update",
+						Items: &Items{
+							Type: "object",
+							Properties: map[string]Property{
+								"name":         {Type: "string", Description: "Entity name"},
+								"entityType":   {Type: "string", Description: "Entity type"},
+								"observations": {Type: "array", Description: "Observations for this version", Items: &Items{Type: "string"}},
 							},
 							Required: []string{"name", "entityType", "observations"},
 						},
@@ -204,6 +228,8 @@ func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, 
 	switch name {
 	case "create_entities":
 		return h.createEntities(args)
+	case "create_or_update_entities":
+		return h.createOrUpdateEntities(args)
 	case "create_relations":
 		return h.createRelations(args)
 	case "add_observations":
@@ -248,6 +274,27 @@ func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) 
 
 	return &ToolCallResult{
 		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Created entities: %v", created)}},
+	}, nil
+}
+
+func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult, error) {
+	var input CreateEntitiesInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	var results []string
+	for _, e := range input.Entities {
+		entity, err := h.store.CreateOrUpdateEntity(e.Name, e.EntityType, e.Observations)
+		if err != nil {
+			results = append(results, fmt.Sprintf("Error: %s - %v", e.Name, err))
+		} else {
+			results = append(results, fmt.Sprintf("%s (v%d)", entity.Name, entity.Version))
+		}
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Created/updated: %s", strings.Join(results, ", "))}},
 	}, nil
 }
 

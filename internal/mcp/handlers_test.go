@@ -35,6 +35,7 @@ func TestHandler_Tools(t *testing.T) {
 
 	expectedTools := []string{
 		"create_entities",
+		"create_or_update_entities",
 		"create_relations",
 		"add_observations",
 		"delete_entities",
@@ -161,6 +162,134 @@ func TestHandler_CreateEntities(t *testing.T) {
 			entities, _ := store.ListEntities("")
 			if len(entities) != tt.wantCreated {
 				t.Errorf("expected %d entities, got %d", tt.wantCreated, len(entities))
+			}
+		})
+	}
+}
+
+// --- create_or_update_entities tests ---
+
+func TestHandler_CreateOrUpdateEntities(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*storage.Store)
+		args        string
+		wantErr     bool
+		errContains string
+		checkResult func(t *testing.T, store *storage.Store, text string)
+	}{
+		{
+			name:  "create new entity",
+			setup: func(s *storage.Store) {},
+			args: `{
+				"entities": [
+					{"name": "NewEntity", "entityType": "test", "observations": ["first observation"]}
+				]
+			}`,
+			checkResult: func(t *testing.T, store *storage.Store, text string) {
+				entity, err := store.GetEntity("NewEntity")
+				if err != nil {
+					t.Fatalf("entity not created: %v", err)
+				}
+				if entity.Version != 1 {
+					t.Errorf("expected version 1, got %d", entity.Version)
+				}
+				if !entity.IsLatest {
+					t.Error("expected entity to be latest")
+				}
+			},
+		},
+		{
+			name: "update existing entity creates new version",
+			setup: func(s *storage.Store) {
+				s.CreateEntity("ExistingEntity", "test", []string{"original observation"})
+			},
+			args: `{
+				"entities": [
+					{"name": "ExistingEntity", "entityType": "test", "observations": ["updated observation"]}
+				]
+			}`,
+			checkResult: func(t *testing.T, store *storage.Store, text string) {
+				entity, err := store.GetEntity("ExistingEntity")
+				if err != nil {
+					t.Fatalf("entity not found: %v", err)
+				}
+				if entity.Version != 2 {
+					t.Errorf("expected version 2, got %d", entity.Version)
+				}
+				if !entity.IsLatest {
+					t.Error("expected entity to be latest")
+				}
+				// Check observations are from the new version
+				if len(entity.Observations) != 1 || entity.Observations[0] != "updated observation" {
+					t.Errorf("unexpected observations: %v", entity.Observations)
+				}
+				// Verify response includes version info
+				if !strings.Contains(text, "v2") {
+					t.Errorf("expected response to contain version info, got: %s", text)
+				}
+			},
+		},
+		{
+			name:  "create multiple entities",
+			setup: func(s *storage.Store) {},
+			args: `{
+				"entities": [
+					{"name": "EntityA", "entityType": "test", "observations": ["obs A"]},
+					{"name": "EntityB", "entityType": "test", "observations": ["obs B"]}
+				]
+			}`,
+			checkResult: func(t *testing.T, store *storage.Store, text string) {
+				entities, _ := store.ListEntities("")
+				if len(entities) != 2 {
+					t.Errorf("expected 2 entities, got %d", len(entities))
+				}
+			},
+		},
+		{
+			name:        "invalid JSON",
+			setup:       func(s *storage.Store) {},
+			args:        `{invalid}`,
+			wantErr:     true,
+			errContains: "invalid arguments",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, store := newTestHandler(t)
+			defer store.Close()
+
+			if tt.setup != nil {
+				tt.setup(store)
+			}
+
+			result, err := handler.CallTool("create_or_update_entities", json.RawMessage(tt.args))
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error containing %q, got %v", tt.errContains, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if result == nil {
+				t.Fatal("expected result, got nil")
+			}
+
+			if len(result.Content) == 0 {
+				t.Error("expected content in result")
+			}
+
+			if tt.checkResult != nil {
+				tt.checkResult(t, store, result.Content[0].Text)
 			}
 		})
 	}

@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Stop hook - triggers memory-updater agent spawn when dirty files exist.
-
-This hook fires at the end of Claude's turn. If files were modified
-during the turn (tracked in .claude/claude-memory/dirty-files), it blocks
-and instructs Claude to spawn the memory-updater agent.
-
-The hook outputs JSON with decision: "block" to prevent Claude from stopping
-until the memory update is complete.
-"""
+"""Stop hook - terse memory sync with context summary."""
 
 import json
 import os
@@ -20,47 +12,44 @@ def main():
     if not project_dir:
         return
 
+    # Read session input from Claude Code
     try:
-        input_data = json.loads(sys.stdin.read())
-    except json.JSONDecodeError:
-        input_data = {}
+        session_data = json.loads(sys.stdin.read())
+    except (json.JSONDecodeError, Exception):
+        session_data = {}
 
-    # Pass through if already processing (prevent infinite loop)
-    if input_data.get("stop_hook_active", False):
-        return
+    # Gather context to help Claude
+    context_parts = []
 
+    # 1. Project name
+    project_name = Path(project_dir).name
+    context_parts.append(f"Project: {project_name}")
+
+    # 2. Dirty files (what was modified)
     dirty_file = Path(project_dir) / ".claude" / "claude-memory" / "dirty-files"
+    if dirty_file.exists() and dirty_file.stat().st_size > 0:
+        files = [f.strip() for f in dirty_file.read_text().split("\n") if f.strip()][:5]
+        if files:
+            context_parts.append(f"Files modified: {', '.join(files)}")
 
-    # Pass through if no dirty files
-    if not dirty_file.exists() or dirty_file.stat().st_size == 0:
+    # 3. Session stats if available
+    if "transcript_length" in session_data:
+        context_parts.append(f"Session length: {session_data['transcript_length']} chars")
+
+    # Only trigger if there's something to sync (more than just project name)
+    if len(context_parts) <= 1:
         return
 
-    # Get unique file list (max 20 files in message)
-    with open(dirty_file) as f:
-        files = set()
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            # Strip inline commit context if present
-            if " [" in line:
-                line = line.split(" [")[0]
-            files.add(line)
-        files = sorted(files)[:20]
+    context_summary = ". ".join(context_parts)
 
-    if not files:
-        return
-
-    files_str = ", ".join(files)
-
+    # Terse prompt with context
     output = {
         "decision": "block",
         "reason": (
-            f"Files were modified this turn. Use the Task tool to spawn "
-            f"'memory-updater' agent with prompt: 'Update CLAUDE.md and extract "
-            f"knowledge for changed files: {files_str}'. After the agent completes, "
-            f"use the Read tool to read the root CLAUDE.md file to refresh your memory."
+            f"Memory sync ({context_summary}). Be terse: analyze session learnings, "
+            f"persist via mark42 MCP, respond only 'Synced N learnings.' No tables/insights."
         ),
+        "suppressOutput": True,
     }
     print(json.dumps(output))
 
