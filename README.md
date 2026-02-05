@@ -117,6 +117,7 @@ This server implements the same tools as `@modelcontextprotocol/server-memory`:
 | Tool | Description |
 |------|-------------|
 | `create_entities` | Create nodes in the knowledge graph |
+| `create_or_update_entities` | Create or update with versioning support |
 | `create_relations` | Create edges between nodes |
 | `add_observations` | Add properties to existing nodes |
 | `delete_entities` | Remove nodes and their relations |
@@ -125,6 +126,7 @@ This server implements the same tools as `@modelcontextprotocol/server-memory`:
 | `read_graph` | Retrieve the entire graph |
 | `search_nodes` | **Enhanced**: FTS5 + vector search |
 | `open_nodes` | Retrieve specific nodes by name |
+| `get_context` | Get memories for context injection |
 
 ## Comparison
 
