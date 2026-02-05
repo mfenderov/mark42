@@ -31,12 +31,13 @@ func upRemoveUniqueConstraint(ctx context.Context, tx *sql.Tx) error {
 	// SQLite doesn't support dropping constraints, so we recreate the table
 	_, err = tx.ExecContext(ctx, `
 		-- Create new table without UNIQUE constraint
+		-- Note: supersedes_id has no FK constraint to avoid SQLite table rename issues
 		CREATE TABLE IF NOT EXISTS entities_new (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			entity_type TEXT NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			supersedes_id INTEGER REFERENCES entities_new(id),
+			supersedes_id INTEGER,
 			is_latest BOOLEAN DEFAULT 1,
 			version INTEGER DEFAULT 1,
 			container_tag TEXT
