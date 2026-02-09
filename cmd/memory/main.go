@@ -19,10 +19,21 @@ import (
 var (
 	dbPath  string
 	Version = "dev"
-	logger  = log.NewWithOptions(os.Stderr, log.Options{
+
+	// logger writes operational messages (errors, info) to stderr
+	logger = log.NewWithOptions(os.Stderr, log.Options{
 		ReportTimestamp: false,
 	})
+
+	// out is the destination for command output (search results, stats, etc.)
+	out = os.Stdout
 )
+
+// output writes command results to stdout (not stderr).
+// This follows Unix conventions: data to stdout, logs to stderr.
+func output(a ...any) {
+	fmt.Fprintln(out, a...)
+}
 
 // Styles
 var (
@@ -165,7 +176,7 @@ var entityListCmd = &cobra.Command{
 		}
 
 		for _, e := range entities {
-			println(entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
+			output(entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
 		}
 		return nil
 	},
@@ -325,7 +336,7 @@ var relListCmd = &cobra.Command{
 		}
 
 		for _, r := range relations {
-			println(entityStyle.Render(r.From) + " " +
+			output(entityStyle.Render(r.From) + " " +
 				relationStyle.Render("─["+r.Type+"]→") + " " +
 				entityStyle.Render(r.To))
 		}
@@ -400,16 +411,16 @@ var searchCmd = &cobra.Command{
 		case "context":
 			// Format optimized for Claude context injection
 			for _, r := range results {
-				println("## " + entityStyle.Render(r.Name) + " " + typeStyle.Render("("+r.Type+")"))
+				output("## " + entityStyle.Render(r.Name) + " " + typeStyle.Render("("+r.Type+")"))
 				for _, obs := range r.Observations {
-					println("- " + obs)
+					output("- " + obs)
 				}
-				println()
+				output()
 			}
 		default:
 			for _, r := range results {
 				printEntity(r.Entity)
-				println()
+				output()
 			}
 		}
 		return nil
@@ -500,16 +511,16 @@ Falls back to FTS-only search if Ollama is unavailable.`,
 				}
 			}
 			for name, e := range entityMap {
-				println("## " + entityStyle.Render(name) + " " + typeStyle.Render("("+e.Type+")"))
+				output("## " + entityStyle.Render(name) + " " + typeStyle.Render("("+e.Type+")"))
 				for _, obs := range e.Observations {
-					println("- " + obs)
+					output("- " + obs)
 				}
-				println()
+				output()
 			}
 		default:
 			// Default: show results with scores
-			println(titleStyle.Render("Hybrid Search Results"))
-			println()
+			output(titleStyle.Render("Hybrid Search Results"))
+			output()
 			for _, r := range results {
 				score := fmt.Sprintf("%.4f", r.FusionScore)
 				// Build sources list from SourceScores map
@@ -518,11 +529,11 @@ Falls back to FTS-only search if Ollama is unavailable.`,
 					sources = append(sources, source)
 				}
 				sourcesStr := strings.Join(sources, ", ")
-				println(entityStyle.Render(r.EntityName) + " " +
+				output(entityStyle.Render(r.EntityName) + " " +
 					typeStyle.Render("("+r.EntityType+")") + " " +
 					dimStyle.Render("["+score+"] ["+sourcesStr+"]"))
-				println("  " + obsStyle.Render(r.Content))
-				println()
+				output("  " + obsStyle.Render(r.Content))
+				output()
 			}
 		}
 		return nil
@@ -561,15 +572,15 @@ var graphCmd = &cobra.Command{
 
 		switch format {
 		case "dot":
-			println("digraph memory {")
-			println("  rankdir=LR;")
+			output("digraph memory {")
+			output("  rankdir=LR;")
 			for _, e := range graph.Entities {
-				println("  \"" + e.Name + "\" [label=\"" + e.Name + "\\n(" + e.Type + ")\"];")
+				output("  \"" + e.Name + "\" [label=\"" + e.Name + "\\n(" + e.Type + ")\"];")
 			}
 			for _, r := range graph.Relations {
-				println("  \"" + r.From + "\" -> \"" + r.To + "\" [label=\"" + r.Type + "\"];")
+				output("  \"" + r.From + "\" -> \"" + r.To + "\" [label=\"" + r.Type + "\"];")
 			}
-			println("}")
+			output("}")
 		default:
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
@@ -622,12 +633,12 @@ var statsCmd = &cobra.Command{
 			obsCount += len(e.Observations)
 		}
 
-		println(titleStyle.Render("Database Statistics"))
-		println()
-		println("  " + dimStyle.Render("Path:") + "         " + dbPath)
-		println("  " + dimStyle.Render("Entities:") + "     " + successStyle.Render(itoa(len(graph.Entities))))
-		println("  " + dimStyle.Render("Observations:") + " " + successStyle.Render(itoa(obsCount)))
-		println("  " + dimStyle.Render("Relations:") + "    " + successStyle.Render(itoa(len(graph.Relations))))
+		output(titleStyle.Render("Database Statistics"))
+		output()
+		output("  " + dimStyle.Render("Path:") + "         " + dbPath)
+		output("  " + dimStyle.Render("Entities:") + "     " + successStyle.Render(itoa(len(graph.Entities))))
+		output("  " + dimStyle.Render("Observations:") + " " + successStyle.Render(itoa(obsCount)))
+		output("  " + dimStyle.Render("Relations:") + "    " + successStyle.Render(itoa(len(graph.Relations))))
 
 		return nil
 	},
@@ -639,7 +650,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version",
 	Run: func(cmd *cobra.Command, args []string) {
-		println(titleStyle.Render("claude-memory") + " " + dimStyle.Render(Version))
+		output(titleStyle.Render("claude-memory") + " " + dimStyle.Render(Version))
 	},
 }
 
@@ -764,11 +775,11 @@ Supports two formats:
 			}
 		}
 
-		println(titleStyle.Render("Migration Complete"))
-		println()
-		println("  " + dimStyle.Render("Entities:") + "     " + successStyle.Render(itoa(entityCount)))
-		println("  " + dimStyle.Render("Observations:") + " " + successStyle.Render(itoa(obsCount)))
-		println("  " + dimStyle.Render("Relations:") + "    " + successStyle.Render(itoa(relCount)))
+		output(titleStyle.Render("Migration Complete"))
+		output()
+		output("  " + dimStyle.Render("Entities:") + "     " + successStyle.Render(itoa(entityCount)))
+		output("  " + dimStyle.Render("Observations:") + " " + successStyle.Render(itoa(obsCount)))
+		output("  " + dimStyle.Render("Relations:") + "    " + successStyle.Render(itoa(relCount)))
 
 		return nil
 	},
@@ -806,15 +817,15 @@ var upgradeCmd = &cobra.Command{
 			return err
 		}
 
-		println(titleStyle.Render("Schema Upgrade"))
-		println()
+		output(titleStyle.Render("Schema Upgrade"))
+		output()
 		if beforeVersion == afterVersion {
-			println("  " + dimStyle.Render("Status:") + "  " + successStyle.Render("Already up to date"))
+			output("  " + dimStyle.Render("Status:") + "  " + successStyle.Render("Already up to date"))
 		} else {
-			println("  " + dimStyle.Render("Before:") + "  Version " + fmt.Sprintf("%d", beforeVersion))
-			println("  " + dimStyle.Render("After:") + "   Version " + successStyle.Render(fmt.Sprintf("%d", afterVersion)))
+			output("  " + dimStyle.Render("Before:") + "  Version " + fmt.Sprintf("%d", beforeVersion))
+			output("  " + dimStyle.Render("After:") + "   Version " + successStyle.Render(fmt.Sprintf("%d", afterVersion)))
 		}
-		println("  " + dimStyle.Render("Path:") + "    " + dbPath)
+		output("  " + dimStyle.Render("Path:") + "    " + dbPath)
 
 		return nil
 	},
@@ -863,24 +874,24 @@ If no text is provided, uses "Hello, world!" as test input.`,
 			logger.Error("Embedding failed - is Ollama running?",
 				"url", ollamaURL,
 				"error", err)
-			println()
-			println(dimStyle.Render("To start Ollama:"))
-			println("  ollama serve")
-			println()
-			println(dimStyle.Render("To pull the embedding model:"))
-			println("  ollama pull " + embedModel)
+			output()
+			output(dimStyle.Render("To start Ollama:"))
+			output("  ollama serve")
+			output()
+			output(dimStyle.Render("To pull the embedding model:"))
+			output("  ollama pull " + embedModel)
 			os.Exit(1)
 		}
 
-		println(titleStyle.Render("Embedding Test"))
-		println()
-		println("  " + dimStyle.Render("URL:") + "        " + ollamaURL)
-		println("  " + dimStyle.Render("Model:") + "      " + embedModel)
-		println("  " + dimStyle.Render("Input:") + "      " + text)
-		println("  " + dimStyle.Render("Dimensions:") + " " + successStyle.Render(itoa(len(embedding))))
-		println("  " + dimStyle.Render("Time:") + "       " + successStyle.Render(elapsed.String()))
-		println()
-		println(successStyle.Render("✓ Ollama is working!"))
+		output(titleStyle.Render("Embedding Test"))
+		output()
+		output("  " + dimStyle.Render("URL:") + "        " + ollamaURL)
+		output("  " + dimStyle.Render("Model:") + "      " + embedModel)
+		output("  " + dimStyle.Render("Input:") + "      " + text)
+		output("  " + dimStyle.Render("Dimensions:") + " " + successStyle.Render(itoa(len(embedding))))
+		output("  " + dimStyle.Render("Time:") + "       " + successStyle.Render(elapsed.String()))
+		output()
+		output(successStyle.Render("✓ Ollama is working!"))
 
 		return nil
 	},
@@ -909,16 +920,16 @@ var embedGenerateCmd = &cobra.Command{
 		}
 
 		if len(observations) == 0 {
-			println(successStyle.Render("✓ All observations have embeddings"))
+			output(successStyle.Render("✓ All observations have embeddings"))
 			return nil
 		}
 
-		println(titleStyle.Render("Generating Embeddings"))
-		println()
-		println("  " + dimStyle.Render("Observations:") + " " + itoa(len(observations)))
-		println("  " + dimStyle.Render("Model:") + "        " + embedModel)
-		println("  " + dimStyle.Render("Batch size:") + "   " + itoa(embedBatch))
-		println()
+		output(titleStyle.Render("Generating Embeddings"))
+		output()
+		output("  " + dimStyle.Render("Observations:") + " " + itoa(len(observations)))
+		output("  " + dimStyle.Render("Model:") + "        " + embedModel)
+		output("  " + dimStyle.Render("Batch size:") + "   " + itoa(embedBatch))
+		output()
 
 		client := storage.NewEmbeddingClient(ollamaURL)
 		client.SetModel(embedModel)
@@ -961,12 +972,12 @@ var embedGenerateCmd = &cobra.Command{
 		}
 
 		elapsed := time.Since(start)
-		println()
-		println()
-		println("  " + dimStyle.Render("Processed:") + " " + successStyle.Render(itoa(processed)))
-		println("  " + dimStyle.Render("Time:") + "      " + successStyle.Render(elapsed.String()))
-		println()
-		println(successStyle.Render("✓ Embeddings generated"))
+		output()
+		output()
+		output("  " + dimStyle.Render("Processed:") + " " + successStyle.Render(itoa(processed)))
+		output("  " + dimStyle.Render("Time:") + "      " + successStyle.Render(elapsed.String()))
+		output()
+		output(successStyle.Render("✓ Embeddings generated"))
 
 		return nil
 	},
@@ -992,12 +1003,12 @@ var embedStatsCmd = &cobra.Command{
 			coverage = float64(withEmbeddings) / float64(total) * 100
 		}
 
-		println(titleStyle.Render("Embedding Statistics"))
-		println()
-		println("  " + dimStyle.Render("Total observations:") + "     " + itoa(total))
-		println("  " + dimStyle.Render("With embeddings:") + "        " + successStyle.Render(itoa(withEmbeddings)))
-		println("  " + dimStyle.Render("Without embeddings:") + "     " + itoa(total-withEmbeddings))
-		println("  " + dimStyle.Render("Coverage:") + "               " + successStyle.Render(fmt.Sprintf("%.1f%%", coverage)))
+		output(titleStyle.Render("Embedding Statistics"))
+		output()
+		output("  " + dimStyle.Render("Total observations:") + "     " + itoa(total))
+		output("  " + dimStyle.Render("With embeddings:") + "        " + successStyle.Render(itoa(withEmbeddings)))
+		output("  " + dimStyle.Render("Without embeddings:") + "     " + itoa(total-withEmbeddings))
+		output("  " + dimStyle.Render("Coverage:") + "               " + successStyle.Render(fmt.Sprintf("%.1f%%", coverage)))
 
 		return nil
 	},
@@ -1051,10 +1062,10 @@ This helps prioritize which memories to include in context injection.`,
 		}
 		elapsed := time.Since(start)
 
-		println(titleStyle.Render("Importance Recalculation"))
-		println()
-		println("  " + dimStyle.Render("Updated:") + " " + successStyle.Render(itoa(updated)) + " observations")
-		println("  " + dimStyle.Render("Time:") + "    " + successStyle.Render(elapsed.String()))
+		output(titleStyle.Render("Importance Recalculation"))
+		output()
+		output("  " + dimStyle.Render("Updated:") + " " + successStyle.Render(itoa(updated)) + " observations")
+		output("  " + dimStyle.Render("Time:") + "    " + successStyle.Render(elapsed.String()))
 
 		return nil
 	},
@@ -1096,15 +1107,15 @@ var importanceStatsCmd = &cobra.Command{
 			return err
 		}
 
-		println(titleStyle.Render("Importance Statistics"))
-		println()
-		println("  " + dimStyle.Render("Total observations:") + " " + itoa(s.Total))
-		println("  " + dimStyle.Render("Average score:") + "      " + fmt.Sprintf("%.3f", s.AvgScore))
-		println("  " + dimStyle.Render("Min score:") + "          " + fmt.Sprintf("%.3f", s.MinScore))
-		println("  " + dimStyle.Render("Max score:") + "          " + fmt.Sprintf("%.3f", s.MaxScore))
-		println()
-		println("  " + dimStyle.Render("High importance (≥0.7):") + " " + successStyle.Render(itoa(s.HighCount)))
-		println("  " + dimStyle.Render("Low importance (<0.3):") + "  " + dimStyle.Render(itoa(s.LowCount)))
+		output(titleStyle.Render("Importance Statistics"))
+		output()
+		output("  " + dimStyle.Render("Total observations:") + " " + itoa(s.Total))
+		output("  " + dimStyle.Render("Average score:") + "      " + fmt.Sprintf("%.3f", s.AvgScore))
+		output("  " + dimStyle.Render("Min score:") + "          " + fmt.Sprintf("%.3f", s.MinScore))
+		output("  " + dimStyle.Render("Max score:") + "          " + fmt.Sprintf("%.3f", s.MaxScore))
+		output()
+		output("  " + dimStyle.Render("High importance (≥0.7):") + " " + successStyle.Render(itoa(s.HighCount)))
+		output("  " + dimStyle.Render("Low importance (<0.3):") + "  " + dimStyle.Render(itoa(s.LowCount)))
 
 		return nil
 	},
@@ -1162,9 +1173,9 @@ Respects token budget to avoid context overflow.`,
 		formatted := storage.FormatContextResults(results)
 		estimatedTokens := storage.EstimateTokens(formatted)
 
-		println(titleStyle.Render("Context for Injection"))
-		println(dimStyle.Render(fmt.Sprintf("[%d estimated tokens, %d memories]", estimatedTokens, len(results))))
-		println()
+		output(titleStyle.Render("Context for Injection"))
+		output(dimStyle.Render(fmt.Sprintf("[%d estimated tokens, %d memories]", estimatedTokens, len(results))))
+		output()
 		print(formatted)
 
 		return nil
@@ -1205,13 +1216,13 @@ var decayStatsCmd = &cobra.Command{
 			return err
 		}
 
-		println(titleStyle.Render("Decay Statistics"))
-		println()
-		println("  " + dimStyle.Render("Total observations:") + "     " + itoa(stats.TotalObservations))
-		println("  " + dimStyle.Render("Low importance (<0.3):") + "  " + dimStyle.Render(itoa(stats.LowImportance)))
-		println("  " + dimStyle.Render("Archived:") + "               " + itoa(stats.ArchivedCount))
-		println("  " + dimStyle.Render("Expired (past date):") + "    " + dimStyle.Render(itoa(stats.ExpiredCount)))
-		println("  " + dimStyle.Render("Average importance:") + "     " + fmt.Sprintf("%.3f", stats.AvgImportance))
+		output(titleStyle.Render("Decay Statistics"))
+		output()
+		output("  " + dimStyle.Render("Total observations:") + "     " + itoa(stats.TotalObservations))
+		output("  " + dimStyle.Render("Low importance (<0.3):") + "  " + dimStyle.Render(itoa(stats.LowImportance)))
+		output("  " + dimStyle.Render("Archived:") + "               " + itoa(stats.ArchivedCount))
+		output("  " + dimStyle.Render("Expired (past date):") + "    " + dimStyle.Render(itoa(stats.ExpiredCount)))
+		output("  " + dimStyle.Render("Average importance:") + "     " + fmt.Sprintf("%.3f", stats.AvgImportance))
 
 		return nil
 	},
@@ -1241,10 +1252,10 @@ var decaySoftCmd = &cobra.Command{
 		}
 		elapsed := time.Since(start)
 
-		println(titleStyle.Render("Soft Decay Applied"))
-		println()
-		println("  " + dimStyle.Render("Affected:") + " " + successStyle.Render(itoa(affected)) + " observations")
-		println("  " + dimStyle.Render("Time:") + "     " + successStyle.Render(elapsed.String()))
+		output(titleStyle.Render("Soft Decay Applied"))
+		output()
+		output("  " + dimStyle.Render("Affected:") + " " + successStyle.Render(itoa(affected)) + " observations")
+		output("  " + dimStyle.Render("Time:") + "     " + successStyle.Render(elapsed.String()))
 
 		return nil
 	},
@@ -1279,10 +1290,10 @@ var decayArchiveCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			println(titleStyle.Render("Archive Preview (Dry Run)"))
-			println()
-			println("  " + dimStyle.Render("Would archive approximately:") + " " + itoa(stats.LowImportance) + " observations")
-			println("  " + dimStyle.Render("(Run without --dry-run to execute)"))
+			output(titleStyle.Render("Archive Preview (Dry Run)"))
+			output()
+			output("  " + dimStyle.Render("Would archive approximately:") + " " + itoa(stats.LowImportance) + " observations")
+			output("  " + dimStyle.Render("(Run without --dry-run to execute)"))
 			return nil
 		}
 
@@ -1293,10 +1304,10 @@ var decayArchiveCmd = &cobra.Command{
 		}
 		elapsed := time.Since(start)
 
-		println(titleStyle.Render("Archive Complete"))
-		println()
-		println("  " + dimStyle.Render("Archived:") + " " + successStyle.Render(itoa(archived)) + " observations")
-		println("  " + dimStyle.Render("Time:") + "     " + successStyle.Render(elapsed.String()))
+		output(titleStyle.Render("Archive Complete"))
+		output()
+		output("  " + dimStyle.Render("Archived:") + " " + successStyle.Render(itoa(archived)) + " observations")
+		output("  " + dimStyle.Render("Time:") + "     " + successStyle.Render(elapsed.String()))
 
 		return nil
 	},
@@ -1326,9 +1337,9 @@ var decayForgetCmd = &cobra.Command{
 		if expired {
 			if dryRun {
 				stats, _ := store.GetDecayStats()
-				println(titleStyle.Render("Forget Preview (Dry Run)"))
-				println()
-				println("  " + dimStyle.Render("Expired to delete:") + " " + itoa(stats.ExpiredCount))
+				output(titleStyle.Render("Forget Preview (Dry Run)"))
+				output()
+				output("  " + dimStyle.Render("Expired to delete:") + " " + itoa(stats.ExpiredCount))
 				return nil
 			}
 
@@ -1347,9 +1358,9 @@ var decayForgetCmd = &cobra.Command{
 			deleted += count
 		}
 
-		println(titleStyle.Render("Forget Complete"))
-		println()
-		println("  " + dimStyle.Render("Deleted:") + " " + successStyle.Render(itoa(deleted)) + " memories")
+		output(titleStyle.Render("Forget Complete"))
+		output()
+		output("  " + dimStyle.Render("Deleted:") + " " + successStyle.Render(itoa(deleted)) + " memories")
 
 		return nil
 	},
@@ -1449,7 +1460,7 @@ var workdirGetCmd = &cobra.Command{
 		if tag == "" {
 			logger.Info("No container tag set", "entity", entityName)
 		} else {
-			println(entityStyle.Render(entityName) + " " + dimStyle.Render("→") + " " + typeStyle.Render(tag))
+			output(entityStyle.Render(entityName) + " " + dimStyle.Render("→") + " " + typeStyle.Render(tag))
 		}
 		return nil
 	},
@@ -1478,10 +1489,10 @@ var workdirListCmd = &cobra.Command{
 			return nil
 		}
 
-		println(titleStyle.Render("Entities in " + containerTag))
-		println()
+		output(titleStyle.Render("Entities in " + containerTag))
+		output()
 		for _, e := range entities {
-			println("  " + entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
+			output("  " + entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
 		}
 		return nil
 	},
@@ -1523,15 +1534,15 @@ This helps surface project-specific memories first.`,
 			return nil
 		}
 
-		println(titleStyle.Render("Search Results") + " " + dimStyle.Render("(boosted: "+containerTag+")"))
-		println()
+		output(titleStyle.Render("Search Results") + " " + dimStyle.Render("(boosted: "+containerTag+")"))
+		output()
 		for _, r := range results {
 			score := fmt.Sprintf("%.4f", r.FusionScore)
-			println(entityStyle.Render(r.EntityName) + " " +
+			output(entityStyle.Render(r.EntityName) + " " +
 				typeStyle.Render("("+r.EntityType+")") + " " +
 				dimStyle.Render("["+score+"]"))
-			println("  " + obsStyle.Render(r.Content))
-			println()
+			output("  " + obsStyle.Render(r.Content))
+			output()
 		}
 		return nil
 	},
@@ -1552,10 +1563,10 @@ func init() {
 // --- Helpers ---
 
 func printEntity(e *storage.Entity) {
-	println(entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
+	output(entityStyle.Render(e.Name) + " " + typeStyle.Render("("+e.Type+")"))
 	if len(e.Observations) > 0 {
 		for _, obs := range e.Observations {
-			println("  " + dimStyle.Render("•") + " " + obsStyle.Render(obs))
+			output("  " + dimStyle.Render("•") + " " + obsStyle.Render(obs))
 		}
 	}
 }
