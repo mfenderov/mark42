@@ -10,10 +10,15 @@ import (
 	"github.com/mfenderov/claude-memory/internal/storage"
 )
 
+// Embedder generates vector embeddings for text.
+type Embedder interface {
+	CreateEmbedding(ctx context.Context, text string) ([]float64, error)
+}
+
 // Handler processes MCP tool calls using the storage layer.
 type Handler struct {
 	store    *storage.Store
-	embedder *storage.EmbeddingClient // Optional: enables semantic search
+	embedder Embedder // Optional: enables semantic search + auto-embed on write
 }
 
 // NewHandler creates a new MCP handler with the given store.
@@ -21,8 +26,8 @@ func NewHandler(store *storage.Store) *Handler {
 	return &Handler{store: store}
 }
 
-// WithEmbedder adds an embedding client for semantic search.
-func (h *Handler) WithEmbedder(client *storage.EmbeddingClient) *Handler {
+// WithEmbedder adds an embedding client for semantic search and auto-embedding.
+func (h *Handler) WithEmbedder(client Embedder) *Handler {
 	h.embedder = client
 	return h
 }
@@ -220,6 +225,40 @@ func (h *Handler) Tools() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "get_recent_context",
+			Description: "Get recently accessed memories, prioritizing recency over importance. For mid-session use.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"hours":       {Type: "integer", Description: "Time window in hours (default: 24)"},
+					"projectName": {Type: "string", Description: "Current project name for boosting relevant memories"},
+					"tokenBudget": {Type: "integer", Description: "Maximum tokens to include (default: 1000)"},
+				},
+			},
+		},
+		{
+			Name:        "summarize_entity",
+			Description: "Get a consolidated summary of an entity with observations grouped by fact type and metadata",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"entityName": {Type: "string", Description: "Name of the entity to summarize"},
+				},
+				Required: []string{"entityName"},
+			},
+		},
+		{
+			Name:        "consolidate_memories",
+			Description: "Merge duplicate or similar observations for an entity, keeping the most comprehensive version",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"entityName": {Type: "string", Description: "Name of the entity whose observations to consolidate"},
+				},
+				Required: []string{"entityName"},
+			},
+		},
 	}
 }
 
@@ -248,6 +287,12 @@ func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, 
 		return h.openNodes(args)
 	case "get_context":
 		return h.getContext(args)
+	case "get_recent_context":
+		return h.getRecentContext(args)
+	case "summarize_entity":
+		return h.summarizeEntity(args)
+	case "consolidate_memories":
+		return h.consolidateMemories(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -270,6 +315,7 @@ func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) 
 		} else {
 			created = append(created, entity.Name)
 		}
+		h.embedObservations(e.Name, e.Observations)
 	}
 
 	return &ToolCallResult{
@@ -290,6 +336,7 @@ func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult,
 			results = append(results, fmt.Sprintf("Error: %s - %v", e.Name, err))
 		} else {
 			results = append(results, fmt.Sprintf("%s (v%d)", entity.Name, entity.Version))
+			h.embedObservations(e.Name, e.Observations)
 		}
 	}
 
@@ -330,6 +377,7 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 			factType = storage.FactType(obs.FactType)
 		}
 
+		var addedContents []string
 		for _, content := range obs.Contents {
 			var err error
 			if factType != storage.FactTypeDynamic {
@@ -339,8 +387,10 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 			}
 			if err == nil {
 				added++
+				addedContents = append(addedContents, content)
 			}
 		}
+		h.embedObservations(obs.EntityName, addedContents)
 	}
 
 	return &ToolCallResult{
@@ -426,12 +476,12 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	// Try hybrid search (FTS + vector) if embedder is available
-	if h.embedder != nil {
+	// Try hybrid search (FTS + vector) if embedder is a full EmbeddingClient
+	if ec, ok := h.embedder.(*storage.EmbeddingClient); ok && ec != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, h.embedder, 20)
+		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, ec, 20)
 		if err == nil && len(results) > 0 {
 			return h.formatHybridResults(results)
 		}
@@ -544,6 +594,127 @@ func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
 	return &ToolCallResult{
 		Content: []ContentBlock{{Type: "text", Text: string(data)}},
 	}, nil
+}
+
+func (h *Handler) getRecentContext(args json.RawMessage) (*ToolCallResult, error) {
+	var input GetRecentContextInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	hours := input.Hours
+	if hours <= 0 {
+		hours = 24
+	}
+	tokenBudget := input.TokenBudget
+	if tokenBudget <= 0 {
+		tokenBudget = 1000
+	}
+
+	results, err := h.store.GetRecentContext(hours, input.ProjectName, tokenBudget)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent context: %w", err)
+	}
+
+	formatted := storage.FormatContextResults(results)
+	if formatted == "" {
+		formatted = "No recent memories found."
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: formatted}},
+	}, nil
+}
+
+func (h *Handler) summarizeEntity(args json.RawMessage) (*ToolCallResult, error) {
+	var input SummarizeEntityInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	entity, err := h.store.GetEntity(input.EntityName)
+	if err != nil {
+		return nil, fmt.Errorf("entity not found: %w", err)
+	}
+
+	relations, _ := h.store.ListRelations(input.EntityName)
+	history, _ := h.store.GetEntityHistory(input.EntityName)
+
+	// Build summary
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s (%s)\n", entity.Name, entity.Type))
+	sb.WriteString(fmt.Sprintf("Version: %d | Relations: %d\n\n", entity.Version, len(relations)))
+
+	// Group observations by fact type
+	if len(entity.Observations) > 0 {
+		sb.WriteString("## Observations\n")
+		for _, obs := range entity.Observations {
+			sb.WriteString("- " + obs + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// Relations
+	if len(relations) > 0 {
+		sb.WriteString("## Relations\n")
+		for _, r := range relations {
+			sb.WriteString(fmt.Sprintf("- %s -[%s]-> %s\n", r.From, r.Type, r.To))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Version history
+	if len(history) > 1 {
+		sb.WriteString(fmt.Sprintf("## History (%d versions)\n", len(history)))
+		for _, v := range history {
+			sb.WriteString(fmt.Sprintf("- v%d (created: %s)\n", v.Version, v.CreatedAt.Format("2006-01-02")))
+		}
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: sb.String()}},
+	}, nil
+}
+
+func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, error) {
+	var input ConsolidateMemoriesInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	result, err := h.store.ConsolidateObservations(input.EntityName)
+	if err != nil {
+		return nil, fmt.Errorf("consolidation failed: %w", err)
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: result}},
+	}, nil
+}
+
+// embedObservations generates and stores embeddings for the given observations.
+// Fails silently if the embedder is not configured or embedding generation fails.
+func (h *Handler) embedObservations(entityName string, contents []string) {
+	if h.embedder == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, content := range contents {
+		embedding, err := h.embedder.CreateEmbedding(ctx, content)
+		if err != nil {
+			continue // Degrade gracefully — don't fail the write operation
+		}
+
+		obs := h.store.GetObservationWithID(entityName, content)
+		if obs == nil {
+			continue
+		}
+
+		_ = h.store.StoreEmbedding(obs.ID, embedding, "nomic-embed-text")
+	}
 }
 
 func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"math"
 	"strings"
 )
 
@@ -24,12 +25,13 @@ func DefaultContextConfig() ContextConfig {
 
 // ContextResult represents a memory selected for context injection.
 type ContextResult struct {
-	EntityName string  `db:"entity_name"`
-	EntityType string  `db:"entity_type"`
-	Content    string  `db:"content"`
-	FactType   string  `db:"fact_type"`
-	Importance float64 `db:"importance"`
-	FinalScore float64 // After fact type priority and project boost
+	EntityName      string  `db:"entity_name"`
+	EntityType      string  `db:"entity_type"`
+	Content         string  `db:"content"`
+	FactType        string  `db:"fact_type"`
+	Importance      float64 `db:"importance"`
+	DaysSinceAccess float64 `db:"days_since_access"`
+	FinalScore      float64 // After fact type priority, project boost, and recency boost
 }
 
 // GetContextForInjection retrieves memories optimized for context injection.
@@ -42,11 +44,12 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 	}
 	factTypeOrder := "CASE fact_type " + strings.Join(factTypeCases, " ") + " ELSE 99 END"
 
-	// Query with ordering
+	// Query with ordering — includes days since last access for recency boost
 	query := `
 		SELECT e.name as entity_name, e.entity_type, o.content,
 		       COALESCE(o.fact_type, 'dynamic') as fact_type,
-		       COALESCE(o.importance, 1.0) as importance
+		       COALESCE(o.importance, 1.0) as importance,
+		       COALESCE(julianday('now') - julianday(COALESCE(o.last_accessed, o.created_at)), 0) as days_since_access
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance >= ?
@@ -59,9 +62,14 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 		return nil, err
 	}
 
-	// Apply project boost and calculate final scores
+	// Apply boosts and calculate final scores:
+	// final_score = importance × recency_boost × project_boost × fact_type_boost
 	for i := range results {
 		results[i].FinalScore = results[i].Importance
+
+		// Recency boost: recently accessed memories get up to 1.5x, decays over ~30 days
+		recencyBoost := 1.0 + 0.5*math.Exp(-results[i].DaysSinceAccess/30.0)
+		results[i].FinalScore *= recencyBoost
 
 		// Boost if entity or content matches project name
 		if projectName != "" {
@@ -85,6 +93,59 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 		// Estimate tokens for this entry
 		entryTokens := (len(r.EntityName) + len(r.Content) + 20) / 4 // +20 for formatting
 		if tokenCount+entryTokens > cfg.TokenBudget {
+			break
+		}
+		tokenCount += entryTokens
+		selected = append(selected, r)
+	}
+
+	return selected, nil
+}
+
+// GetRecentContext retrieves memories ordered by recency, within the given time window.
+// Prioritizes recently accessed observations, with optional project boosting.
+func (s *Store) GetRecentContext(hours int, projectName string, tokenBudget int) ([]ContextResult, error) {
+	if tokenBudget <= 0 {
+		tokenBudget = 1000
+	}
+
+	query := `
+		SELECT e.name as entity_name, e.entity_type, o.content,
+		       COALESCE(o.fact_type, 'dynamic') as fact_type,
+		       COALESCE(o.importance, 1.0) as importance,
+		       COALESCE(julianday('now') - julianday(COALESCE(o.last_accessed, o.created_at)), 0) as days_since_access
+		FROM observations o
+		JOIN entities e ON e.id = o.entity_id
+		WHERE e.is_latest = 1
+		AND COALESCE(o.last_accessed, o.created_at) > datetime('now', ? || ' hours')
+		ORDER BY COALESCE(o.last_accessed, o.created_at) DESC
+	`
+
+	hoursParam := "-" + formatInt(hours)
+
+	var results []ContextResult
+	if err := s.db.Select(&results, query, hoursParam); err != nil {
+		return nil, err
+	}
+
+	// Apply project boost
+	for i := range results {
+		results[i].FinalScore = results[i].Importance
+		if projectName != "" {
+			lowerProject := strings.ToLower(projectName)
+			if strings.Contains(strings.ToLower(results[i].EntityName), lowerProject) ||
+				strings.Contains(strings.ToLower(results[i].Content), lowerProject) {
+				results[i].FinalScore *= 1.5
+			}
+		}
+	}
+
+	// Apply token budget
+	tokenCount := 0
+	var selected []ContextResult
+	for _, r := range results {
+		entryTokens := (len(r.EntityName) + len(r.Content) + 20) / 4
+		if tokenCount+entryTokens > tokenBudget {
 			break
 		}
 		tokenCount += entryTokens

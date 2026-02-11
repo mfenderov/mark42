@@ -159,6 +159,22 @@ func (c *ContextByFactType) FormatContextForInjection() string {
 	return sb.String()
 }
 
+// GetObservationWithID looks up an observation by entity name and content, returning its ID.
+// Returns nil if not found.
+func (s *Store) GetObservationWithID(entityName, content string) *ObservationWithID {
+	var obs ObservationWithID
+	err := s.db.QueryRow(`
+		SELECT o.id, o.content, e.name, e.entity_type
+		FROM observations o
+		JOIN entities e ON e.id = o.entity_id
+		WHERE e.name = ? AND o.content = ?
+	`, entityName, content).Scan(&obs.ID, &obs.Content, &obs.EntityName, &obs.EntityType)
+	if err != nil {
+		return nil
+	}
+	return &obs
+}
+
 // DeleteObservation removes a specific observation from an entity.
 func (s *Store) DeleteObservation(entityName, content string) error {
 	// Get entity ID

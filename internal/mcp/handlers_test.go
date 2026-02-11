@@ -1,6 +1,7 @@
 package mcp_test
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,9 @@ func TestHandler_Tools(t *testing.T) {
 		"search_nodes",
 		"open_nodes",
 		"get_context",
+		"get_recent_context",
+		"summarize_entity",
+		"consolidate_memories",
 	}
 
 	if len(tools) != len(expectedTools) {
@@ -1164,6 +1168,90 @@ func TestHandler_WithEmbedder(t *testing.T) {
 	}
 }
 
+// --- Auto-embed tests ---
+
+type fakeEmbedder struct {
+	calls int
+}
+
+func (f *fakeEmbedder) CreateEmbedding(_ context.Context, _ string) ([]float64, error) {
+	f.calls++
+	return []float64{0.1, 0.2, 0.3}, nil
+}
+
+func TestHandler_AutoEmbed_CreateEntities(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	embedder := &fakeEmbedder{}
+	handler.WithEmbedder(embedder)
+
+	args := `{"entities": [{"name": "Go", "entityType": "language", "observations": ["Compiled language", "Has goroutines"]}]}`
+	_, err := handler.CallTool("create_entities", json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("create_entities failed: %v", err)
+	}
+
+	// Verify embeddings were generated
+	if embedder.calls != 2 {
+		t.Errorf("expected 2 embedding calls, got %d", embedder.calls)
+	}
+
+	// Verify embeddings stored in database
+	_, withEmb, err := store.EmbeddingStats()
+	if err != nil {
+		t.Fatalf("EmbeddingStats failed: %v", err)
+	}
+	if withEmb != 2 {
+		t.Errorf("expected 2 stored embeddings, got %d", withEmb)
+	}
+}
+
+func TestHandler_AutoEmbed_AddObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.CreateEntity("Go", "language", nil)
+
+	embedder := &fakeEmbedder{}
+	handler.WithEmbedder(embedder)
+
+	args := `{"observations": [{"entityName": "Go", "contents": ["Fast compilation"]}]}`
+	_, err := handler.CallTool("add_observations", json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("add_observations failed: %v", err)
+	}
+
+	if embedder.calls != 1 {
+		t.Errorf("expected 1 embedding call, got %d", embedder.calls)
+	}
+
+	_, withEmb, _ := store.EmbeddingStats()
+	if withEmb != 1 {
+		t.Errorf("expected 1 stored embedding, got %d", withEmb)
+	}
+}
+
+func TestHandler_AutoEmbed_NoEmbedder(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	// No embedder configured — should work fine without embeddings
+	args := `{"entities": [{"name": "Go", "entityType": "language", "observations": ["Compiled"]}]}`
+	result, err := handler.CallTool("create_entities", json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("create_entities failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+
+	_, withEmb, _ := store.EmbeddingStats()
+	if withEmb != 0 {
+		t.Errorf("expected 0 embeddings without embedder, got %d", withEmb)
+	}
+}
+
 // --- Response format tests ---
 
 func TestHandler_ResponseFormat(t *testing.T) {
@@ -1263,5 +1351,139 @@ func TestHandler_EmptyInputs(t *testing.T) {
 				t.Errorf("%s with empty input returned nil result", tt.tool)
 			}
 		})
+	}
+}
+
+// --- get_recent_context tests ---
+
+func TestHandler_GetRecentContext(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("RecentWork", "project", []string{"Working on this now"})
+	store.UpdateLastAccessed("RecentWork")
+
+	result, err := handler.CallTool("get_recent_context", json.RawMessage(`{"hours": 24}`))
+	if err != nil {
+		t.Fatalf("get_recent_context failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected content")
+	}
+	if !strings.Contains(result.Content[0].Text, "RecentWork") {
+		t.Errorf("expected output to contain 'RecentWork', got: %s", result.Content[0].Text)
+	}
+}
+
+func TestHandler_GetRecentContext_Empty(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	result, err := handler.CallTool("get_recent_context", json.RawMessage(`{"hours": 1}`))
+	if err != nil {
+		t.Fatalf("get_recent_context failed: %v", err)
+	}
+	if !strings.Contains(result.Content[0].Text, "No recent memories") {
+		t.Errorf("expected 'No recent memories' message, got: %s", result.Content[0].Text)
+	}
+}
+
+// --- summarize_entity tests ---
+
+func TestHandler_SummarizeEntity(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.CreateEntity("TDD", "pattern", []string{"Test-Driven Development", "Red-Green-Refactor"})
+	store.CreateEntity("konfig", "project", nil)
+	store.CreateRelation("TDD", "konfig", "used_by")
+
+	result, err := handler.CallTool("summarize_entity", json.RawMessage(`{"entityName": "TDD"}`))
+	if err != nil {
+		t.Fatalf("summarize_entity failed: %v", err)
+	}
+
+	text := result.Content[0].Text
+	if !strings.Contains(text, "TDD") {
+		t.Error("expected entity name in summary")
+	}
+	if !strings.Contains(text, "pattern") {
+		t.Error("expected entity type in summary")
+	}
+	if !strings.Contains(text, "used_by") {
+		t.Error("expected relation type in summary")
+	}
+}
+
+func TestHandler_SummarizeEntity_NotFound(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	_, err := handler.CallTool("summarize_entity", json.RawMessage(`{"entityName": "nonexistent"}`))
+	if err == nil {
+		t.Error("expected error for nonexistent entity")
+	}
+}
+
+// --- consolidate_memories tests ---
+
+func TestHandler_ConsolidateMemories(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	// Create entity with redundant observations
+	store.CreateEntity("Go", "language", []string{
+		"Compiled language",
+		"Go is a compiled language with fast build times",
+		"Has goroutines for concurrency",
+	})
+
+	result, err := handler.CallTool("consolidate_memories", json.RawMessage(`{"entityName": "Go"}`))
+	if err != nil {
+		t.Fatalf("consolidate_memories failed: %v", err)
+	}
+
+	text := result.Content[0].Text
+	if !strings.Contains(text, "consolidated") {
+		t.Errorf("expected 'consolidated' in result, got: %s", text)
+	}
+
+	// Verify: "Compiled language" should be removed (it's a substring of the longer one)
+	entity, _ := store.GetEntity("Go")
+	for _, obs := range entity.Observations {
+		if obs == "Compiled language" {
+			t.Error("short duplicate observation should have been removed")
+		}
+	}
+}
+
+func TestHandler_ConsolidateMemories_NothingToConsolidate(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.CreateEntity("Go", "language", []string{"Only one observation"})
+
+	result, err := handler.CallTool("consolidate_memories", json.RawMessage(`{"entityName": "Go"}`))
+	if err != nil {
+		t.Fatalf("consolidate_memories failed: %v", err)
+	}
+	if !strings.Contains(result.Content[0].Text, "nothing to consolidate") {
+		t.Errorf("expected 'nothing to consolidate', got: %s", result.Content[0].Text)
+	}
+}
+
+// --- Tools count test update ---
+
+func TestHandler_Tools_Count(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	tools := handler.Tools()
+	// 11 original + 3 new (get_recent_context, summarize_entity, consolidate_memories)
+	if len(tools) != 14 {
+		t.Errorf("expected 14 tools, got %d", len(tools))
 	}
 }

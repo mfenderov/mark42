@@ -183,3 +183,17 @@ type GetContextInput struct {
 	TokenBudget   int     `json:"tokenBudget,omitempty"`
 	MinImportance float64 `json:"minImportance,omitempty"`
 }
+
+type GetRecentContextInput struct {
+	Hours       int    `json:"hours,omitempty"`
+	ProjectName string `json:"projectName,omitempty"`
+	TokenBudget int    `json:"tokenBudget,omitempty"`
+}
+
+type SummarizeEntityInput struct {
+	EntityName string `json:"entityName"`
+}
+
+type ConsolidateMemoriesInput struct {
+	EntityName string `json:"entityName"`
+}
