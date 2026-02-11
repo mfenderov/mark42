@@ -6,7 +6,7 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 
 **Purpose**: Replace JSON-based Memory MCP with SQLite-backed implementation offering superior search capabilities (FTS5 + future vector search).
 
-**Status**: Phase 2 Complete - Semantic Search (FTS5 + Vector Hybrid Search)
+**Status**: Phase 3 Complete - Intelligent Memory (Auto-embed, Recency Boost, Consolidation)
 
 **Key differentiators**:
 - Privacy-first: All data stays local (no cloud, no telemetry)
@@ -54,6 +54,7 @@ internal/
   │   ├── embedding.go → Ollama/DMR embedding client
   │   ├── vector.go    → Vector storage and cosine similarity
   │   ├── fusion.go    → RRF and weighted score fusion
+  │   ├── consolidate.go → Observation deduplication
   │   ├── migration.go → Goose migration runner
   │   └── migrations/  → Goose Go migrations (001-006)
   └── mcp/             → MCP protocol implementation
@@ -87,6 +88,12 @@ commands/              → Command documentation (init, status, sync, calibrate)
 - Ollama embeddings (nomic-embed-text)
 - Fact types: static, dynamic, session_turn
 - Entity versioning (supersedes_id, is_latest, version)
+
+**Phase 3 Features**:
+- Auto-embed on write (new memories immediately vector-searchable)
+- Recency-boosted context injection (exponential decay, ~30 day half-life)
+- Observation consolidation (substring-based dedup)
+- Enriched stop hooks with specific MCP tool instructions
 <!-- END AUTO-MANAGED -->
 
 See `docs/ARCHITECTURE.md` for:
@@ -198,8 +205,11 @@ The project includes a complete Claude Code plugin implementation:
 | `search_nodes` | ✅ Search | ✅ DONE | Implemented |
 | `open_nodes` | ✅ GetEntity | ✅ DONE | Implemented |
 | `get_context` | ✅ GetContextForInjection | ✅ DONE | Context injection |
+| `get_recent_context` | ✅ GetRecentContext | ✅ DONE | Recency-first retrieval |
+| `summarize_entity` | ✅ GetEntity+ListRelations | ✅ DONE | Entity summary with metadata |
+| `consolidate_memories` | ✅ ConsolidateObservations | ✅ DONE | Observation deduplication |
 
-**All 11 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 14 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
@@ -218,17 +228,21 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ sqlx for struct scanning (eliminates manual SQL parsing)
 - ✅ goose for database migrations (versioned, idempotent)
 
-**Phase 3**: Intelligence (Future)
-- Auto-context injection at session start
-- Importance scoring for memories
-- Decay/consolidation of old memories
-- Cross-session continuity
+**Phase 3 (Complete)**: Intelligence ✅
+- ✅ Auto-embed on write (observations immediately vector-searchable via MCP)
+- ✅ Recency-boosted context injection (`get_context` with exponential decay scoring)
+- ✅ `get_recent_context` tool for mid-session recency-first retrieval
+- ✅ `summarize_entity` tool with observations, relations, and version history
+- ✅ `consolidate_memories` tool for observation deduplication
+- ✅ Enriched stop hooks with specific MCP tool and fact-type instructions
+- ✅ Stop hook fires every session (not just file-edit sessions)
+- ✅ `Embedder` interface for testable auto-embed (fake embedder in tests)
 
-**Completed (Phase 2)**:
-- ✅ Plugin installation and end-to-end testing (integration tests in `test/integration/`)
-- ✅ Drop-in replacement for JSON Memory MCP verified (all tools + `docs/MIGRATION_GUIDE.md`)
-- ✅ Wire `CreateOrUpdateEntity` to MCP for versioning (`create_or_update_entities` tool)
-- ✅ Add `get_context` MCP tool for fact-type-aware retrieval
+**Phase 4**: Analytics & Decay (Future)
+- Automatic importance decay for stale memories
+- Session-start auto-context injection via hooks
+- Memory analytics (decay curves, most-accessed entities)
+- Smarter consolidation with vector similarity
 
 ## Go Conventions
 

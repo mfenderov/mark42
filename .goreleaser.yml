@@ -83,9 +83,9 @@ brews:
       ln_s share/"claude-memory"/"hooks", plugin_dir/"hooks"
       ln_s share/"claude-memory"/"hooks.json", plugin_dir/"hooks.json"
 
-      # Symlink binaries
-      ln_s bin/"claude-memory", plugin_dir/"bin"/"claude-memory"
-      ln_s bin/"claude-memory-server", plugin_dir/"bin"/"claude-memory-server"
+      # Symlink binaries (use opt_bin for stable path across upgrades)
+      ln_s opt_bin/"claude-memory", plugin_dir/"bin"/"claude-memory"
+      ln_s opt_bin/"claude-memory-server", plugin_dir/"bin"/"claude-memory-server"
 
       # Ensure memory database directory exists (but NEVER touch the database itself)
       memory_dir = Pathname.new(Dir.home) / ".claude"
