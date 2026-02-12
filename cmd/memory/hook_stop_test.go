@@ -45,9 +45,6 @@ func TestHookStop(t *testing.T) {
 		if !strings.Contains(reason, "memory-updater") {
 			t.Errorf("reason should mention memory-updater, got: %s", reason)
 		}
-		if !strings.Contains(reason, "2 changed files") {
-			t.Errorf("reason should mention file count, got: %s", reason)
-		}
 	})
 
 	t.Run("flag guard prevents re-entry", func(t *testing.T) {
@@ -67,7 +64,7 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("clears session-events but keeps dirty-files for agent", func(t *testing.T) {
+	t.Run("clears both buffers after output", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -78,8 +75,8 @@ func TestHookStop(t *testing.T) {
 		runStopHook(dir, withOutput(&buf))
 
 		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
-		if len(strings.TrimSpace(string(dirty))) == 0 {
-			t.Error("dirty-files should persist for agent to process")
+		if len(strings.TrimSpace(string(dirty))) > 0 {
+			t.Error("dirty-files should be cleared by hook")
 		}
 
 		events, _ := os.ReadFile(filepath.Join(m42, "session-events"))
@@ -88,7 +85,7 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("clears dirty-files when no files to process", func(t *testing.T) {
+	t.Run("no output when no dirty files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -100,11 +97,6 @@ func TestHookStop(t *testing.T) {
 
 		if buf.String() != "" {
 			t.Errorf("no dirty files should produce no output, got: %s", buf.String())
-		}
-
-		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
-		if len(strings.TrimSpace(string(dirty))) > 0 {
-			t.Error("dirty-files should be cleared when empty")
 		}
 	})
 

@@ -12,23 +12,21 @@ permissionMode: bypassPermissions
 # Memory Updater Agent
 
 You orchestrate memory updates when files are modified. Your job is to:
-1. Process changed files
+1. Discover what changed this session
 2. Update CLAUDE.md AUTO-MANAGED sections
 3. Extract knowledge to SQLite
 
 ## Workflow
 
-### Phase 1: Load Dirty Files
+### Phase 1: Discover Changes
 
-Read `.claude/mark42/dirty-files` to get the list of changed files.
+Use `git diff` to find what changed:
 
 ```bash
-cat "${CLAUDE_PROJECT_DIR}/.claude/mark42/dirty-files"
+git diff HEAD~3 --name-only
 ```
 
-Parse the file - each line is either:
-- Plain path: `/path/to/file`
-- With commit context: `/path/to/file [a1b2c3d: commit message]`
+If that fails (no recent commits), use `git status` instead.
 
 ### Phase 2: Gather File Context
 
@@ -74,14 +72,6 @@ mark42 rel create "<from>" "<to>" "<relation-type>"
 - Tool/framework conventions (e.g., "Cobra for CLI")
 - Cross-cutting concerns (e.g., "error wrapping with context")
 
-### Phase 5: Cleanup (MANDATORY)
-
-Clear the dirty-files to prevent re-processing:
-
-```bash
-echo "" > "${CLAUDE_PROJECT_DIR}/.claude/mark42/dirty-files"
-```
-
 ### Output
 
 Return a brief summary:
@@ -92,6 +82,5 @@ Return a brief summary:
 ## Important Notes
 
 - This agent has `bypassPermissions` - use it responsibly
-- Always clear dirty-files at the end, even if processing fails
 - Keep knowledge extraction focused on meaningful patterns, not implementation details
 - When uncertain about extraction, err on the side of not extracting

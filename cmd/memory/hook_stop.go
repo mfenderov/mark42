@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/mfenderov/mark42/internal/storage"
@@ -65,21 +64,19 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	// Capture session directly in SQLite (silent, no blocking)
 	captureSessionDirectly(projectName, events, files)
 
-	// Always clear session-events (dirty-files cleared by agent)
+	// Clear both buffers (deterministic cleanup — don't rely on agent)
 	clearFile(filepath.Join(m42, "session-events"))
+	clearFile(filepath.Join(m42, "dirty-files"))
 
-	// Only block if there are dirty files worth processing
+	// Only block if files were edited this session
 	if len(files) > 0 {
 		output := map[string]any{
 			"decision": "block",
-			"reason": "Use the Task tool to spawn the mark42:memory-updater agent to process " +
-				strconv.Itoa(len(files)) + " changed files. Reply only with the agent's summary.",
+			"reason":   "Use the Task tool to spawn the mark42:memory-updater agent. Reply only with the agent's summary.",
 			"suppressOutput": true,
 		}
 		data, _ := json.Marshal(output)
 		hookPrint(cfg, string(data))
-	} else {
-		clearFile(filepath.Join(m42, "dirty-files"))
 	}
 }
 
