@@ -32,14 +32,9 @@ def main():
     if "transcript_length" in session_data:
         stats["transcript_chars"] = session_data["transcript_length"]
 
-    # Output hookSpecificOutput for SessionEnd
-    output = {
-        "hookSpecificOutput": {
-            "message": "Session ended",
-            "stats": stats
-        }
-    }
-    print(json.dumps(output))
+    # SessionEnd hooks must not output structured JSON
+    # (hookSpecificOutput is only valid for PreToolUse/PermissionRequest)
+    # Stats are collected silently for future use
 
 
 if __name__ == "__main__":
