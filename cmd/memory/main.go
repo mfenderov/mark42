@@ -1606,7 +1606,7 @@ Input format:
 		}
 
 		for _, evt := range input.Events {
-			store.CaptureSessionEvent(session.Name, storage.SessionEvent{
+			_ = store.CaptureSessionEvent(session.Name, storage.SessionEvent{
 				ToolName:  evt.ToolName,
 				FilePath:  evt.FilePath,
 				Command:   evt.Command,
