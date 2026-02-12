@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/mfenderov/mark42/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -44,14 +46,7 @@ func runStopHook(projectDir string, opts ...hookOption) {
 
 	projectName := filepath.Base(projectDir)
 
-	// Read dirty files (cap at 5 for display)
-	files := readLines(filepath.Join(m42, "dirty-files"))
-	displayFiles := files
-	if len(displayFiles) > 5 {
-		displayFiles = displayFiles[:5]
-	}
-
-	// Read session events (cap at 50)
+	// Read session events
 	type eventEntry struct {
 		ToolName  string `json:"toolName"`
 		FilePath  string `json:"filePath,omitempty"`
@@ -63,30 +58,109 @@ func runStopHook(projectDir string, opts ...hookOption) {
 		events = events[:50]
 	}
 
-	filesList := "none"
-	if len(displayFiles) > 0 {
-		filesList = strings.Join(displayFiles, ", ")
-	}
+	// Read dirty files
+	files := readLines(filepath.Join(m42, "dirty-files"))
 
-	eventsJSON, _ := json.Marshal(events)
-	eventCount := len(events)
+	// Capture session directly in SQLite (no Claude involvement needed)
+	captureSessionDirectly(projectName, events, files)
 
+	// Clear buffers
+	clearFile(filepath.Join(m42, "dirty-files"))
+	clearFile(filepath.Join(m42, "session-events"))
+
+	// Block with minimal reason — only ask Claude for learnings
 	output := map[string]any{
-		"decision": "block",
-		"reason": "Memory sync for " + projectName + ". " +
-			"Modified: " + filesList + ". Events: " + itoa(eventCount) + ". " +
-			"1. Call capture_session with projectName='" + projectName + "', " +
-			"a brief summary of what was done, and events=" + string(eventsJSON) + ". " +
-			"2. Use create_or_update_entities for new learnings, add_observations for updates. " +
-			"Use fact_type='static' for conventions/patterns, 'dynamic' for decisions/context. " +
-			"Reply only: 'Synced N learnings.'",
+		"decision":       "block",
+		"reason":         "💾 Sync learnings for " + projectName + ". Use create_or_update_entities for new learnings, add_observations for updates. Use fact_type='static' for conventions/patterns, 'dynamic' for decisions/context. Reply only: 'Synced N learnings.'",
 		"suppressOutput": true,
 	}
 
 	data, _ := json.Marshal(output)
 	hookPrint(cfg, string(data))
+}
 
-	// Clear buffers
-	clearFile(filepath.Join(m42, "dirty-files"))
-	clearFile(filepath.Join(m42, "session-events"))
+func captureSessionDirectly[E any](projectName string, events []E, files []string) {
+	store, err := getStore()
+	if err != nil {
+		return // fail silently
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(projectName)
+	if err != nil {
+		return
+	}
+
+	// Store each event as observation
+	for _, evt := range events {
+		raw, err := json.Marshal(evt)
+		if err != nil {
+			continue
+		}
+		var se storage.SessionEvent
+		if err := json.Unmarshal(raw, &se); err != nil {
+			continue
+		}
+		_ = store.CaptureSessionEvent(session.Name, se)
+	}
+
+	// Auto-generate summary from events and files
+	summary := buildAutoSummary(events, files)
+	_ = store.CompleteSession(session.Name, summary)
+}
+
+func buildAutoSummary[E any](events []E, files []string) string {
+	if len(events) == 0 && len(files) == 0 {
+		return "Session with no tracked changes."
+	}
+
+	var parts []string
+
+	// Summarize files
+	if len(files) > 0 {
+		names := make([]string, 0, len(files))
+		for _, f := range files {
+			name := filepath.Base(strings.SplitN(f, " [", 2)[0])
+			names = append(names, name)
+		}
+		// Deduplicate
+		seen := map[string]bool{}
+		unique := names[:0]
+		for _, n := range names {
+			if !seen[n] {
+				seen[n] = true
+				unique = append(unique, n)
+			}
+		}
+		if len(unique) <= 5 {
+			parts = append(parts, fmt.Sprintf("Modified %d files: %s", len(unique), strings.Join(unique, ", ")))
+		} else {
+			parts = append(parts, fmt.Sprintf("Modified %d files: %s, +%d more", len(unique), strings.Join(unique[:5], ", "), len(unique)-5))
+		}
+	}
+
+	// Count tool usage
+	type eventEntry struct {
+		ToolName string `json:"toolName"`
+	}
+	toolCounts := map[string]int{}
+	for _, evt := range events {
+		raw, _ := json.Marshal(evt)
+		var e eventEntry
+		if json.Unmarshal(raw, &e) == nil && e.ToolName != "" {
+			toolCounts[e.ToolName]++
+		}
+	}
+	if len(toolCounts) > 0 {
+		var tools []string
+		for tool, count := range toolCounts {
+			tools = append(tools, fmt.Sprintf("%d %s", count, tool))
+		}
+		parts = append(parts, fmt.Sprintf("%d tool calls (%s)", len(events), strings.Join(tools, ", ")))
+	}
+
+	if len(parts) == 0 {
+		return "Session with no tracked changes."
+	}
+	return strings.Join(parts, ". ") + "."
 }
