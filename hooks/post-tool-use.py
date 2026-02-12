@@ -105,8 +105,12 @@ def extract_files_from_bash(command: str, project_dir: str) -> list[str]:
     if command.startswith(skip_prefixes):
         return []
 
-    shell_operators = ("&&", "||", ";", "|", ">", ">>", "<", "2>", "2>&1")
+    shell_operators = ("&&", "||", ";", "|")
+    redirect_prefixes = (">", ">>", "<", "2>", "2>>", "1>", "1>>", "2>&1")
     files = []
+
+    def is_shell_syntax(token: str) -> bool:
+        return token in shell_operators or token.startswith(redirect_prefixes)
 
     try:
         tokens = shlex.split(command)
@@ -117,21 +121,21 @@ def extract_files_from_bash(command: str, project_dir: str) -> list[str]:
 
         if cmd == "rm":
             for token in tokens[1:]:
-                if token in shell_operators:
+                if is_shell_syntax(token):
                     break
                 if not token.startswith("-"):
                     files.append(token)
 
         elif cmd == "git" and len(tokens) > 1 and tokens[1] == "rm":
             for token in tokens[2:]:
-                if token in shell_operators:
+                if is_shell_syntax(token):
                     break
                 if not token.startswith("-"):
                     files.append(token)
 
         elif cmd == "mv" and len(tokens) >= 3:
             for token in tokens[1:]:
-                if token in shell_operators:
+                if is_shell_syntax(token):
                     break
                 if not token.startswith("-"):
                     files.append(token)
@@ -139,14 +143,14 @@ def extract_files_from_bash(command: str, project_dir: str) -> list[str]:
 
         elif cmd == "git" and len(tokens) > 2 and tokens[1] == "mv":
             for token in tokens[2:]:
-                if token in shell_operators:
+                if is_shell_syntax(token):
                     break
                 if not token.startswith("-"):
                     files.append(token)
                     break
 
         elif cmd == "unlink" and len(tokens) > 1:
-            if tokens[1] not in shell_operators:
+            if not is_shell_syntax(tokens[1]):
                 files.append(tokens[1])
 
     except ValueError:
