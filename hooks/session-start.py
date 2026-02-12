@@ -54,6 +54,11 @@ def main():
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
     project_name = os.path.basename(project_dir)
 
+    # Clear stop hook flag from previous session
+    flag_file = Path(project_dir) / ".claude" / "mark42" / "stop-prompted"
+    if flag_file.exists():
+        flag_file.unlink()
+
     memory_bin = get_memory_binary()
     if not memory_bin:
         return

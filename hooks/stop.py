@@ -12,6 +12,13 @@ def main():
     if not project_dir:
         return
 
+    # Guard: only fire once per session (prevents infinite loop)
+    flag_file = Path(project_dir) / ".claude" / "mark42" / "stop-prompted"
+    if flag_file.exists():
+        return
+    flag_file.parent.mkdir(parents=True, exist_ok=True)
+    flag_file.touch()
+
     # Read session input from Claude Code
     try:
         session_data = json.loads(sys.stdin.read())
