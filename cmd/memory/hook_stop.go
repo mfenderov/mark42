@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mfenderov/mark42/internal/storage"
@@ -61,22 +62,25 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	// Read dirty files
 	files := readLines(filepath.Join(m42, "dirty-files"))
 
-	// Capture session directly in SQLite (no Claude involvement needed)
+	// Capture session directly in SQLite (silent, no blocking)
 	captureSessionDirectly(projectName, events, files)
 
-	// Clear buffers
-	clearFile(filepath.Join(m42, "dirty-files"))
+	// Always clear session-events (dirty-files cleared by agent)
 	clearFile(filepath.Join(m42, "session-events"))
 
-	// Block with minimal reason — only ask Claude for learnings
-	output := map[string]any{
-		"decision":       "block",
-		"reason":         "💾 Sync learnings for " + projectName + ". Use create_or_update_entities for new learnings, add_observations for updates. Use fact_type='static' for conventions/patterns, 'dynamic' for decisions/context. Reply only: 'Synced N learnings.'",
-		"suppressOutput": true,
+	// Only block if there are dirty files worth processing
+	if len(files) > 0 {
+		output := map[string]any{
+			"decision": "block",
+			"reason": "Use the Task tool to spawn the mark42:memory-updater agent to process " +
+				strconv.Itoa(len(files)) + " changed files. Reply only with the agent's summary.",
+			"suppressOutput": true,
+		}
+		data, _ := json.Marshal(output)
+		hookPrint(cfg, string(data))
+	} else {
+		clearFile(filepath.Join(m42, "dirty-files"))
 	}
-
-	data, _ := json.Marshal(output)
-	hookPrint(cfg, string(data))
 }
 
 func captureSessionDirectly[E any](projectName string, events []E, files []string) {

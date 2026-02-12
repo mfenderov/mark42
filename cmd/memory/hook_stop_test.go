@@ -42,8 +42,11 @@ func TestHookStop(t *testing.T) {
 		if !ok {
 			t.Fatal("reason is not a string")
 		}
-		if !strings.Contains(reason, "capture_session") {
-			t.Errorf("reason should mention capture_session, got: %s", reason)
+		if !strings.Contains(reason, "memory-updater") {
+			t.Errorf("reason should mention memory-updater, got: %s", reason)
+		}
+		if !strings.Contains(reason, "2 changed files") {
+			t.Errorf("reason should mention file count, got: %s", reason)
 		}
 	})
 
@@ -64,7 +67,7 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("clears buffer files after output", func(t *testing.T) {
+	t.Run("clears session-events but keeps dirty-files for agent", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -75,13 +78,33 @@ func TestHookStop(t *testing.T) {
 		runStopHook(dir, withOutput(&buf))
 
 		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
-		if len(strings.TrimSpace(string(dirty))) > 0 {
-			t.Error("dirty-files should be cleared")
+		if len(strings.TrimSpace(string(dirty))) == 0 {
+			t.Error("dirty-files should persist for agent to process")
 		}
 
 		events, _ := os.ReadFile(filepath.Join(m42, "session-events"))
 		if len(strings.TrimSpace(string(events))) > 0 {
 			t.Error("session-events should be cleared")
+		}
+	})
+
+	t.Run("clears dirty-files when no files to process", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		m42 := mark42Dir(dir)
+
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
+		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Read"}`+"\n"), 0o644)
+
+		var buf captureBuffer
+		runStopHook(dir, withOutput(&buf))
+
+		if buf.String() != "" {
+			t.Errorf("no dirty files should produce no output, got: %s", buf.String())
+		}
+
+		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
+		if len(strings.TrimSpace(string(dirty))) > 0 {
+			t.Error("dirty-files should be cleared when empty")
 		}
 	})
 
@@ -99,7 +122,7 @@ func TestHookStop(t *testing.T) {
 		m42 := mark42Dir(dir)
 
 		var sb strings.Builder
-		for i := 0; i < 60; i++ {
+		for range 60 {
 			sb.WriteString(`{"toolName":"Edit"}` + "\n")
 		}
 		os.WriteFile(filepath.Join(m42, "session-events"), []byte(sb.String()), 0o644)
@@ -108,13 +131,17 @@ func TestHookStop(t *testing.T) {
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf))
 
-		var output map[string]any
-		json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &output)
+		got := strings.TrimSpace(buf.String())
+		if got == "" {
+			t.Fatal("expected blocking output with dirty files")
+		}
 
-		reason := output["reason"].(string)
-		if !strings.Contains(reason, "Events: 50") {
-			// Should cap at 50 in the events JSON even though 60 were written
-			t.Logf("reason: %s", reason)
+		var output map[string]any
+		if err := json.Unmarshal([]byte(got), &output); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if output["decision"] != "block" {
+			t.Errorf("decision = %v, want block", output["decision"])
 		}
 	})
 }
