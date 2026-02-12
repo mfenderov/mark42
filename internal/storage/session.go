@@ -110,7 +110,7 @@ func (s *Store) GetSession(sessionName string) (*Session, error) {
 	tag, _ := s.GetContainerTag(sessionName)
 	var meta SessionMetadata
 	if tag != "" {
-		json.Unmarshal([]byte(tag), &meta)
+		_ = json.Unmarshal([]byte(tag), &meta)
 	}
 
 	// Count events and find summary
@@ -153,7 +153,7 @@ func (s *Store) ListSessions(project, status string, limit int) ([]*Session, err
 		tag, _ := s.GetContainerTag(entity.Name)
 		var meta SessionMetadata
 		if tag != "" {
-			json.Unmarshal([]byte(tag), &meta)
+			_ = json.Unmarshal([]byte(tag), &meta)
 		}
 
 		if project != "" && meta.Project != project {
@@ -213,7 +213,7 @@ func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int
 			tag, _ := s.GetContainerTag(r.EntityName)
 			var meta SessionMetadata
 			if tag != "" {
-				json.Unmarshal([]byte(tag), &meta)
+				_ = json.Unmarshal([]byte(tag), &meta)
 			}
 			if meta.Project == project {
 				filtered = append(filtered, r)

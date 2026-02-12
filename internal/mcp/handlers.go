@@ -800,7 +800,7 @@ func (h *Handler) captureSession(args json.RawMessage) (*ToolCallResult, error) 
 	}
 
 	for _, evt := range input.Events {
-		h.store.CaptureSessionEvent(session.Name, storage.SessionEvent{
+		_ = h.store.CaptureSessionEvent(session.Name, storage.SessionEvent{
 			ToolName:  evt.ToolName,
 			FilePath:  evt.FilePath,
 			Command:   evt.Command,

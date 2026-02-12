@@ -98,7 +98,7 @@ func TestStore_HybridSearchWithContainerBoost(t *testing.T) {
 		nil, // no embedding
 		10,
 		"mark42", // boost results in this container
-		1.5,             // boost factor
+		1.5,      // boost factor
 	)
 	if err != nil {
 		t.Fatalf("HybridSearchWithBoost failed: %v", err)
