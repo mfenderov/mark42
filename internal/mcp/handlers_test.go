@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mfenderov/claude-memory/internal/mcp"
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/mcp"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 // newTestHandler creates a handler with a fresh test store
@@ -49,6 +49,8 @@ func TestHandler_Tools(t *testing.T) {
 		"get_recent_context",
 		"summarize_entity",
 		"consolidate_memories",
+		"capture_session",
+		"recall_sessions",
 	}
 
 	if len(tools) != len(expectedTools) {
@@ -357,12 +359,12 @@ func TestHandler_CreateRelations(t *testing.T) {
 			setup: func(s *storage.Store) {
 				s.CreateEntity("TDD", "pattern", nil)
 				s.CreateEntity("konfig", "project", nil)
-				s.CreateEntity("claude-memory", "project", nil)
+				s.CreateEntity("mark42", "project", nil)
 			},
 			args: `{
 				"relations": [
 					{"from": "TDD", "to": "konfig", "relationType": "used_by"},
-					{"from": "TDD", "to": "claude-memory", "relationType": "used_by"}
+					{"from": "TDD", "to": "mark42", "relationType": "used_by"}
 				]
 			}`,
 			wantCreated: 2,
@@ -1098,13 +1100,13 @@ func TestHandler_GetContext(t *testing.T) {
 			name: "get context with project filter",
 			setup: func(s *storage.Store) {
 				s.Migrate()
-				s.CreateEntity("claude-memory", "project", []string{"Memory system"})
-				s.SetObservationImportance("claude-memory", "Memory system", 0.7)
+				s.CreateEntity("mark42", "project", []string{"Memory system"})
+				s.SetObservationImportance("mark42", "Memory system", 0.7)
 			},
-			args: `{"projectName": "claude-memory"}`,
+			args: `{"projectName": "mark42"}`,
 			checkResult: func(t *testing.T, text string) {
-				if !strings.Contains(text, "claude-memory") {
-					t.Error("expected output to contain 'claude-memory'")
+				if !strings.Contains(text, "mark42") {
+					t.Error("expected output to contain 'mark42'")
 				}
 			},
 		},
@@ -1482,8 +1484,8 @@ func TestHandler_Tools_Count(t *testing.T) {
 	defer store.Close()
 
 	tools := handler.Tools()
-	// 11 original + 3 new (get_recent_context, summarize_entity, consolidate_memories)
-	if len(tools) != 14 {
-		t.Errorf("expected 14 tools, got %d", len(tools))
+	// 14 original + 2 new (capture_session, recall_sessions)
+	if len(tools) != 16 {
+		t.Errorf("expected 16 tools, got %d", len(tools))
 	}
 }

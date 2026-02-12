@@ -240,7 +240,7 @@ Support importing existing Memory MCP JSON data.
 
 **Migration command:**
 ```bash
-claude-memory migrate --from ~/.claude/memory.json --to ~/.claude/memory.db
+mark42 migrate --from ~/.claude/memory.json --to ~/.claude/memory.db
 ```
 
 ---

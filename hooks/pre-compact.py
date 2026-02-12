@@ -22,7 +22,7 @@ def main():
     preserved_count = 0
 
     # Check for important context to preserve
-    dirty_file = Path(project_dir) / ".claude" / "claude-memory" / "dirty-files"
+    dirty_file = Path(project_dir) / ".claude" / "mark42" / "dirty-files"
     if dirty_file.exists() and dirty_file.stat().st_size > 0:
         files = [f.strip() for f in dirty_file.read_text().split("\n") if f.strip()]
         preserved_count = len(files)

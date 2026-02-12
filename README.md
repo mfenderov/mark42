@@ -1,4 +1,4 @@
-# Claude Memory
+# mark42
 
 A local, privacy-first RAG memory system for Claude Code, built on SQLite.
 
@@ -39,7 +39,7 @@ A **local SQLite database** with:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Claude Memory MCP Server                      │
+│                    mark42 MCP Server                      │
 │                         (this project)                           │
 │                                                                  │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
@@ -95,12 +95,12 @@ A **local SQLite database** with:
 
 ```bash
 # Clone and build
-cd ~/dev/private/claude-memory
+cd ~/dev/private/mark42
 make build-all
 
 # Register the MCP server with Claude Code
 claude mcp add --scope user --transport stdio mark42 -- \
-  /path/to/claude-memory/bin/claude-memory-server
+  /path/to/mark42/bin/mark42-server
 
 # Verify server is connected
 # Use /mcp command in Claude Code to check status

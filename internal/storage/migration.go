@@ -9,7 +9,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	// Import migrations to register them with goose
-	_ "github.com/mfenderov/claude-memory/internal/storage/migrations"
+	_ "github.com/mfenderov/mark42/internal/storage/migrations"
 )
 
 func init() {

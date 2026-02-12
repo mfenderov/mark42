@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [ ] Claude Memory CLI built: `make build`
+- [ ] mark42 CLI built: `make build`
 - [ ] Tests passing: `make test`
 - [ ] Docker MCP has data to migrate (optional)
 
@@ -13,16 +13,16 @@
 make install
 
 # Option B: Symlink to project
-ln -sf $(pwd)/claude-memory ~/bin/claude-memory
+ln -sf $(pwd)/mark42 ~/bin/mark42
 
 # Verify
-claude-memory version
+mark42 version
 ```
 
 ## Step 2: Initialize Database
 
 ```bash
-claude-memory init
+mark42 init
 # Output: INFO Database initialized path=~/.claude/memory.db
 ```
 
@@ -32,13 +32,13 @@ If you have data in the Docker Memory MCP:
 
 ```bash
 # 1. Export from Docker volume
-docker run --rm -v claude-memory:/data alpine cat /data/memory.json > /tmp/memory.json
+docker run --rm -v mark42:/data alpine cat /data/memory.json > /tmp/memory.json
 
 # 2. Import to SQLite
-claude-memory migrate --from /tmp/memory.json
+mark42 migrate --from /tmp/memory.json
 
 # 3. Verify
-claude-memory stats
+mark42 stats
 ```
 
 ## Step 4: Update Stop Hook
@@ -61,7 +61,7 @@ touch "$FLAG_FILE"
 cat << 'EOF'
 {
   "decision": "block",
-  "reason": "Memory sync: Review if any learnings, patterns, decisions, or knowledge emerged this session worth persisting. If so, use Bash to call:\n\n  claude-memory entity create \"<name>\" \"<type>\" --obs \"<observation>\"\n  claude-memory obs add \"<entity>\" \"<observation>\"\n  claude-memory rel create \"<from>\" \"<to>\" \"<relation-type>\"\n\nIf nothing significant, say 'nothing to persist' and proceed."
+  "reason": "Memory sync: Review if any learnings, patterns, decisions, or knowledge emerged this session worth persisting. If so, use Bash to call:\n\n  mark42 entity create \"<name>\" \"<type>\" --obs \"<observation>\"\n  mark42 obs add \"<entity>\" \"<observation>\"\n  mark42 rel create \"<from>\" \"<to>\" \"<relation-type>\"\n\nIf nothing significant, say 'nothing to persist' and proceed."
 }
 EOF
 ```
@@ -75,7 +75,7 @@ Create `~/.claude/hooks/memory-context.sh`:
 # Memory context injection - loads relevant memories at session start
 
 MEMORY_DB="${HOME}/.claude/memory.db"
-MEMORY_BIN="${HOME}/bin/claude-memory"
+MEMORY_BIN="${HOME}/bin/mark42"
 
 if [[ ! -f "$MEMORY_DB" ]] || [[ ! -x "$MEMORY_BIN" ]]; then
     exit 0
@@ -131,7 +131,7 @@ Update the Memory MCP reference in `~/.claude/CLAUDE.md`:
 ```markdown
 ## Non-Negotiable Rules
 
-6. **YOU MUST** check memory (`claude-memory search "query"`) for relevant patterns, decisions, or context before starting complex tasks
+6. **YOU MUST** check memory (`mark42 search "query"`) for relevant patterns, decisions, or context before starting complex tasks
 ```
 
 ## Verification
@@ -140,18 +140,18 @@ Update the Memory MCP reference in `~/.claude/CLAUDE.md`:
 1. Start a new session
 2. Do some work
 3. End the session
-4. When prompted, try: `claude-memory entity create "test" "verification"`
-5. Verify: `claude-memory entity get test`
+4. When prompted, try: `mark42 entity create "test" "verification"`
+5. Verify: `mark42 entity get test`
 
 ### Test Context Injection (SessionStart Hook)
-1. Create some test data: `claude-memory entity create "my-project" "project" --obs "Test data"`
+1. Create some test data: `mark42 entity create "my-project" "project" --obs "Test data"`
 2. Start a new session in a directory named `my-project`
 3. Verify the memory context appears at session start
 
 ### Test Search
 ```bash
-claude-memory search "pattern"
-claude-memory search "TDD"
+mark42 search "pattern"
+mark42 search "TDD"
 ```
 
 ## Rollback
@@ -166,28 +166,28 @@ If issues occur:
 
 ```bash
 # Entity operations
-claude-memory entity create <name> <type> [--obs "observation"]...
-claude-memory entity get <name>
-claude-memory entity list [--type <type>]
-claude-memory entity delete <name>
+mark42 entity create <name> <type> [--obs "observation"]...
+mark42 entity get <name>
+mark42 entity list [--type <type>]
+mark42 entity delete <name>
 
 # Observation operations
-claude-memory obs add <entity> <content>
-claude-memory obs delete <entity> <content>
+mark42 obs add <entity> <content>
+mark42 obs delete <entity> <content>
 
 # Relation operations
-claude-memory rel create <from> <to> <type>
-claude-memory rel list <entity>
-claude-memory rel delete <from> <to> <type>
+mark42 rel create <from> <to> <type>
+mark42 rel list <entity>
+mark42 rel delete <from> <to> <type>
 
 # Search
-claude-memory search <query> [--limit N] [--format default|json|context]
+mark42 search <query> [--limit N] [--format default|json|context]
 
 # Graph
-claude-memory graph [--format json|dot]
+mark42 graph [--format json|dot]
 
 # Database
-claude-memory init
-claude-memory stats
-claude-memory migrate --from <json-file>
+mark42 init
+mark42 stats
+mark42 migrate --from <json-file>
 ```

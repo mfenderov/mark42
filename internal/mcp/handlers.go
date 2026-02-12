@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 // Embedder generates vector embeddings for text.
@@ -259,6 +259,44 @@ func (h *Handler) Tools() []Tool {
 				Required: []string{"entityName"},
 			},
 		},
+		{
+			Name:        "capture_session",
+			Description: "Capture a completed session with summary and optional tool-use events for cross-session recall",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"projectName": {Type: "string", Description: "Project name for the session"},
+					"summary":     {Type: "string", Description: "What was accomplished in this session"},
+					"events": {
+						Type:        "array",
+						Description: "Tool-use events from the session",
+						Items: &Items{
+							Type: "object",
+							Properties: map[string]Property{
+								"toolName":  {Type: "string", Description: "Tool name (Edit, Bash, etc.)"},
+								"filePath":  {Type: "string", Description: "File path if applicable"},
+								"command":   {Type: "string", Description: "Command if Bash tool"},
+								"timestamp": {Type: "string", Description: "ISO 8601 timestamp"},
+							},
+							Required: []string{"toolName"},
+						},
+					},
+				},
+				Required: []string{"projectName", "summary"},
+			},
+		},
+		{
+			Name:        "recall_sessions",
+			Description: "Recall recent session summaries for a project to understand what was done in previous sessions",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"projectName": {Type: "string", Description: "Project name to filter sessions"},
+					"hours":       {Type: "integer", Description: "Time window in hours (default: 72)"},
+					"tokenBudget": {Type: "integer", Description: "Maximum tokens to include (default: 1500)"},
+				},
+			},
+		},
 	}
 }
 
@@ -293,6 +331,10 @@ func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, 
 		return h.summarizeEntity(args)
 	case "consolidate_memories":
 		return h.consolidateMemories(args)
+	case "capture_session":
+		return h.captureSession(args)
+	case "recall_sessions":
+		return h.recallSessions(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -739,6 +781,59 @@ func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {
 	formatted := storage.FormatContextResults(results)
 	if formatted == "" {
 		formatted = "No relevant memories found."
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: formatted}},
+	}, nil
+}
+
+func (h *Handler) captureSession(args json.RawMessage) (*ToolCallResult, error) {
+	var input CaptureSessionInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	session, err := h.store.CreateSession(input.ProjectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	for _, evt := range input.Events {
+		h.store.CaptureSessionEvent(session.Name, storage.SessionEvent{
+			ToolName:  evt.ToolName,
+			FilePath:  evt.FilePath,
+			Command:   evt.Command,
+			Timestamp: evt.Timestamp,
+		})
+	}
+
+	if err := h.store.CompleteSession(session.Name, input.Summary); err != nil {
+		return nil, fmt.Errorf("failed to complete session: %w", err)
+	}
+
+	// Auto-embed the summary
+	h.embedObservations(session.Name, []string{input.Summary})
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Session captured: %s (%d events)", session.Name, len(input.Events))}},
+	}, nil
+}
+
+func (h *Handler) recallSessions(args json.RawMessage) (*ToolCallResult, error) {
+	var input RecallSessionsInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	results, err := h.store.GetRecentSessionSummaries(input.ProjectName, input.Hours, input.TokenBudget)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recall sessions: %w", err)
+	}
+
+	formatted := storage.FormatSessionRecall(results)
+	if formatted == "" {
+		formatted = "No recent sessions found."
 	}
 
 	return &ToolCallResult{

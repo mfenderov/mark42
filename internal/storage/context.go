@@ -226,6 +226,22 @@ func EstimateTokens(text string) int {
 	return len(text) / 4
 }
 
+// FormatSessionRecall formats session summaries for recall injection.
+func FormatSessionRecall(results []ContextResult) string {
+	if len(results) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("=== Recent Sessions ===\n\n")
+
+	for _, r := range results {
+		sb.WriteString("- [" + r.EntityName + "] " + r.Content + "\n")
+	}
+
+	return sb.String()
+}
+
 // formatInt converts int to string without importing fmt.
 func formatInt(n int) string {
 	if n == 0 {

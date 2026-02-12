@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestAddObservation(t *testing.T) {
@@ -212,10 +212,10 @@ func TestFormatContextForInjection(t *testing.T) {
 	formatted := context.FormatContextForInjection()
 
 	// Check structure
-	if !strings.Contains(formatted, "<claude-memory-context>") {
+	if !strings.Contains(formatted, "<mark42-context>") {
 		t.Error("missing opening tag")
 	}
-	if !strings.Contains(formatted, "</claude-memory-context>") {
+	if !strings.Contains(formatted, "</mark42-context>") {
 		t.Error("missing closing tag")
 	}
 	if !strings.Contains(formatted, "## User Profile (Persistent)") {

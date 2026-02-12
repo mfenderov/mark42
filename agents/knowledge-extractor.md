@@ -38,40 +38,40 @@ You receive context about changed files including:
 
 ## Output Format
 
-Use the claude-memory CLI to persist knowledge:
+Use the mark42 CLI to persist knowledge:
 
 ```bash
 # Entity types: pattern, decision, convention, tool, framework, architecture
 
 # Create new entities
-claude-memory entity create "Entity Name" "entity-type" --obs "Key observation"
+mark42 entity create "Entity Name" "entity-type" --obs "Key observation"
 
 # Add observations to existing entities
-claude-memory obs add "Entity Name" "Additional observation"
+mark42 obs add "Entity Name" "Additional observation"
 
 # Create relations (use active voice)
-claude-memory rel create "Source" "Target" "uses|implements|extends|depends_on"
+mark42 rel create "Source" "Target" "uses|implements|extends|depends_on"
 ```
 
 ## Examples
 
 **Good extraction**:
 ```bash
-claude-memory entity create "Transaction Pattern" "pattern" \
+mark42 entity create "Transaction Pattern" "pattern" \
   --obs "Begin → defer Rollback → operations → Commit"
-claude-memory rel create "Entity CRUD" "Transaction Pattern" "uses"
+mark42 rel create "Entity CRUD" "Transaction Pattern" "uses"
 ```
 
 **Bad extraction** (too generic):
 ```bash
-# DON'T: claude-memory entity create "Error Handling" "pattern" --obs "Handle errors"
+# DON'T: mark42 entity create "Error Handling" "pattern" --obs "Handle errors"
 ```
 
 ## Verification
 
 Before creating an entity, check if it exists:
 ```bash
-claude-memory search "<entity-name>" --limit 3
+mark42 search "<entity-name>" --limit 3
 ```
 
 If similar entity exists, add observation instead of creating duplicate.

@@ -52,7 +52,7 @@ Invoke `memory-processor` skill with calibration context.
 
 Review memory entities:
 ```bash
-claude-memory entity list
+mark42 entity list
 ```
 
 Offer to remove stale entities that no longer apply.

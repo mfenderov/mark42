@@ -1,4 +1,4 @@
-# Claude Memory - Project Guide
+# mark42 - Project Guide
 
 ## Project Overview
 
@@ -6,7 +6,7 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 
 **Purpose**: Replace JSON-based Memory MCP with SQLite-backed implementation offering superior search capabilities (FTS5 + future vector search).
 
-**Status**: Phase 3 Complete - Intelligent Memory (Auto-embed, Recency Boost, Consolidation)
+**Status**: Phase 4 Complete - Session Capture & Recall
 
 **Key differentiators**:
 - Privacy-first: All data stays local (no cloud, no telemetry)
@@ -55,8 +55,9 @@ internal/
   │   ├── vector.go    → Vector storage and cosine similarity
   │   ├── fusion.go    → RRF and weighted score fusion
   │   ├── consolidate.go → Observation deduplication
+  │   ├── session.go   → Session capture & recall (sessions as entities)
   │   ├── migration.go → Goose migration runner
-  │   └── migrations/  → Goose Go migrations (001-006)
+  │   └── migrations/  → Goose Go migrations (001-008)
   └── mcp/             → MCP protocol implementation
       ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
       └── handlers.go  → Tool handlers with hybrid search support
@@ -106,29 +107,35 @@ See `docs/ARCHITECTURE.md` for:
 
 <!-- AUTO-MANAGED: cli-commands -->
 **Entity management**:
-- `claude-memory entity create <name> <type> [--obs "observation"]` - Create entity with observations
-- `claude-memory entity get <name>` - Retrieve entity with observations
-- `claude-memory entity list [--type <type>]` - List all entities, optionally filtered by type
-- `claude-memory entity delete <name>` - Delete entity (cascades to observations/relations)
+- `mark42 entity create <name> <type> [--obs "observation"]` - Create entity with observations
+- `mark42 entity get <name>` - Retrieve entity with observations
+- `mark42 entity list [--type <type>]` - List all entities, optionally filtered by type
+- `mark42 entity delete <name>` - Delete entity (cascades to observations/relations)
 
 **Observation management**:
-- `claude-memory obs add <entity-name> <content>` - Add observation to entity
-- `claude-memory obs delete <entity-name> <content>` - Remove specific observation
+- `mark42 obs add <entity-name> <content>` - Add observation to entity
+- `mark42 obs delete <entity-name> <content>` - Remove specific observation
 
 **Relation management**:
-- `claude-memory rel create <from> <to> <type>` - Create relation between entities
-- `claude-memory rel list <entity-name>` - List all relations (bidirectional)
-- `claude-memory rel delete <from> <to> <type>` - Delete specific relation
+- `mark42 rel create <from> <to> <type>` - Create relation between entities
+- `mark42 rel list <entity-name>` - List all relations (bidirectional)
+- `mark42 rel delete <from> <to> <type>` - Delete specific relation
 
 **Search and exploration**:
-- `claude-memory search <query>` - FTS5 full-text search (BM25 ranked)
-- `claude-memory graph` - Export entire knowledge graph
+- `mark42 search <query>` - FTS5 full-text search (BM25 ranked)
+- `mark42 graph` - Export entire knowledge graph
+
+**Session management**:
+- `mark42 session capture <project>` - Capture session from JSON stdin
+- `mark42 session list [--project P] [--limit N]` - List captured sessions
+- `mark42 session get <name>` - Show session details + summary
+- `mark42 session recall [project] [--hours N] [--tokens N]` - Recall recent session summaries
 
 **Utilities**:
-- `claude-memory init` - Initialize database schema
-- `claude-memory stats` - Show database statistics
-- `claude-memory version` - Display version info
-- `claude-memory migrate --from <json> --to <db>` - Migrate from JSON Memory MCP
+- `mark42 init` - Initialize database schema
+- `mark42 stats` - Show database statistics
+- `mark42 version` - Display version info
+- `mark42 migrate --from <json> --to <db>` - Migrate from JSON Memory MCP
 
 **Default database**: `~/.claude/memory.db` (override with `--db <path>`)
 <!-- END AUTO-MANAGED -->
@@ -208,8 +215,10 @@ The project includes a complete Claude Code plugin implementation:
 | `get_recent_context` | ✅ GetRecentContext | ✅ DONE | Recency-first retrieval |
 | `summarize_entity` | ✅ GetEntity+ListRelations | ✅ DONE | Entity summary with metadata |
 | `consolidate_memories` | ✅ ConsolidateObservations | ✅ DONE | Observation deduplication |
+| `capture_session` | ✅ CreateSession+Events | ✅ DONE | Session capture with events |
+| `recall_sessions` | ✅ GetRecentSessionSummaries | ✅ DONE | Cross-session recall |
 
-**All 14 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 16 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
@@ -238,9 +247,16 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ Stop hook fires every session (not just file-edit sessions)
 - ✅ `Embedder` interface for testable auto-embed (fake embedder in tests)
 
-**Phase 4**: Analytics & Decay (Future)
+**Phase 4 (Complete)**: Session Capture & Recall ✅
+- ✅ Sessions modeled as entities (no new tables, reuses FTS5+vector infrastructure)
+- ✅ `capture_session` MCP tool with events and summary
+- ✅ `recall_sessions` MCP tool for cross-session context
+- ✅ CLI: `mark42 session capture|list|get|recall`
+- ✅ Hook integration: post-tool-use tracks events, stop triggers capture, session-start injects recall
+- ✅ New fact types: `session_event`, `session_summary`
+
+**Phase 5**: Analytics & Advanced Decay (Future)
 - Automatic importance decay for stale memories
-- Session-start auto-context injection via hooks
 - Memory analytics (decay curves, most-accessed entities)
 - Smarter consolidation with vector similarity
 

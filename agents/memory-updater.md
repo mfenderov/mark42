@@ -20,10 +20,10 @@ You orchestrate memory updates when files are modified. Your job is to:
 
 ### Phase 1: Load Dirty Files
 
-Read `.claude/claude-memory/dirty-files` to get the list of changed files.
+Read `.claude/mark42/dirty-files` to get the list of changed files.
 
 ```bash
-cat "${CLAUDE_PROJECT_DIR}/.claude/claude-memory/dirty-files"
+cat "${CLAUDE_PROJECT_DIR}/.claude/mark42/dirty-files"
 ```
 
 Parse the file - each line is either:
@@ -59,13 +59,13 @@ For significant changes, extract knowledge using the CLI:
 
 ```bash
 # Create entities for new patterns/conventions
-claude-memory entity create "<pattern-name>" "pattern" --obs "<description>"
+mark42 entity create "<pattern-name>" "pattern" --obs "<description>"
 
 # Add observations to existing entities
-claude-memory obs add "<entity-name>" "<new observation>"
+mark42 obs add "<entity-name>" "<new observation>"
 
 # Create relations between entities
-claude-memory rel create "<from>" "<to>" "<relation-type>"
+mark42 rel create "<from>" "<to>" "<relation-type>"
 ```
 
 **Extraction criteria**:
@@ -79,7 +79,7 @@ claude-memory rel create "<from>" "<to>" "<relation-type>"
 Clear the dirty-files to prevent re-processing:
 
 ```bash
-echo "" > "${CLAUDE_PROJECT_DIR}/.claude/claude-memory/dirty-files"
+echo "" > "${CLAUDE_PROJECT_DIR}/.claude/mark42/dirty-files"
 ```
 
 ### Output

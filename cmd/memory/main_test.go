@@ -26,11 +26,11 @@ func captureOutput(t *testing.T, cmd *cobra.Command, args []string) (string, err
 
 func TestVersionCommand(t *testing.T) {
 	// Create a fresh root command for testing
-	testCmd := &cobra.Command{Use: "claude-memory"}
+	testCmd := &cobra.Command{Use: "mark42"}
 	testCmd.AddCommand(&cobra.Command{
 		Use: "version",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Println("claude-memory dev")
+			cmd.Println("mark42 dev")
 		},
 	})
 
@@ -39,8 +39,8 @@ func TestVersionCommand(t *testing.T) {
 		t.Fatalf("version command failed: %v", err)
 	}
 
-	if !strings.Contains(output, "claude-memory") {
-		t.Errorf("expected 'claude-memory' in output, got: %s", output)
+	if !strings.Contains(output, "mark42") {
+		t.Errorf("expected 'mark42' in output, got: %s", output)
 	}
 }
 

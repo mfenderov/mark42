@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestNewStore_CreatesDatabase(t *testing.T) {

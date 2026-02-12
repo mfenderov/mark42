@@ -2,7 +2,7 @@
 """PostToolUse hook - tracks edited files for memory updates.
 
 Fires after Edit, Write, or Bash tool execution. Appends changed file
-paths to .claude/claude-memory/dirty-files for batch processing at turn end.
+paths to .claude/mark42/dirty-files for batch processing at turn end.
 Produces NO OUTPUT to maintain zero token cost (critical for performance).
 
 Supports configurable trigger modes:
@@ -21,8 +21,8 @@ from pathlib import Path
 
 
 def load_config(project_dir: str) -> dict:
-    """Load plugin configuration from .claude/claude-memory/config.json."""
-    config_file = Path(project_dir) / ".claude" / "claude-memory" / "config.json"
+    """Load plugin configuration from .claude/mark42/config.json."""
+    config_file = Path(project_dir) / ".claude" / "mark42" / "config.json"
     if config_file.exists():
         try:
             with open(config_file) as f:
@@ -212,7 +212,7 @@ def main():
     if not trackable:
         return
 
-    dirty_file = Path(project_dir) / ".claude" / "claude-memory" / "dirty-files"
+    dirty_file = Path(project_dir) / ".claude" / "mark42" / "dirty-files"
     dirty_file.parent.mkdir(parents=True, exist_ok=True)
 
     existing: dict[str, str] = {}
@@ -235,6 +235,18 @@ def main():
     with open(dirty_file, "w") as f:
         for line in existing.values():
             f.write(line + "\n")
+
+    # Write session event (JSON Lines) for capture at session end
+    event_file = Path(project_dir) / ".claude" / "mark42" / "session-events"
+    event_file.parent.mkdir(parents=True, exist_ok=True)
+    import datetime
+    event = {"toolName": tool_name, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    if tool_name in ("Edit", "Write") and trackable:
+        event["filePath"] = trackable[0]
+    elif tool_name == "Bash" and command:
+        event["command"] = command[:200]
+    with open(event_file, "a") as f:
+        f.write(json.dumps(event) + "\n")
 
     # NO output - zero token cost
 

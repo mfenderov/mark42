@@ -197,3 +197,22 @@ type SummarizeEntityInput struct {
 type ConsolidateMemoriesInput struct {
 	EntityName string `json:"entityName"`
 }
+
+type CaptureSessionEventInput struct {
+	ToolName  string `json:"toolName"`
+	FilePath  string `json:"filePath,omitempty"`
+	Command   string `json:"command,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
+type CaptureSessionInput struct {
+	ProjectName string                     `json:"projectName"`
+	Summary     string                     `json:"summary"`
+	Events      []CaptureSessionEventInput `json:"events,omitempty"`
+}
+
+type RecallSessionsInput struct {
+	ProjectName string `json:"projectName,omitempty"`
+	Hours       int    `json:"hours,omitempty"`
+	TokenBudget int    `json:"tokenBudget,omitempty"`
+}

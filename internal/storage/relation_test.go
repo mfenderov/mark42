@@ -3,7 +3,7 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestCreateRelation(t *testing.T) {

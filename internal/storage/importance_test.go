@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestImportanceConfig_Defaults(t *testing.T) {
@@ -269,9 +269,9 @@ func TestStore_RecalculateImportance(t *testing.T) {
 	// Create entities with relations
 	store.CreateEntity("TDD", "pattern", []string{"Test-Driven Development"})
 	store.CreateEntity("konfig", "project", []string{"Config library"})
-	store.CreateEntity("claude-memory", "project", []string{"Memory system"})
+	store.CreateEntity("mark42", "project", []string{"Memory system"})
 	store.CreateRelation("TDD", "konfig", "used_by")
-	store.CreateRelation("TDD", "claude-memory", "used_by")
+	store.CreateRelation("TDD", "mark42", "used_by")
 
 	// Recalculate importance
 	updated, err := store.RecalculateImportance()
