@@ -11,7 +11,7 @@
 **Cause**: Multiple processes accessing the same database file.
 
 **Solution**:
-1. Check for running claude-memory processes: `pgrep -f claude-memory`
+1. Check for running mark42 processes: `pgrep -f mark42`
 2. Wait for current operations to complete
 3. If stuck, restart Claude Code session
 4. Enable WAL mode (default): `PRAGMA journal_mode=WAL`
@@ -23,7 +23,7 @@
 **Solution**:
 ```bash
 # Run schema migrations
-claude-memory upgrade
+mark42 upgrade
 ```
 
 #### "database disk image is malformed"
@@ -40,7 +40,7 @@ claude-memory upgrade
 3. If repair fails, delete and reinitialize:
    ```bash
    rm ~/.claude/memory.db
-   claude-memory init
+   mark42 init
    ```
 
 ### Search Issues
@@ -67,8 +67,8 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 
 **Solution**:
 1. Check Ollama is running: `curl http://localhost:11434/api/tags`
-2. Generate embeddings: `claude-memory embed generate`
-3. Check embedding coverage: `claude-memory embed stats`
+2. Generate embeddings: `mark42 embed generate`
+3. Check embedding coverage: `mark42 embed stats`
 
 ### Embedding Issues
 
@@ -84,7 +84,7 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 **Cause**: Large number of observations, slow model, or network issues.
 
 **Solution**:
-1. Use smaller batch sizes: `claude-memory embed generate --batch 5`
+1. Use smaller batch sizes: `mark42 embed generate --batch 5`
 2. Use local Ollama instead of remote
 3. Consider pruning old/unimportant observations first
 
@@ -95,11 +95,11 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 **Solution**:
 1. Run importance recalculation to prune low-value memories:
    ```bash
-   claude-memory importance recalculate
+   mark42 importance recalculate
    ```
 2. Archive old memories:
    ```bash
-   claude-memory decay archive --days 90 --min-importance 0.1
+   mark42 decay archive --days 90 --min-importance 0.1
    ```
 3. Check database size:
    ```bash
@@ -122,14 +122,14 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 
 **Checklist**:
 1. Database exists: `ls ~/.claude/memory.db`
-2. Binary is in PATH: `which claude-memory`
+2. Binary is in PATH: `which mark42`
 3. Hook is executable: `ls -l ~/.claude-plugin/hooks/session-start.py`
 4. Check hook output manually:
    ```bash
    CLAUDE_PROJECT_DIR=$(pwd) python3 ~/.claude-plugin/hooks/session-start.py
    ```
 
-#### "command not found: claude-memory"
+#### "command not found: mark42"
 
 **Solution**:
 1. Install binary: `make install`
@@ -148,11 +148,11 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 **Solution**:
 1. Verify JSON format:
    ```bash
-   cat ~/.config/claude-memory/memory.json | jq .
+   cat ~/.config/mark42/memory.json | jq .
    ```
 2. Try with verbose output:
    ```bash
-   claude-memory migrate --from ~/.config/claude-memory/memory.json 2>&1
+   mark42 migrate --from ~/.config/mark42/memory.json 2>&1
    ```
 3. Check for duplicate entities (already exist in database)
 
@@ -163,10 +163,10 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 **Solution**: Adjust token budget and importance thresholds:
 ```bash
 # Smaller context
-claude-memory context --token-budget 1000 --min-importance 0.5
+mark42 context --token-budget 1000 --min-importance 0.5
 
 # Larger context
-claude-memory context --token-budget 3000 --min-importance 0.2
+mark42 context --token-budget 3000 --min-importance 0.2
 ```
 
 #### Wrong project memories shown
@@ -176,30 +176,30 @@ claude-memory context --token-budget 3000 --min-importance 0.2
 **Solution**:
 1. Set container tags for project-specific entities:
    ```bash
-   claude-memory workdir set "MyEntity" "my-project"
+   mark42 workdir set "MyEntity" "my-project"
    ```
 2. List entities by project:
    ```bash
-   claude-memory workdir list "my-project"
+   mark42 workdir list "my-project"
    ```
 
 ## Diagnostic Commands
 
 ```bash
 # Check database status
-claude-memory stats
+mark42 stats
 
 # Check schema version
 sqlite3 ~/.claude/memory.db "SELECT * FROM goose_db_version;"
 
 # Check embedding coverage
-claude-memory embed stats
+mark42 embed stats
 
 # Check decay statistics
-claude-memory decay stats
+mark42 decay stats
 
 # Check importance distribution
-claude-memory importance stats
+mark42 importance stats
 
 # List all tables
 sqlite3 ~/.claude/memory.db ".tables"
@@ -207,11 +207,11 @@ sqlite3 ~/.claude/memory.db ".tables"
 
 ## Getting Help
 
-1. Check CLI help: `claude-memory --help`
-2. Check subcommand help: `claude-memory <command> --help`
+1. Check CLI help: `mark42 --help`
+2. Check subcommand help: `mark42 <command> --help`
 3. Review logs in Claude Code output
 4. Open an issue on GitHub with:
    - Error message
    - Steps to reproduce
-   - Output of `claude-memory stats`
+   - Output of `mark42 stats`
    - Database schema version

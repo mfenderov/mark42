@@ -6,12 +6,11 @@ import "strings"
 type FactType string
 
 const (
-	// FactTypeStatic represents permanent user preferences that persist across sessions.
-	FactTypeStatic FactType = "static"
-	// FactTypeDynamic represents session-bound context that may decay.
-	FactTypeDynamic FactType = "dynamic"
-	// FactTypeSessionTurn represents facts extracted from conversation turns.
-	FactTypeSessionTurn FactType = "session_turn"
+	FactTypeStatic         FactType = "static"
+	FactTypeDynamic        FactType = "dynamic"
+	FactTypeSessionTurn    FactType = "session_turn"
+	FactTypeSessionEvent   FactType = "session_event"
+	FactTypeSessionSummary FactType = "session_summary"
 )
 
 // ObservationWithMeta represents an observation with metadata.
@@ -123,7 +122,7 @@ func (s *Store) GetContextByFactType() (*ContextByFactType, error) {
 func (c *ContextByFactType) FormatContextForInjection() string {
 	var sb strings.Builder
 
-	sb.WriteString("<claude-memory-context>\n")
+	sb.WriteString("<mark42-context>\n")
 
 	if len(c.Static) > 0 {
 		sb.WriteString("## User Profile (Persistent)\n")
@@ -155,7 +154,7 @@ func (c *ContextByFactType) FormatContextForInjection() string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("</claude-memory-context>")
+	sb.WriteString("</mark42-context>")
 	return sb.String()
 }
 

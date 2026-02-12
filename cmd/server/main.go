@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mfenderov/claude-memory/internal/mcp"
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/mcp"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 var Version = "dev"
@@ -112,7 +112,7 @@ func (s *Server) handleInitialize(req *mcp.Request) {
 			Tools: &mcp.ToolsCapability{},
 		},
 		ServerInfo: mcp.ServerInfo{
-			Name:    "claude-memory",
+			Name:    "mark42",
 			Version: Version,
 		},
 	}
@@ -178,5 +178,5 @@ func (s *Server) send(resp mcp.Response) {
 }
 
 func logError(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "[claude-memory] "+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "[mark42] "+format+"\n", args...)
 }

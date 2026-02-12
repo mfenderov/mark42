@@ -2,7 +2,7 @@
 
 ## Overview
 
-Claude Memory is an MCP (Model Context Protocol) server that provides persistent, searchable memory for Claude Code sessions. It replaces the default JSON-based Memory MCP with a SQLite-backed implementation offering superior search capabilities.
+mark42 is an MCP (Model Context Protocol) server that provides persistent, searchable memory for Claude Code sessions. It replaces the default JSON-based Memory MCP with a SQLite-backed implementation offering superior search capabilities.
 
 ## System Components
 
@@ -243,7 +243,7 @@ LIMIT 20;
 ## File Structure
 
 ```
-claude-memory/
+mark42/
 ├── README.md
 ├── docs/
 │   ├── ARCHITECTURE.md        # This file
@@ -274,7 +274,7 @@ claude-memory/
 ## Configuration
 
 ```yaml
-# ~/.claude-memory/config.yaml (optional)
+# ~/.mark42/config.yaml (optional)
 database:
   path: ~/.claude/memory.db
 

@@ -1,11 +1,11 @@
 ---
-description: Initialize claude-memory for this project
+description: Initialize mark42 for this project
 argument-hint: [--gitmode]
 ---
 
 # /memory:init
 
-Initialize the claude-memory system for this project.
+Initialize the mark42 system for this project.
 
 ## Steps
 
@@ -17,7 +17,7 @@ Ask the user how auto-memory should trigger:
 - `default` (Recommended): Track Edit/Write/Bash operations in real-time
 - `gitmode`: Only trigger on git commits (best for frequent committers)
 
-Save to `.claude/claude-memory/config.json`:
+Save to `.claude/mark42/config.json`:
 ```json
 {
   "triggerMode": "default"
@@ -28,15 +28,15 @@ Save to `.claude/claude-memory/config.json`:
 
 Add to `.gitignore`:
 ```
-# Claude Memory
-.claude/claude-memory/dirty-files
+# mark42
+.claude/mark42/dirty-files
 ```
 
 ### 3. Initialize Database
 
 Ensure the database exists:
 ```bash
-claude-memory init
+mark42 init
 ```
 
 ### 4. Analyze Codebase

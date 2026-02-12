@@ -17,7 +17,7 @@ func TestStore_SetContainerTag(t *testing.T) {
 	store.CreateEntity("TestEntity", "project", []string{"obs1"})
 
 	// Set container tag
-	err := store.SetContainerTag("TestEntity", "claude-memory")
+	err := store.SetContainerTag("TestEntity", "mark42")
 	if err != nil {
 		t.Fatalf("SetContainerTag failed: %v", err)
 	}
@@ -28,8 +28,8 @@ func TestStore_SetContainerTag(t *testing.T) {
 		t.Fatalf("GetContainerTag failed: %v", err)
 	}
 
-	if tag != "claude-memory" {
-		t.Errorf("expected tag 'claude-memory', got %q", tag)
+	if tag != "mark42" {
+		t.Errorf("expected tag 'mark42', got %q", tag)
 	}
 }
 
@@ -60,12 +60,12 @@ func TestStore_GetEntitiesByContainerTag(t *testing.T) {
 	store.CreateEntity("Project2", "project", []string{"obs2"})
 	store.CreateEntity("Global", "project", []string{"obs3"})
 
-	store.SetContainerTag("Project1", "claude-memory")
-	store.SetContainerTag("Project2", "claude-memory")
+	store.SetContainerTag("Project1", "mark42")
+	store.SetContainerTag("Project2", "mark42")
 	// Global has no tag
 
 	// Get entities by tag
-	entities, err := store.GetEntitiesByContainerTag("claude-memory")
+	entities, err := store.GetEntitiesByContainerTag("mark42")
 	if err != nil {
 		t.Fatalf("GetEntitiesByContainerTag failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestStore_HybridSearchWithContainerBoost(t *testing.T) {
 	store.CreateEntity("Python", "language", []string{"Python is a dynamically typed language"})
 
 	// Set container tags
-	store.SetContainerTag("Go", "claude-memory")
+	store.SetContainerTag("Go", "mark42")
 	// Python has no tag
 
 	// Search with container boost
@@ -97,7 +97,7 @@ func TestStore_HybridSearchWithContainerBoost(t *testing.T) {
 		"typed language",
 		nil, // no embedding
 		10,
-		"claude-memory", // boost results in this container
+		"mark42", // boost results in this container
 		1.5,             // boost factor
 	)
 	if err != nil {

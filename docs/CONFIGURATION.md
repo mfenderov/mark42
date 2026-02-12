@@ -7,7 +7,7 @@ Default: `~/.claude/memory.db`
 Override with `--db` flag or environment variable:
 ```bash
 export CLAUDE_MEMORY_DB=/path/to/custom/memory.db
-claude-memory --db /path/to/custom/memory.db
+mark42 --db /path/to/custom/memory.db
 ```
 
 ## Environment Variables
@@ -26,21 +26,21 @@ claude-memory --db /path/to/custom/memory.db
 
 ```bash
 # Default
-claude-memory embed test --url http://localhost:11434
+mark42 embed test --url http://localhost:11434
 
 # Custom URL
-claude-memory embed test --url http://my-server:11434
+mark42 embed test --url http://my-server:11434
 ```
 
 ### Embedding Model
 
 ```bash
 # Default: nomic-embed-text
-claude-memory embed generate --model nomic-embed-text
+mark42 embed generate --model nomic-embed-text
 
 # Alternative models
-claude-memory embed generate --model mxbai-embed-large
-claude-memory embed generate --model all-minilm
+mark42 embed generate --model mxbai-embed-large
+mark42 embed generate --model all-minilm
 ```
 
 ## Context Injection
@@ -51,13 +51,13 @@ Controls how many tokens of memory context are injected at session start.
 
 ```bash
 # Default: 2000 tokens
-claude-memory context --token-budget 2000
+mark42 context --token-budget 2000
 
 # Smaller for fast sessions
-claude-memory context --token-budget 1000
+mark42 context --token-budget 1000
 
 # Larger for context-heavy work
-claude-memory context --token-budget 3000
+mark42 context --token-budget 3000
 ```
 
 ### Importance Threshold
@@ -66,13 +66,13 @@ Minimum importance score to include in context.
 
 ```bash
 # Default: 0.3
-claude-memory context --min-importance 0.3
+mark42 context --min-importance 0.3
 
 # Only high-importance memories
-claude-memory context --min-importance 0.7
+mark42 context --min-importance 0.7
 
 # Include more memories
-claude-memory context --min-importance 0.1
+mark42 context --min-importance 0.1
 ```
 
 ### Project Boosting
@@ -81,10 +81,10 @@ Memories matching the current project get score boost.
 
 ```bash
 # Default: 1.5x boost
-claude-memory workdir search "query" --tag "my-project" --boost 1.5
+mark42 workdir search "query" --tag "my-project" --boost 1.5
 
 # Higher boost for project focus
-claude-memory workdir search "query" --tag "my-project" --boost 2.0
+mark42 workdir search "query" --tag "my-project" --boost 2.0
 ```
 
 ## Memory Decay Configuration
@@ -93,20 +93,20 @@ claude-memory workdir search "query" --tag "my-project" --boost 2.0
 
 ```bash
 # Archive memories older than 90 days with importance < 0.1
-claude-memory decay archive --days 90 --min-importance 0.1
+mark42 decay archive --days 90 --min-importance 0.1
 
 # Preview what would be archived
-claude-memory decay archive --days 90 --min-importance 0.1 --dry-run
+mark42 decay archive --days 90 --min-importance 0.1 --dry-run
 ```
 
 ### Forget Settings
 
 ```bash
 # Delete memories past their forget_after date
-claude-memory decay forget --expired
+mark42 decay forget --expired
 
 # Delete archived memories older than 180 days
-claude-memory decay forget --archive-days 180
+mark42 decay forget --archive-days 180
 ```
 
 ## Fact Types
@@ -137,10 +137,10 @@ Where:
 
 ```bash
 # Recalculate all importance scores
-claude-memory importance recalculate
+mark42 importance recalculate
 
 # View importance distribution
-claude-memory importance stats
+mark42 importance stats
 ```
 
 ## Plugin Configuration
@@ -170,8 +170,8 @@ For `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "claude-memory": {
-      "command": "claude-memory-server",
+    "mark42": {
+      "command": "mark42-server",
       "args": ["--db", "~/.claude/memory.db"]
     }
   }
@@ -197,7 +197,7 @@ sqlite3 ~/.claude/memory.db "VACUUM;"
 
 1. Reduce search limits: `--limit 10`
 2. Increase importance threshold: `--min-importance 0.5`
-3. Ensure embeddings are generated: `claude-memory embed stats`
+3. Ensure embeddings are generated: `mark42 embed stats`
 
 ## Backup and Restore
 
@@ -215,7 +215,7 @@ sqlite3 ~/.claude/memory.db ".backup ~/.claude/memory.db.backup"
 
 ```bash
 mv ~/.claude/memory.db.backup ~/.claude/memory.db
-claude-memory upgrade  # Ensure schema is current
+mark42 upgrade  # Ensure schema is current
 ```
 
 ## Security Considerations

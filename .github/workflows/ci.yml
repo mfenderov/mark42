@@ -48,6 +48,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - run: go build -o claude-memory ./cmd/memory
+      - run: go build -o mark42 ./cmd/memory
 
-      - run: go build -o claude-memory-server ./cmd/server
+      - run: go build -o mark42-server ./cmd/server

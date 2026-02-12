@@ -48,7 +48,7 @@ If changes found:
 ```bash
 # Write absolute paths to dirty-files
 for file in $changed_files; do
-  echo "$(pwd)/$file" >> .claude/claude-memory/dirty-files
+  echo "$(pwd)/$file" >> .claude/mark42/dirty-files
 done
 ```
 

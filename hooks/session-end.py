@@ -23,7 +23,7 @@ def main():
     }
 
     # Check for dirty files that weren't synced
-    dirty_file = Path(project_dir) / ".claude" / "claude-memory" / "dirty-files"
+    dirty_file = Path(project_dir) / ".claude" / "mark42" / "dirty-files"
     if dirty_file.exists() and dirty_file.stat().st_size > 0:
         files = [f.strip() for f in dirty_file.read_text().split("\n") if f.strip()]
         stats["unsynced_files"] = len(files)

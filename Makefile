@@ -1,7 +1,7 @@
 .PHONY: build build-server build-all test run lint clean install install-plugin
 
-BINARY=claude-memory
-SERVER=claude-memory-server
+BINARY=mark42
+SERVER=mark42-server
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 
@@ -61,11 +61,11 @@ install-all: build-all
 ## Plugin Installation
 
 install-plugin: build-all
-	@echo "Installing claude-memory plugin..."
+	@echo "Installing mark42 plugin..."
 	mkdir -p bin/
 	cp $(BINARY) $(SERVER) bin/
 	@echo "Plugin binaries ready in bin/"
-	@echo "To complete installation, copy to ~/.claude/plugins/local/claude-memory/"
+	@echo "To complete installation, copy to ~/.claude/plugins/local/mark42/"
 
 ## Migration (from JSON Memory MCP)
 

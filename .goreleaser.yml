@@ -3,7 +3,7 @@ version: 2
 builds:
   - id: cli
     main: ./cmd/memory
-    binary: claude-memory
+    binary: mark42
     goos: [darwin, linux]
     goarch: [amd64, arm64]
     ldflags:
@@ -12,7 +12,7 @@ builds:
 
   - id: server
     main: ./cmd/server
-    binary: claude-memory-server
+    binary: mark42-server
     goos: [darwin, linux]
     goarch: [amd64, arm64]
     ldflags:
@@ -41,34 +41,34 @@ archives:
       # Root config files
       - hooks.json
       # NOTE: .mcp.json excluded - ${CLAUDE_PLUGIN_ROOT} variable not resolved by Claude Code
-      # Users must run: claude mcp add mark42 --scope user --transport stdio -- ~/.claude/plugins/local/claude-memory/bin/claude-memory-server
+      # Users must run: claude mcp add mark42 --scope user --transport stdio -- ~/.claude/plugins/local/mark42/bin/mark42-server
       - README.md
       - LICENSE
 
 brews:
-  - name: claude-memory
+  - name: mark42
     repository:
       owner: mfenderov
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/mfenderov/claude-memory
+    homepage: https://github.com/mfenderov/mark42
     description: "Local, privacy-first RAG memory system for Claude Code"
     license: MIT
     directory: Formula
     install: |
-      bin.install "claude-memory"
-      bin.install "claude-memory-server"
+      bin.install "mark42"
+      bin.install "mark42-server"
 
       # Install plugin assets to share directory (Homebrew-managed)
-      (share/"claude-memory").install ".claude-plugin"
-      (share/"claude-memory").install "agents"
-      (share/"claude-memory").install "skills"
-      (share/"claude-memory").install "commands"
-      (share/"claude-memory").install "hooks"
-      (share/"claude-memory").install "hooks.json"
+      (share/"mark42").install ".claude-plugin"
+      (share/"mark42").install "agents"
+      (share/"mark42").install "skills"
+      (share/"mark42").install "commands"
+      (share/"mark42").install "hooks"
+      (share/"mark42").install "hooks.json"
     post_install: |
       # Create Claude Code plugin directory structure
-      plugin_dir = Pathname.new(Dir.home) / ".claude" / "plugins" / "local" / "claude-memory"
+      plugin_dir = Pathname.new(Dir.home) / ".claude" / "plugins" / "local" / "mark42"
 
       # Clean up existing installation (handles upgrades)
       plugin_dir.rmtree if plugin_dir.exist?
@@ -76,26 +76,26 @@ brews:
       (plugin_dir / "bin").mkpath
 
       # Symlink plugin files from share directory
-      ln_s share/"claude-memory"/".claude-plugin", plugin_dir/".claude-plugin"
-      ln_s share/"claude-memory"/"agents", plugin_dir/"agents"
-      ln_s share/"claude-memory"/"skills", plugin_dir/"skills"
-      ln_s share/"claude-memory"/"commands", plugin_dir/"commands"
-      ln_s share/"claude-memory"/"hooks", plugin_dir/"hooks"
-      ln_s share/"claude-memory"/"hooks.json", plugin_dir/"hooks.json"
+      ln_s share/"mark42"/".claude-plugin", plugin_dir/".claude-plugin"
+      ln_s share/"mark42"/"agents", plugin_dir/"agents"
+      ln_s share/"mark42"/"skills", plugin_dir/"skills"
+      ln_s share/"mark42"/"commands", plugin_dir/"commands"
+      ln_s share/"mark42"/"hooks", plugin_dir/"hooks"
+      ln_s share/"mark42"/"hooks.json", plugin_dir/"hooks.json"
 
       # Symlink binaries (use opt_bin for stable path across upgrades)
-      ln_s opt_bin/"claude-memory", plugin_dir/"bin"/"claude-memory"
-      ln_s opt_bin/"claude-memory-server", plugin_dir/"bin"/"claude-memory-server"
+      ln_s opt_bin/"mark42", plugin_dir/"bin"/"mark42"
+      ln_s opt_bin/"mark42-server", plugin_dir/"bin"/"mark42-server"
 
       # Ensure memory database directory exists (but NEVER touch the database itself)
       memory_dir = Pathname.new(Dir.home) / ".claude"
       memory_dir.mkpath
 
       # Try to register MCP server (may fail in Homebrew sandbox - see caveats)
-      server_path = plugin_dir / "bin" / "claude-memory-server"
+      server_path = plugin_dir / "bin" / "mark42-server"
       system "claude", "mcp", "add", "mark42", "--scope", "user", "--transport", "stdio", "--", server_path.to_s
     caveats: |
-      Claude Memory plugin installed!
+      mark42 plugin installed!
 
       ══════════════════════════════════════════════════════════════
       YOUR MEMORY IS SAFE
@@ -108,7 +108,7 @@ brews:
 
       ══════════════════════════════════════════════════════════════
 
-      Plugin location: ~/.claude/plugins/local/claude-memory/
+      Plugin location: ~/.claude/plugins/local/mark42/
 
       ══════════════════════════════════════════════════════════════
       IMPORTANT: Register the MCP server (one-time setup)
@@ -117,7 +117,7 @@ brews:
       Run this command to enable the "mark42" memory server:
 
         claude mcp add mark42 --scope user --transport stdio -- \\
-          ~/.claude/plugins/local/claude-memory/bin/claude-memory-server
+          ~/.claude/plugins/local/mark42/bin/mark42-server
 
       Then restart Claude Code. The hooks will fire automatically.
 
@@ -126,8 +126,8 @@ brews:
       Available commands: /init, /status, /sync, /calibrate
 
       Verify installation:
-        claude-memory version
-        claude-memory stats
+        mark42 version
+        mark42 stats
 
       Backup recommendation:
         cp ~/.claude/memory.db ~/.claude/memory.db.backup

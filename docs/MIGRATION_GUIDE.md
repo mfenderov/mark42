@@ -2,16 +2,16 @@
 
 ## From JSON Memory MCP
 
-The `@modelcontextprotocol/server-memory` stores data in JSON format. This guide explains how to migrate to claude-memory's SQLite format.
+The `@modelcontextprotocol/server-memory` stores data in JSON format. This guide explains how to migrate to mark42's SQLite format.
 
 ### Automatic Migration
 
 ```bash
 # From default JSON Memory MCP location
-claude-memory migrate --from ~/.config/claude-memory/memory.json
+mark42 migrate --from ~/.config/mark42/memory.json
 
 # From custom location
-claude-memory migrate --from /path/to/memory.json
+mark42 migrate --from /path/to/memory.json
 ```
 
 ### Supported Formats
@@ -48,27 +48,27 @@ claude-memory migrate --from /path/to/memory.json
 
 1. **Backup existing data**
    ```bash
-   cp ~/.config/claude-memory/memory.json ~/.config/claude-memory/memory.json.bak
+   cp ~/.config/mark42/memory.json ~/.config/mark42/memory.json.bak
    ```
 
 2. **Initialize new database**
    ```bash
-   claude-memory init
+   mark42 init
    ```
 
 3. **Run migration**
    ```bash
-   claude-memory migrate --from ~/.config/claude-memory/memory.json
+   mark42 migrate --from ~/.config/mark42/memory.json
    ```
 
 4. **Verify migration**
    ```bash
-   claude-memory stats
+   mark42 stats
    ```
 
 5. **Generate embeddings** (optional but recommended)
    ```bash
-   claude-memory embed generate
+   mark42 embed generate
    ```
 
 6. **Update MCP configuration**
@@ -78,7 +78,7 @@ claude-memory migrate --from /path/to/memory.json
    {
      "mcpServers": {
        "memory": {
-         "command": "claude-memory-server",
+         "command": "mark42-server",
          "args": ["--db", "~/.claude/memory.db"]
        }
      }
@@ -96,12 +96,12 @@ If entities already exist in the target database:
 
 1. **Recalculate importance scores**
    ```bash
-   claude-memory importance recalculate
+   mark42 importance recalculate
    ```
 
 2. **Set container tags for project-specific entities**
    ```bash
-   claude-memory workdir set "EntityName" "project-name"
+   mark42 workdir set "EntityName" "project-name"
    ```
 
 3. **Configure fact types for important memories**
@@ -118,7 +118,7 @@ When upgrading to a new version with schema changes:
 ### Automatic Upgrade
 
 ```bash
-claude-memory upgrade
+mark42 upgrade
 ```
 
 ### Manual Verification
@@ -179,7 +179,7 @@ For complex migrations, use the storage API directly:
 package main
 
 import (
-    "github.com/mfenderov/claude-memory/internal/storage"
+    "github.com/mfenderov/mark42/internal/storage"
 )
 
 func main() {
@@ -197,10 +197,10 @@ func main() {
 
 After migration, verify:
 
-- [ ] Entity count matches source: `claude-memory stats`
-- [ ] Observations preserved: `claude-memory entity get <name>`
-- [ ] Relations intact: `claude-memory rel list <name>`
-- [ ] Search works: `claude-memory search <term>`
+- [ ] Entity count matches source: `mark42 stats`
+- [ ] Observations preserved: `mark42 entity get <name>`
+- [ ] Relations intact: `mark42 rel list <name>`
+- [ ] Search works: `mark42 search <term>`
 - [ ] MCP tools respond: Test via Claude Code session
 
 ## Troubleshooting Migration

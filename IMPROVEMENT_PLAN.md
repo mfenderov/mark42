@@ -1,4 +1,4 @@
-# Claude Memory Plugin Improvement Plan
+# mark42 Plugin Improvement Plan
 
 > Generated: 2026-02-05
 > Status: Ready for Implementation
@@ -6,7 +6,7 @@
 
 ## Overview
 
-This plan outlines improvements to the claude-memory plugin (mark42) based on:
+This plan outlines improvements to the mark42 plugin (mark42) based on:
 - Claude Code hook format updates and new hook types
 - Underutilized CLI features already implemented
 - Phase 3 roadmap alignment (Intelligence features)
@@ -92,7 +92,7 @@ result = {
 mcp__mark42__get_context with projectName and tokenBudget
 
 # Via CLI (for testing):
-claude-memory search "<project>" --format context --limit 20
+mark42 search "<project>" --format context --limit 20
 ```
 
 **Skill Behavior**:
@@ -115,7 +115,7 @@ claude-memory search "<project>" --format context --limit 20
 mcp__mark42__search_nodes with query
 
 # Via CLI:
-claude-memory search "<query>" --limit 10 --format json
+mark42 search "<query>" --limit 10 --format json
 ```
 
 **Note**: Hybrid search (FTS5 + vector) is automatic in the MCP tool when an embedder is configured. The CLI currently uses FTS5-only search.

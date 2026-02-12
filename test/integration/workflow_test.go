@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 // TestWorkflow_FullSessionLifecycle tests a complete session workflow:
@@ -38,7 +38,7 @@ func TestWorkflow_FullSessionLifecycle(t *testing.T) {
 	_, err = store.CreateEntityWithContainer("GoConventions", "pattern", []string{
 		"Use table-driven tests",
 		"Prefer composition over inheritance",
-	}, "claude-memory")
+	}, "mark42")
 	if err != nil {
 		t.Fatalf("CreateEntityWithContainer failed: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestWorkflow_FullSessionLifecycle(t *testing.T) {
 	_, err = store.CreateEntityWithContainer("ProjectStructure", "structure", []string{
 		"cmd/memory contains CLI",
 		"internal/storage contains database logic",
-	}, "claude-memory")
+	}, "mark42")
 	if err != nil {
 		t.Fatalf("CreateEntityWithContainer failed: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestWorkflow_FullSessionLifecycle(t *testing.T) {
 
 	// === Verify memories exist ===
 
-	entities, err := store.GetEntitiesByContainerTag("claude-memory")
+	entities, err := store.GetEntitiesByContainerTag("mark42")
 	if err != nil {
 		t.Fatalf("GetEntitiesByContainerTag failed: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestWorkflow_FullSessionLifecycle(t *testing.T) {
 	cfg := storage.DefaultContextConfig()
 	cfg.MinImportance = 0 // Include all for test
 
-	results, err := store.GetContextWithContainerTag(cfg, "claude-memory")
+	results, err := store.GetContextWithContainerTag(cfg, "mark42")
 	if err != nil {
 		t.Fatalf("GetContextWithContainerTag failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestWorkflow_FullSessionLifecycle(t *testing.T) {
 	localCount, globalCount := 0, 0
 	for _, r := range results {
 		tag, _ := store.GetContainerTag(r.EntityName)
-		if tag == "claude-memory" {
+		if tag == "mark42" {
 			localScoreSum += r.FinalScore
 			localCount++
 		} else {

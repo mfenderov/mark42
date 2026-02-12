@@ -22,7 +22,7 @@ Build a local, privacy-first memory system for Claude Code using SQLite + FTS5, 
                      │
                      ▼
            ┌─────────────────┐
-           │  claude-memory  │
+           │  mark42  │
            │      CLI        │
            └─────────────────┘
                      │
@@ -38,7 +38,7 @@ Build a local, privacy-first memory system for Claude Code using SQLite + FTS5, 
 
 | # | Component | Description |
 |---|-----------|-------------|
-| 1 | CLI binary | `claude-memory` - Go binary with entity/search/relation commands |
+| 1 | CLI binary | `mark42` - Go binary with entity/search/relation commands |
 | 2 | SQLite schema | entities, observations, relations tables + FTS5 index |
 | 3 | SessionStart hook | Injects relevant memories at session start |
 | 4 | Stop hook update | Update existing hook to use CLI instead of MCP |
@@ -123,30 +123,30 @@ END;
 
 ```bash
 # Entity operations
-claude-memory entity create <name> <type> [--obs "observation"]...
-claude-memory entity get <name>
-claude-memory entity list [--type <type>]
-claude-memory entity delete <name>
+mark42 entity create <name> <type> [--obs "observation"]...
+mark42 entity get <name>
+mark42 entity list [--type <type>]
+mark42 entity delete <name>
 
 # Observation operations
-claude-memory obs add <entity> <content>
-claude-memory obs delete <entity> <content>
+mark42 obs add <entity> <content>
+mark42 obs delete <entity> <content>
 
 # Relation operations
-claude-memory rel create <from> <to> <type>
-claude-memory rel list <entity>
-claude-memory rel delete <from> <to> <type>
+mark42 rel create <from> <to> <type>
+mark42 rel list <entity>
+mark42 rel delete <from> <to> <type>
 
 # Search (key feature)
-claude-memory search <query> [--limit N]
+mark42 search <query> [--limit N]
 
 # Graph operations
-claude-memory graph [--format json|dot]
+mark42 graph [--format json|dot]
 
 # Database management
-claude-memory init [--path <path>]
-claude-memory migrate --from <json-file>
-claude-memory stats
+mark42 init [--path <path>]
+mark42 migrate --from <json-file>
+mark42 stats
 ```
 
 ### 1.4 TDD Order
@@ -177,7 +177,7 @@ if [[ ! -f "$DB_PATH" ]]; then
 fi
 
 # Get recent and project-relevant memories
-CONTEXT=$(claude-memory search "$(basename $(pwd))" --limit 5 --format context 2>/dev/null)
+CONTEXT=$(mark42 search "$(basename $(pwd))" --limit 5 --format context 2>/dev/null)
 
 if [[ -n "$CONTEXT" ]]; then
     echo "Recent relevant memories:"
@@ -209,8 +209,8 @@ Change prompt from using `mcp__memory__*` tools to:
 
 ```
 Memory sync: If learnings worth persisting, use Bash to call:
-  claude-memory entity create "<name>" "<type>" --obs "<observation>"
-  claude-memory rel create "<from>" "<to>" "<relation>"
+  mark42 entity create "<name>" "<type>" --obs "<observation>"
+  mark42 rel create "<from>" "<to>" "<relation>"
 If nothing significant, say 'nothing to persist' and proceed.
 ```
 
@@ -221,7 +221,7 @@ If nothing significant, say 'nothing to persist' and proceed.
 ### 3.1 Migration Command
 
 ```bash
-claude-memory migrate --from ~/.docker-volumes/claude-memory/memory.json
+mark42 migrate --from ~/.docker-volumes/mark42/memory.json
 ```
 
 Implementation:
@@ -234,7 +234,7 @@ Implementation:
 
 1. **Build & test CLI** locally
 2. **Run migration** from Docker volume JSON
-3. **Verify data** with `claude-memory stats` and `claude-memory graph`
+3. **Verify data** with `mark42 stats` and `mark42 graph`
 4. **Update hooks** to use CLI
 5. **Test in new session** - verify SessionStart injects context
 6. **Test persistence** - verify Stop hook stores memories
@@ -255,17 +255,17 @@ If issues occur:
 Once stable, package as Claude Code plugin:
 
 ```
-claude-memory-plugin/
+mark42-plugin/
 ├── plugin.json
 ├── bin/
-│   └── claude-memory          # Pre-built binary
+│   └── mark42          # Pre-built binary
 ├── hooks/
 │   ├── session-start.sh
 │   └── stop.sh
 └── README.md
 ```
 
-This makes installation: `claude plugin install claude-memory-plugin`
+This makes installation: `claude plugin install mark42-plugin`
 
 ---
 
@@ -301,13 +301,13 @@ make test-coverage # >80% coverage
 ### Integration Tests
 ```bash
 # Create test data
-claude-memory entity create "test-entity" "test-type" --obs "test observation"
+mark42 entity create "test-entity" "test-type" --obs "test observation"
 
 # Verify search
-claude-memory search "test" | grep "test-entity"
+mark42 search "test" | grep "test-entity"
 
 # Verify graph
-claude-memory graph | jq '.entities | length'
+mark42 graph | jq '.entities | length'
 ```
 
 ### End-to-End Tests

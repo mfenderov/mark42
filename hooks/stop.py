@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop hook - terse memory sync with context summary."""
+"""Stop hook - terse memory sync with session capture."""
 
 import json
 import os
@@ -18,39 +18,52 @@ def main():
     except (json.JSONDecodeError, Exception):
         session_data = {}
 
-    # Gather context to help Claude
-    context_parts = []
-
-    # 1. Project name
     project_name = Path(project_dir).name
-    context_parts.append(f"Project: {project_name}")
 
-    # 2. Dirty files (what was modified)
+    # Gather dirty files
     files = []
-    dirty_file = Path(project_dir) / ".claude" / "claude-memory" / "dirty-files"
+    dirty_file = Path(project_dir) / ".claude" / "mark42" / "dirty-files"
     if dirty_file.exists() and dirty_file.stat().st_size > 0:
         files = [f.strip() for f in dirty_file.read_text().split("\n") if f.strip()][:5]
-        if files:
-            context_parts.append(f"Files modified: {', '.join(files)}")
 
-    # 3. Session stats if available
-    if "transcript_length" in session_data:
-        context_parts.append(f"Session length: {session_data['transcript_length']} chars")
+    # Read session events
+    events = []
+    event_file = Path(project_dir) / ".claude" / "mark42" / "session-events"
+    if event_file.exists() and event_file.stat().st_size > 0:
+        for line in event_file.read_text().strip().split("\n"):
+            line = line.strip()
+            if line:
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
 
     files_list = ", ".join(files) if files else "none"
+    event_count = len(events)
+
+    # Build events JSON for capture_session
+    events_json = json.dumps(events[:50])  # Cap at 50 events
 
     output = {
         "decision": "block",
         "reason": (
             f"Memory sync for {project_name}. "
-            f"Modified: {files_list}. "
-            f"Use create_or_update_entities for new learnings, add_observations for updates. "
+            f"Modified: {files_list}. Events: {event_count}. "
+            f"1. Call capture_session with projectName='{project_name}', "
+            f"a brief summary of what was done, and events={events_json}. "
+            f"2. Use create_or_update_entities for new learnings, add_observations for updates. "
             f"Use fact_type='static' for conventions/patterns, 'dynamic' for decisions/context. "
             f"Reply only: 'Synced N learnings.'"
         ),
         "suppressOutput": True,
     }
     print(json.dumps(output))
+
+    # Clear buffers
+    if dirty_file.exists():
+        dirty_file.write_text("")
+    if event_file.exists():
+        event_file.write_text("")
 
 
 if __name__ == "__main__":

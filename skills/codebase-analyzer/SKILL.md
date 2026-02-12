@@ -100,7 +100,7 @@ Use this template structure:
 Optionally seed the memory database with detected patterns:
 
 ```bash
-claude-memory entity create "Project-Name" "project" \
+mark42 entity create "Project-Name" "project" \
   --obs "Type: [detected-type]" \
   --obs "Framework: [detected-framework]"
 ```

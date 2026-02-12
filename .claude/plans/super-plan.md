@@ -53,7 +53,7 @@ ALTER TABLE observations ADD COLUMN fact_type TEXT DEFAULT 'dynamic';
 
 **Context injection format** (from supermemory's `format-context.js`):
 ```
-<claude-memory-context>
+<mark42-context>
 ## User Profile (Persistent)
 - Prefers TypeScript over JavaScript
 - Uses Bun as package manager
@@ -61,7 +61,7 @@ ALTER TABLE observations ADD COLUMN fact_type TEXT DEFAULT 'dynamic';
 ## Recent Context
 - Working on authentication flow
 - Debugging OAuth callback issue
-</claude-memory-context>
+</mark42-context>
 ```
 
 **Files to modify**:
@@ -155,7 +155,7 @@ importance = initial_importance * decay_factor ^ days_since_access
 
 **Goal**: Index project structure into memory.
 
-**New skill**: `/claude-memory:index`
+**New skill**: `/mark42:index`
 - Walk project directory
 - Extract: file structure, conventions, architecture
 - Chunk code files using treesitter (from cagent)
@@ -232,7 +232,7 @@ ALTER TABLE entities ADD COLUMN container_tag TEXT;
 **Sprint 3 (Week 5-6): Auto-Capture**
 1. Implement transcript parsing in Stop hook
 2. Add decay/TTL support
-3. Create `/claude-memory:index` skill
+3. Create `/mark42:index` skill
 4. Add chunking for large documents
 
 **Sprint 4 (Week 7-8): Polish**

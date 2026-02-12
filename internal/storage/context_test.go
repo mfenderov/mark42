@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestContextConfig_Defaults(t *testing.T) {
@@ -89,25 +89,25 @@ func TestStore_GetContextForInjection_ProjectBoost(t *testing.T) {
 	}
 
 	// Create test data
-	store.CreateEntity("claude-memory", "project", []string{"Memory system for Claude"})
+	store.CreateEntity("mark42", "project", []string{"Memory system for Claude"})
 	store.CreateEntity("other-project", "project", []string{"Some other project"})
 
-	store.SetObservationImportance("claude-memory", "Memory system for Claude", 0.5)
+	store.SetObservationImportance("mark42", "Memory system for Claude", 0.5)
 	store.SetObservationImportance("other-project", "Some other project", 0.5)
 
 	cfg := storage.DefaultContextConfig()
 	cfg.MinImportance = 0.3
 	cfg.ProjectBoost = 2.0
 
-	results, err := store.GetContextForInjection(cfg, "claude-memory")
+	results, err := store.GetContextForInjection(cfg, "mark42")
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}
 
-	// Find the claude-memory result
+	// Find the mark42 result
 	var claudeScore, otherScore float64
 	for _, r := range results {
-		if r.EntityName == "claude-memory" {
+		if r.EntityName == "mark42" {
 			claudeScore = r.FinalScore
 		}
 		if r.EntityName == "other-project" {
@@ -115,9 +115,9 @@ func TestStore_GetContextForInjection_ProjectBoost(t *testing.T) {
 		}
 	}
 
-	// claude-memory should have higher final score due to project boost
+	// mark42 should have higher final score due to project boost
 	if claudeScore <= otherScore {
-		t.Errorf("expected claude-memory score (%v) > other-project score (%v) due to project boost",
+		t.Errorf("expected mark42 score (%v) > other-project score (%v) due to project boost",
 			claudeScore, otherScore)
 	}
 }

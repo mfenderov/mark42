@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mfenderov/claude-memory/internal/storage"
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestDecayConfig_Defaults(t *testing.T) {

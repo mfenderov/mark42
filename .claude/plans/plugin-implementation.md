@@ -45,7 +45,7 @@ Replace auto-memory with a feature-rich SQLite-based alternative that provides:
 ### Testing
 ```bash
 # Manual protocol test
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/claude-memory-server
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/mark42-server
 ```
 
 ---
@@ -54,7 +54,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/claude-memory-serv
 
 ### Directory Layout
 ```
-claude-memory/
+mark42/
 ├── .claude-plugin/
 │   └── plugin.json           # Plugin metadata
 ├── hooks/
@@ -74,8 +74,8 @@ claude-memory/
 │   ├── sync.md               # /memory:sync
 │   └── calibrate.md          # /memory:calibrate
 ├── bin/                      # Compiled binaries
-│   ├── claude-memory
-│   └── claude-memory-server
+│   ├── mark42
+│   └── mark42-server
 └── .mcp.json                 # MCP server registration
 ```
 
@@ -84,7 +84,7 @@ claude-memory/
 **`.claude-plugin/plugin.json`**
 ```json
 {
-  "name": "claude-memory",
+  "name": "mark42",
   "description": "SQLite-backed memory with CLAUDE.md management",
   "version": "1.0.0"
 }
@@ -106,7 +106,7 @@ claude-memory/
 {
   "mcpServers": {
     "memory": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/claude-memory-server",
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mark42-server",
       "args": ["--db", "~/.claude/memory.db"]
     }
   }
@@ -146,8 +146,8 @@ claude-memory/
 
 ### knowledge-extractor **NEW**
 - Extract meaningful patterns, decisions, conventions
-- Create entities via CLI: `claude-memory entity create ...`
-- Create relations via CLI: `claude-memory rel create ...`
+- Create entities via CLI: `mark42 entity create ...`
+- Create relations via CLI: `mark42 rel create ...`
 - Criteria: Cross-cutting patterns, architectural decisions, tool usage
 
 ---
@@ -189,7 +189,7 @@ claude-memory/
 ### Week 4: Commands & Testing
 1. Implement 4 slash commands
 2. End-to-end testing
-3. Migration testing (auto-memory → claude-memory)
+3. Migration testing (auto-memory → mark42)
 4. Documentation updates
 
 ---
@@ -197,8 +197,8 @@ claude-memory/
 ## Verification Checklist
 
 ### MCP Server
-- [ ] `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/claude-memory-server` returns tools
-- [ ] Create entity via MCP → appears in `claude-memory entity list`
+- [ ] `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/mark42-server` returns tools
+- [ ] Create entity via MCP → appears in `mark42 entity list`
 - [ ] Search via MCP → returns FTS5 ranked results
 
 ### Hooks

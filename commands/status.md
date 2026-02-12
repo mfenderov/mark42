@@ -4,14 +4,14 @@ description: Show memory system status
 
 # /memory:status
 
-Display the current state of the claude-memory system.
+Display the current state of the mark42 system.
 
 ## Checks to Perform
 
 ### 1. Database Status
 
 ```bash
-claude-memory stats
+mark42 stats
 ```
 
 Display:
@@ -36,19 +36,19 @@ For each file, show:
 
 Check dirty files:
 ```bash
-wc -l < .claude/claude-memory/dirty-files 2>/dev/null || echo "0"
+wc -l < .claude/mark42/dirty-files 2>/dev/null || echo "0"
 ```
 
 If pending changes exist, offer to run `/memory:sync`.
 
 ### 4. Configuration
 
-Show trigger mode from `.claude/claude-memory/config.json`.
+Show trigger mode from `.claude/mark42/config.json`.
 
 ## Output Format
 
 ```
-Claude Memory Status
+mark42 Status
 ====================
 
 Database: ~/.claude/memory.db

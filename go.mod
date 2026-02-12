@@ -1,4 +1,4 @@
-module github.com/mfenderov/claude-memory
+module github.com/mfenderov/mark42
 
 go 1.25.6
 
