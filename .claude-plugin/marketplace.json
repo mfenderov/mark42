@@ -9,10 +9,7 @@
     {
       "name": "mark42",
       "description": "Local, privacy-first RAG memory system for Claude Code. SQLite-backed knowledge graph with FTS5 + vector hybrid search, session capture & recall.",
-      "source": {
-        "source": "url",
-        "url": "https://github.com/mfenderov/mark42.git"
-      },
+      "source": "./plugin/mark42",
       "homepage": "https://github.com/mfenderov/mark42"
     }
   ]
