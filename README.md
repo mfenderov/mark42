@@ -1,145 +1,159 @@
 # mark42
 
-A local, privacy-first RAG memory system for Claude Code, built on SQLite.
+A local, privacy-first RAG memory system for Claude Code, built on SQLite with Go.
 
 ## Why This Exists
 
-### The Problem
-
-Claude Code sessions are ephemeral. Valuable context—patterns learned, decisions made, codebase knowledge—disappears when a session ends. Current solutions have trade-offs:
+Claude Code sessions are ephemeral. Valuable context—patterns learned, decisions made, codebase knowledge—disappears when a session ends.
 
 | Solution | Issue |
 |----------|-------|
-| **Memory MCP (JSON)** | No search capability, linear scan, no semantic understanding |
-| **Cloud services (supermemory)** | Privacy concerns, subscription cost, external dependency |
+| **Memory MCP (JSON)** | No search, linear scan, no semantic understanding |
+| **Cloud services** | Privacy concerns, subscription cost, external dependency |
 | **Manual notes** | Friction, inconsistent, not queryable |
 
-### The Solution
-
-A **local SQLite database** with:
+**mark42** is a local SQLite database with:
 - **Full-text search** (FTS5) for keyword queries
-- **Vector search** (sqlite-vec) for semantic retrieval
-- **Hybrid ranking** combining both approaches
+- **Vector search** (Ollama embeddings) for semantic retrieval
+- **Hybrid ranking** (RRF fusion) combining both approaches
+- **Session capture & recall** for cross-session continuity
 - **MCP interface** for seamless Claude Code integration
-
-### Design Principles
-
-1. **Privacy first**: All data stays local. No cloud, no telemetry, no third parties.
-2. **Single file portability**: One `memory.db` file contains everything. `cp` to backup, `scp` to sync.
-3. **Incremental complexity**: Start simple (FTS5), add vectors when needed.
-4. **Drop-in replacement**: Same MCP API as existing Memory server.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Claude Code                                │
-│                    mcp__memory__* tools                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    mark42 MCP Server                      │
-│                         (this project)                           │
-│                                                                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Create    │  │   Search    │  │   Retrieve              │  │
-│  │   Entities  │  │   (hybrid)  │  │   (by name/relation)    │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         SQLite                                   │
-│                                                                  │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐   │
-│  │   Entities    │  │  Observations │  │    Relations      │   │
-│  │   (nodes)     │  │  (properties) │  │    (edges)        │   │
-│  └───────────────┘  └───────────────┘  └───────────────────┘   │
-│                                                                  │
-│  ┌───────────────┐  ┌───────────────────────────────────────┐   │
-│  │    FTS5       │  │         sqlite-vec (Phase 2)          │   │
-│  │  (keywords)   │  │         (semantic vectors)            │   │
-│  └───────────────┘  └───────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ (Phase 2)
-┌─────────────────────────────────────────────────────────────────┐
-│                    Ollama (local embeddings)                     │
-│                    nomic-embed-text / mxbai-embed-large          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Roadmap
-
-### Phase 1: Foundation ✅ Complete
-- [x] SQLite schema for knowledge graph
-- [x] FTS5 full-text search (BM25 ranking)
-- [x] MCP server with standard Memory API (JSON-RPC 2.0 over stdio)
-- [x] CLI tool for database management
-- [x] Claude Code plugin structure (hooks, agents, skills, commands)
-
-### Phase 2: Semantic Search
-- [ ] sqlite-vec integration
-- [ ] Ollama embedding generation
-- [ ] Hybrid search (keyword + vector)
-- [ ] Relevance tuning
-
-### Phase 3: Intelligence
-- [ ] Auto-context injection at session start
-- [ ] Importance scoring for memories
-- [ ] Decay/consolidation of old memories
-- [ ] Cross-session continuity
 
 ## Quick Start
 
 ```bash
-# Clone and build
-cd ~/dev/private/mark42
-make build-all
+# Install via Homebrew
+brew tap mfenderov/tap
+brew install mark42
+
+# Or build from source
+git clone https://github.com/mfenderov/mark42.git
+cd mark42 && make build-all
 
 # Register the MCP server with Claude Code
-claude mcp add --scope user --transport stdio mark42 -- \
-  /path/to/mark42/bin/mark42-server
+claude mcp add mark42 --scope user --transport stdio -- \
+  ~/.claude/plugins/local/mark42/bin/mark42-server
 
-# Verify server is connected
-# Use /mcp command in Claude Code to check status
-
-# Restart Claude Code - mcp__mark42__* tools now available
+# Verify
+mark42 version
+mark42 stats
 ```
 
-**Note**: Plugin `.mcp.json` files are NOT auto-discovered by Claude Code. You must use `claude mcp add` to register MCP servers explicitly. The server config is stored in `~/.claude.json`.
+## Architecture
 
-## API Compatibility
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       Claude Code                           │
+│                    mcp__mark42__* tools                      │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ JSON-RPC 2.0 (stdio)
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    mark42-server (Go)                        │
+│                                                             │
+│  Knowledge Graph    Session Capture    Context Injection     │
+│  (entities, obs,    (capture, recall,  (importance, recency, │
+│   relations)         events, summary)   project boost)       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     SQLite (memory.db)                       │
+│                                                             │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐     │
+│  │  Entities   │  │ Observations │  │   Relations    │     │
+│  │  (nodes)    │  │ (properties) │  │   (edges)      │     │
+│  └─────────────┘  └──────────────┘  └────────────────┘     │
+│                                                             │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐     │
+│  │    FTS5     │  │  Embeddings  │  │   Archive      │     │
+│  │  (keywords) │  │  (vectors)   │  │   (decayed)    │     │
+│  └─────────────┘  └──────────────┘  └────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                           │ (optional)
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Ollama (local embeddings)                       │
+│              nomic-embed-text / mxbai-embed-large            │
+└─────────────────────────────────────────────────────────────┘
+```
 
-This server implements the same tools as `@modelcontextprotocol/server-memory`:
+## MCP Tools (16 total)
 
 | Tool | Description |
 |------|-------------|
 | `create_entities` | Create nodes in the knowledge graph |
 | `create_or_update_entities` | Create or update with versioning support |
 | `create_relations` | Create edges between nodes |
-| `add_observations` | Add properties to existing nodes |
-| `delete_entities` | Remove nodes and their relations |
+| `add_observations` | Add properties with optional fact types |
+| `delete_entities` | Remove nodes (cascades to observations/relations) |
 | `delete_observations` | Remove specific observations |
 | `delete_relations` | Remove edges |
 | `read_graph` | Retrieve the entire graph |
-| `search_nodes` | **Enhanced**: FTS5 + vector search |
+| `search_nodes` | Hybrid search: FTS5 + vector (RRF fusion) |
 | `open_nodes` | Retrieve specific nodes by name |
-| `get_context` | Get memories for context injection |
+| `get_context` | Importance-ranked memories for context injection |
+| `get_recent_context` | Recency-first retrieval for mid-session use |
+| `summarize_entity` | Entity summary with observations, relations, history |
+| `consolidate_memories` | Deduplicate similar observations |
+| `capture_session` | Capture session summary + tool-use events |
+| `recall_sessions` | Recall recent session summaries for continuity |
+
+## CLI
+
+```bash
+# Entity management
+mark42 entity create "Go Conventions" "pattern" --obs "Use table-driven tests"
+mark42 entity get "Go Conventions"
+mark42 entity list --type pattern
+mark42 search "testing patterns"
+
+# Session management
+echo '{"summary":"Built auth module","events":[...]}' | mark42 session capture my-project
+mark42 session list --project my-project
+mark42 session recall my-project --hours 72
+
+# Embeddings & search
+mark42 embed generate          # Generate vector embeddings via Ollama
+mark42 hybrid-search "testing" # FTS5 + vector hybrid search
+
+# Maintenance
+mark42 importance recalculate  # Update importance scores
+mark42 decay archive           # Archive old, low-importance memories
+mark42 context --project my-project  # Preview context injection output
+```
+
+## Plugin Hooks
+
+mark42 includes Claude Code plugin hooks for automatic memory management:
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| `session-start.py` | Session begins | Injects session recall + knowledge graph context |
+| `post-tool-use.py` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
+| `stop.py` | Session ends | Triggers `capture_session` + memory sync |
 
 ## Comparison
 
-| Feature | JSON Memory MCP | This Project | supermemory |
-|---------|----------------|--------------|-------------|
+| Feature | JSON Memory MCP | mark42 | supermemory |
+|---------|----------------|--------|-------------|
 | Storage | JSON file | SQLite | Cloud |
 | Privacy | ✅ Local | ✅ Local | ❌ Third-party |
 | Keyword search | ❌ None | ✅ FTS5/BM25 | ✅ Yes |
-| Semantic search | ❌ None | ✅ sqlite-vec | ✅ Yes |
+| Semantic search | ❌ None | ✅ Ollama embeddings | ✅ Yes |
+| Session continuity | ❌ None | ✅ Capture & recall | ❌ None |
+| Importance scoring | ❌ None | ✅ Recency + centrality | ❌ None |
 | Query performance | O(n) | O(log n) | O(log n) |
 | Portability | ✅ Single file | ✅ Single file | ❌ Cloud-locked |
 | Cost | Free | Free | Subscription |
-| Dependencies | None | SQLite | API key |
+
+## Roadmap
+
+- **Phase 1** ✅ Foundation — SQLite schema, FTS5 search, MCP server, CLI, plugin structure
+- **Phase 2** ✅ Semantic Search — Hybrid search (FTS5 + vector), Ollama embeddings, fact types, entity versioning
+- **Phase 3** ✅ Intelligence — Auto-embed on write, recency-boosted context injection, consolidation
+- **Phase 4** ✅ Session Capture & Recall — Cross-session continuity, capture/recall tools, hook integration
+- **Phase 5** 🔮 Analytics & Advanced Decay — Automatic importance decay, memory analytics
 
 ## License
 
