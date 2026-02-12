@@ -1,21 +1,19 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "mark42",
+  "description": "Privacy-first SQLite-backed memory system for Claude Code",
   "owner": {
     "name": "mfenderov"
-  },
-  "metadata": {
-    "description": "Privacy-first SQLite-backed memory system for Claude Code"
   },
   "plugins": [
     {
       "name": "mark42",
-      "source": ".",
       "description": "Local, privacy-first RAG memory system for Claude Code. SQLite-backed knowledge graph with FTS5 + vector hybrid search, session capture & recall.",
-      "version": "2.0.0",
-      "author": {
-        "name": "mfenderov"
+      "source": {
+        "source": "url",
+        "url": "https://github.com/mfenderov/mark42.git"
       },
-      "license": "MIT"
+      "homepage": "https://github.com/mfenderov/mark42"
     }
   ]
 }

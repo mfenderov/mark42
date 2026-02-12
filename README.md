@@ -21,22 +21,37 @@ Claude Code sessions are ephemeral. Valuable context—patterns learned, decisio
 
 ## Quick Start
 
+### Option 1: Plugin (recommended)
+
 ```bash
-# Install via Homebrew
+# Add mark42 marketplace and install the plugin
+/plugin marketplace add mfenderov/mark42
+/plugin install mark42@mark42
+```
+
+This installs everything: hooks (session capture, event tracking, context injection), skills, agents, and commands.
+
+### Option 2: Homebrew (CLI + MCP server)
+
+```bash
+# Install binaries
 brew tap mfenderov/tap
 brew install mark42
 
-# Or build from source
-git clone https://github.com/mfenderov/mark42.git
-cd mark42 && make build-all
-
 # Register the MCP server with Claude Code
 claude mcp add mark42 --scope user --transport stdio -- \
-  ~/.claude/plugins/local/mark42/bin/mark42-server
+  $(which mark42-server)
 
 # Verify
 mark42 version
 mark42 stats
+```
+
+### Option 3: Build from source
+
+```bash
+git clone https://github.com/mfenderov/mark42.git
+cd mark42 && make build-all
 ```
 
 ## Architecture
