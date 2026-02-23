@@ -35,11 +35,9 @@ archives:
       # Commands (flat directory with .md files)
       - src: commands/*.md
         dst: commands/
-      # Hooks (flat directory with .py files)
-      - src: hooks/*.py
-        dst: hooks/
-      # Root config files
-      - hooks.json
+      # Hooks config (Go hooks are compiled into mark42 binary)
+      - src: hooks/hooks.json
+        dst: hooks/hooks.json
       # NOTE: .mcp.json excluded - ${CLAUDE_PLUGIN_ROOT} variable not resolved by Claude Code
       # Users must run: claude mcp add mark42 --scope user --transport stdio -- ~/.claude/plugins/local/mark42/bin/mark42-server
       - README.md
@@ -65,7 +63,6 @@ brews:
       (share/"mark42").install "skills"
       (share/"mark42").install "commands"
       (share/"mark42").install "hooks"
-      (share/"mark42").install "hooks.json"
     post_install: |
       # Create Claude Code plugin directory structure
       plugin_dir = Pathname.new(Dir.home) / ".claude" / "plugins" / "local" / "mark42"
@@ -81,7 +78,6 @@ brews:
       ln_s share/"mark42"/"skills", plugin_dir/"skills"
       ln_s share/"mark42"/"commands", plugin_dir/"commands"
       ln_s share/"mark42"/"hooks", plugin_dir/"hooks"
-      ln_s share/"mark42"/"hooks.json", plugin_dir/"hooks.json"
 
       # Symlink binaries (use opt_bin for stable path across upgrades)
       ln_s opt_bin/"mark42", plugin_dir/"bin"/"mark42"
