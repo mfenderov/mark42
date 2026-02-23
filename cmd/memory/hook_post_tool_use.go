@@ -91,10 +91,6 @@ func runPostToolUseHook(projectDir string, input hookInput) {
 		}
 	}
 
-	if len(filesToTrack) == 0 && !isGitCommit {
-		return
-	}
-
 	var trackable []string
 	for _, f := range filesToTrack {
 		if shouldTrack(f, projectDir) {
@@ -102,14 +98,34 @@ func runPostToolUseHook(projectDir string, input hookInput) {
 		}
 	}
 
-	if len(trackable) == 0 && !isGitCommit {
-		return
-	}
-
 	m42 := mark42Dir(projectDir)
 	_ = os.MkdirAll(m42, 0o755)
 
-	// Update dirty-files (deduplicated)
+	// Always write session event (activity tracking for knowledge-only sessions)
+	event := map[string]string{
+		"toolName":  input.ToolName,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	if (input.ToolName == "Edit" || input.ToolName == "Write") && len(trackable) > 0 {
+		event["filePath"] = trackable[0]
+	} else if input.ToolName == "Bash" && command != "" {
+		cmd := command
+		if len(cmd) > 200 {
+			cmd = cmd[:200]
+		}
+		event["command"] = cmd
+	}
+
+	eventJSON, _ := json.Marshal(event)
+	eventsPath := filepath.Join(m42, "session-events")
+	f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err == nil {
+		f.Write(eventJSON)
+		f.Write([]byte("\n"))
+		f.Close()
+	}
+
+	// Update dirty-files (only when files were modified)
 	if len(trackable) > 0 {
 		dirtyPath := filepath.Join(m42, "dirty-files")
 		existing := make(map[string]string)
@@ -133,30 +149,6 @@ func runPostToolUseHook(projectDir string, input hookInput) {
 			sb.WriteByte('\n')
 		}
 		_ = os.WriteFile(dirtyPath, []byte(sb.String()), 0o644)
-	}
-
-	// Write session event (JSONL)
-	event := map[string]string{
-		"toolName":  input.ToolName,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-	if (input.ToolName == "Edit" || input.ToolName == "Write") && len(trackable) > 0 {
-		event["filePath"] = trackable[0]
-	} else if input.ToolName == "Bash" && command != "" {
-		cmd := command
-		if len(cmd) > 200 {
-			cmd = cmd[:200]
-		}
-		event["command"] = cmd
-	}
-
-	eventJSON, _ := json.Marshal(event)
-	eventsPath := filepath.Join(m42, "session-events")
-	f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err == nil {
-		f.Write(eventJSON)
-		f.Write([]byte("\n"))
-		f.Close()
 	}
 
 	// CRITICAL: zero stdout output

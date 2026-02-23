@@ -253,6 +253,57 @@ func TestPostToolUseHook(t *testing.T) {
 		}
 	})
 
+	t.Run("read-only Bash writes event but no dirty files", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		input := hookInput{
+			ToolName:  "Bash",
+			ToolInput: map[string]any{"command": "go test ./..."},
+		}
+		runPostToolUseHook(dir, input)
+
+		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
+		if len(dirty) != 0 {
+			t.Errorf("read-only Bash should not create dirty files, got %d", len(dirty))
+		}
+
+		events := readLines(filepath.Join(mark42Dir(dir), "session-events"))
+		if len(events) != 1 {
+			t.Fatalf("read-only Bash should still write event, got %d events", len(events))
+		}
+
+		var evt map[string]any
+		if err := json.Unmarshal([]byte(events[0]), &evt); err != nil {
+			t.Fatalf("event not valid JSON: %v", err)
+		}
+		if evt["toolName"] != "Bash" {
+			t.Errorf("event toolName = %v, want Bash", evt["toolName"])
+		}
+		if evt["command"] != "go test ./..." {
+			t.Errorf("event command = %v, want 'go test ./...'", evt["command"])
+		}
+	})
+
+	t.Run("excluded Edit writes event but no dirty files", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		input := hookInput{
+			ToolName:  "Edit",
+			ToolInput: map[string]any{"file_path": filepath.Join(dir, ".claude", "config.json")},
+		}
+		runPostToolUseHook(dir, input)
+
+		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
+		if len(dirty) != 0 {
+			t.Errorf("excluded file should not create dirty files, got %d", len(dirty))
+		}
+
+		events := readLines(filepath.Join(mark42Dir(dir), "session-events"))
+		if len(events) != 1 {
+			t.Fatalf("excluded Edit should still write event, got %d events", len(events))
+		}
+	})
+
 	t.Run("Bash rm extracts file", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
