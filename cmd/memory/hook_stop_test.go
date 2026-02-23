@@ -9,7 +9,7 @@ import (
 )
 
 func TestHookStop(t *testing.T) {
-	t.Run("outputs blocking JSON with events", func(t *testing.T) {
+	t.Run("full mode when files edited", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -44,6 +44,60 @@ func TestHookStop(t *testing.T) {
 		}
 		if !strings.Contains(reason, "memory-updater") {
 			t.Errorf("reason should mention memory-updater, got: %s", reason)
+		}
+		if !strings.Contains(reason, "full") {
+			t.Errorf("reason should contain 'full' mode, got: %s", reason)
+		}
+	})
+
+	t.Run("knowledge-only mode with events but no files", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		m42 := mark42Dir(dir)
+
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
+		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Read"}`+"\n"), 0o644)
+
+		var buf captureBuffer
+		runStopHook(dir, withOutput(&buf))
+
+		got := buf.String()
+		if got == "" {
+			t.Fatal("expected blocking output for knowledge-only session")
+		}
+
+		var output map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(got)), &output); err != nil {
+			t.Fatalf("output is not valid JSON: %v\ngot: %s", err, got)
+		}
+
+		if output["decision"] != "block" {
+			t.Errorf("decision = %v, want block", output["decision"])
+		}
+
+		reason, ok := output["reason"].(string)
+		if !ok {
+			t.Fatal("reason is not a string")
+		}
+		if !strings.Contains(reason, "knowledge-only") {
+			t.Errorf("reason should contain 'knowledge-only' mode, got: %s", reason)
+		}
+		if !strings.Contains(reason, "memory-updater") {
+			t.Errorf("reason should mention memory-updater, got: %s", reason)
+		}
+	})
+
+	t.Run("no output when no events and no files", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		m42 := mark42Dir(dir)
+
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
+		os.WriteFile(filepath.Join(m42, "session-events"), []byte(""), 0o644)
+
+		var buf captureBuffer
+		runStopHook(dir, withOutput(&buf))
+
+		if buf.String() != "" {
+			t.Errorf("truly empty session should produce no output, got: %s", buf.String())
 		}
 	})
 
@@ -85,21 +139,6 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("no output when no dirty files", func(t *testing.T) {
-		dir := setupProjectDir(t)
-		m42 := mark42Dir(dir)
-
-		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Read"}`+"\n"), 0o644)
-
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
-
-		if buf.String() != "" {
-			t.Errorf("no dirty files should produce no output, got: %s", buf.String())
-		}
-	})
-
 	t.Run("no output without project dir", func(t *testing.T) {
 		var buf captureBuffer
 		runStopHook("", withOutput(&buf))
@@ -134,6 +173,14 @@ func TestHookStop(t *testing.T) {
 		}
 		if output["decision"] != "block" {
 			t.Errorf("decision = %v, want block", output["decision"])
+		}
+
+		reason, ok := output["reason"].(string)
+		if !ok {
+			t.Fatal("reason is not a string")
+		}
+		if !strings.Contains(reason, "full") {
+			t.Errorf("reason should contain 'full' mode, got: %s", reason)
 		}
 	})
 }

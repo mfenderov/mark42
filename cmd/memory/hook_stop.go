@@ -68,16 +68,26 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	clearFile(filepath.Join(m42, "session-events"))
 	clearFile(filepath.Join(m42, "dirty-files"))
 
-	// Only block if files were edited this session
-	if len(files) > 0 {
-		output := map[string]any{
-			"decision": "block",
-			"reason":   "Use the Task tool to spawn the mark42:memory-updater agent. Reply only with the agent's summary.",
-			"suppressOutput": true,
-		}
-		data, _ := json.Marshal(output)
-		hookPrint(cfg, string(data))
+	if len(events) == 0 && len(files) == 0 {
+		return
 	}
+
+	mode := "knowledge-only"
+	if len(files) > 0 {
+		mode = "full"
+	}
+
+	reason := fmt.Sprintf(
+		"Use the Task tool to spawn the mark42:memory-updater agent in %s mode. Reply only with the agent's summary.",
+		mode,
+	)
+	output := map[string]any{
+		"decision":       "block",
+		"reason":         reason,
+		"suppressOutput": true,
+	}
+	data, _ := json.Marshal(output)
+	hookPrint(cfg, string(data))
 }
 
 func captureSessionDirectly[E any](projectName string, events []E, files []string) {
