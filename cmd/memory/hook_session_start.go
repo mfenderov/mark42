@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mfenderov/mark42/internal/storage"
 	"github.com/spf13/cobra"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 type hookOption func(*hookConfig)

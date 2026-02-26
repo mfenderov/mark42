@@ -120,8 +120,8 @@ func runPostToolUseHook(projectDir string, input hookInput) {
 	eventsPath := filepath.Join(m42, "session-events")
 	f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err == nil {
-		f.Write(eventJSON)
-		f.Write([]byte("\n"))
+		_, _ = f.Write(eventJSON)
+		_, _ = f.WriteString("\n")
 		f.Close()
 	}
 

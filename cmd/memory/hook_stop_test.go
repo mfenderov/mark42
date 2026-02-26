@@ -123,12 +123,12 @@ func TestHookStop(t *testing.T) {
 		runStopHook(dir, withOutput(&buf))
 
 		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
-		if len(strings.TrimSpace(string(dirty))) > 0 {
+		if strings.TrimSpace(string(dirty)) != "" {
 			t.Error("dirty-files should be cleared by hook")
 		}
 
 		events, _ := os.ReadFile(filepath.Join(m42, "session-events"))
-		if len(strings.TrimSpace(string(events))) > 0 {
+		if strings.TrimSpace(string(events)) != "" {
 			t.Error("session-events should be cleared")
 		}
 	})
