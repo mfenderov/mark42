@@ -77,14 +77,8 @@ func runStopHook(projectDir string, opts ...hookOption) {
 		mode = "full"
 	}
 
-	reason := fmt.Sprintf(
-		"Use the Task tool to spawn the mark42:memory-updater agent in %s mode. Reply only with the agent's summary.",
-		mode,
-	)
 	output := map[string]any{
-		"decision":       "block",
-		"reason":         reason,
-		"suppressOutput": true,
+		"systemMessage": fmt.Sprintf("mark42: Session captured (%d events, %s mode)", len(events), mode),
 	}
 	data, _ := json.Marshal(output)
 	hookPrint(cfg, string(data))

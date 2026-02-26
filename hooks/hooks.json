@@ -30,6 +30,12 @@
           {
             "type": "command",
             "command": "mark42 hook stop",
+            "async": true,
+            "timeout": 30
+          },
+          {
+            "type": "prompt",
+            "prompt": "You are evaluating whether Claude should stop. Context: $ARGUMENTS\n\nIf stop_hook_active is true, respond {\"ok\": true}.\n\nOtherwise: check if this session had meaningful activity (multiple tool calls, code changes, architectural discussions, debugging). If yes, respond {\"ok\": false, \"reason\": \"Use the Task tool to spawn the mark42:knowledge-extractor agent in background mode. Reply only with the agent's summary.\"}. If the session was trivial (greetings, simple lookups, single question), respond {\"ok\": true}.",
             "timeout": 10
           }
         ]

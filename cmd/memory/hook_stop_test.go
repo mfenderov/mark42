@@ -9,7 +9,7 @@ import (
 )
 
 func TestHookStop(t *testing.T) {
-	t.Run("full mode when files edited", func(t *testing.T) {
+	t.Run("full mode systemMessage when files edited", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -31,26 +31,27 @@ func TestHookStop(t *testing.T) {
 			t.Fatalf("output is not valid JSON: %v\ngot: %s", err, got)
 		}
 
-		if output["decision"] != "block" {
-			t.Errorf("decision = %v, want block", output["decision"])
+		msg, ok := output["systemMessage"].(string)
+		if !ok {
+			t.Fatal("systemMessage is not a string")
 		}
-		if output["suppressOutput"] != true {
-			t.Errorf("suppressOutput = %v, want true", output["suppressOutput"])
+		if !strings.Contains(msg, "full") {
+			t.Errorf("systemMessage should contain 'full' mode, got: %s", msg)
+		}
+		if !strings.Contains(msg, "1 events") {
+			t.Errorf("systemMessage should contain event count, got: %s", msg)
 		}
 
-		reason, ok := output["reason"].(string)
-		if !ok {
-			t.Fatal("reason is not a string")
+		// Async hooks should NOT have decision or suppressOutput
+		if _, exists := output["decision"]; exists {
+			t.Error("async hook should not output decision field")
 		}
-		if !strings.Contains(reason, "memory-updater") {
-			t.Errorf("reason should mention memory-updater, got: %s", reason)
-		}
-		if !strings.Contains(reason, "full") {
-			t.Errorf("reason should contain 'full' mode, got: %s", reason)
+		if _, exists := output["suppressOutput"]; exists {
+			t.Error("async hook should not output suppressOutput field")
 		}
 	})
 
-	t.Run("knowledge-only mode with events but no files", func(t *testing.T) {
+	t.Run("knowledge-only mode systemMessage with events but no files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -62,7 +63,7 @@ func TestHookStop(t *testing.T) {
 
 		got := buf.String()
 		if got == "" {
-			t.Fatal("expected blocking output for knowledge-only session")
+			t.Fatal("expected output for knowledge-only session")
 		}
 
 		var output map[string]any
@@ -70,19 +71,12 @@ func TestHookStop(t *testing.T) {
 			t.Fatalf("output is not valid JSON: %v\ngot: %s", err, got)
 		}
 
-		if output["decision"] != "block" {
-			t.Errorf("decision = %v, want block", output["decision"])
-		}
-
-		reason, ok := output["reason"].(string)
+		msg, ok := output["systemMessage"].(string)
 		if !ok {
-			t.Fatal("reason is not a string")
+			t.Fatal("systemMessage is not a string")
 		}
-		if !strings.Contains(reason, "knowledge-only") {
-			t.Errorf("reason should contain 'knowledge-only' mode, got: %s", reason)
-		}
-		if !strings.Contains(reason, "memory-updater") {
-			t.Errorf("reason should mention memory-updater, got: %s", reason)
+		if !strings.Contains(msg, "knowledge-only") {
+			t.Errorf("systemMessage should contain 'knowledge-only' mode, got: %s", msg)
 		}
 	})
 
@@ -148,7 +142,7 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("caps events at 50", func(t *testing.T) {
+	t.Run("caps events at 50 with systemMessage", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
@@ -164,23 +158,20 @@ func TestHookStop(t *testing.T) {
 
 		got := strings.TrimSpace(buf.String())
 		if got == "" {
-			t.Fatal("expected blocking output with dirty files")
+			t.Fatal("expected output with dirty files")
 		}
 
 		var output map[string]any
 		if err := json.Unmarshal([]byte(got), &output); err != nil {
 			t.Fatalf("invalid JSON: %v", err)
 		}
-		if output["decision"] != "block" {
-			t.Errorf("decision = %v, want block", output["decision"])
-		}
 
-		reason, ok := output["reason"].(string)
+		msg, ok := output["systemMessage"].(string)
 		if !ok {
-			t.Fatal("reason is not a string")
+			t.Fatal("systemMessage is not a string")
 		}
-		if !strings.Contains(reason, "full") {
-			t.Errorf("reason should contain 'full' mode, got: %s", reason)
+		if !strings.Contains(msg, "50 events") {
+			t.Errorf("systemMessage should show capped event count (50), got: %s", msg)
 		}
 	})
 }
