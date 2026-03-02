@@ -41,6 +41,18 @@
         ]
       }
     ],
+    "SubagentStop": [
+      {
+        "matcher": "knowledge-extractor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mark42 hook subagent-stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "hooks": [
