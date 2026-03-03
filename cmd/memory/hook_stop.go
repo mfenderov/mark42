@@ -166,6 +166,10 @@ func buildSessionDigest(transcriptPath string) string {
 		}
 	}
 
+	if err := scanner.Err(); err != nil && sb.Len() == 0 {
+		fmt.Fprintf(os.Stderr, "[mark42] digest scanner error: %v\n", err)
+	}
+
 	result := strings.TrimSpace(sb.String())
 	if len(result) > maxDigestSize {
 		result = result[:maxDigestSize]

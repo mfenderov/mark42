@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mfenderov/mark42/internal/mcp"
 	"github.com/mfenderov/mark42/internal/storage"
@@ -46,6 +48,12 @@ func main() {
 	if embedderURL != "disabled" {
 		embedder := storage.NewEmbeddingClient(embedderURL)
 		handler.WithEmbedder(embedder)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if _, err := embedder.CreateEmbedding(ctx, "test"); err != nil {
+			logError("embedder unavailable at %s — semantic search disabled", embedderURL)
+		}
+		cancel()
 	}
 
 	// Run server

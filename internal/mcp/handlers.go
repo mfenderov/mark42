@@ -4,11 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/log"
+
 	"github.com/mfenderov/mark42/internal/storage"
 )
+
+var logger = log.NewWithOptions(os.Stderr, log.Options{
+	ReportTimestamp: false,
+})
 
 // Embedder generates vector embeddings for text.
 type Embedder interface {
@@ -734,8 +741,6 @@ func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, er
 	}, nil
 }
 
-// embedObservations generates and stores embeddings for the given observations.
-// Fails silently if the embedder is not configured or embedding generation fails.
 func (h *Handler) embedObservations(entityName string, contents []string) {
 	if h.embedder == nil {
 		return
@@ -744,10 +749,16 @@ func (h *Handler) embedObservations(entityName string, contents []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	loggedWarning := false
 	for _, content := range contents {
 		embedding, err := h.embedder.CreateEmbedding(ctx, content)
 		if err != nil {
-			continue // Degrade gracefully — don't fail the write operation
+			if !loggedWarning {
+				logger.Warn("embedding failed, semantic search degraded",
+					"entity", entityName, "error", err)
+				loggedWarning = true
+			}
+			continue
 		}
 
 		obs := h.store.GetObservationWithID(entityName, content)

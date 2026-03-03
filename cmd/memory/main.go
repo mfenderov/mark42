@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ var (
 	})
 
 	// out is the destination for command output (search results, stats, etc.)
-	out = os.Stdout
+	out io.Writer = os.Stdout
 )
 
 // output writes command results to stdout (not stderr).
@@ -639,6 +640,18 @@ var statsCmd = &cobra.Command{
 		output("  " + dimStyle.Render("Entities:") + "     " + successStyle.Render(itoa(len(graph.Entities))))
 		output("  " + dimStyle.Render("Observations:") + " " + successStyle.Render(itoa(obsCount)))
 		output("  " + dimStyle.Render("Relations:") + "    " + successStyle.Render(itoa(len(graph.Relations))))
+
+		if total, withEmb, err := store.EmbeddingStats(); err == nil {
+			pct := 0.0
+			if total > 0 {
+				pct = float64(withEmb) / float64(total) * 100
+			}
+			indicator := ""
+			if total > 0 && withEmb < total {
+				indicator = " !"
+			}
+			output("  " + dimStyle.Render("Embeddings:") + "   " + successStyle.Render(fmt.Sprintf("%d/%d (%.1f%%)", withEmb, total, pct)) + indicator)
+		}
 
 		return nil
 	},

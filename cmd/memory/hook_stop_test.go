@@ -102,6 +102,35 @@ func TestBuildSessionDigest(t *testing.T) {
 		}
 	})
 
+	t.Run("returns partial content on scanner error", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "transcript.jsonl")
+
+		// Normal line followed by oversized line (>1MB)
+		normalLine := `{"type":"user","message":{"role":"user","content":"visible content"}}` + "\n"
+		oversizedLine := `{"type":"user","message":{"role":"user","content":"` + strings.Repeat("x", 2*1024*1024) + `"}}` + "\n"
+		os.WriteFile(path, []byte(normalLine+oversizedLine), 0o644)
+
+		digest := buildSessionDigest(path)
+		if !strings.Contains(digest, "visible content") {
+			t.Error("digest should contain content from lines before the oversized line")
+		}
+	})
+
+	t.Run("handles oversized first line gracefully", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "transcript.jsonl")
+
+		// Only an oversized line (>1MB)
+		oversizedLine := `{"type":"user","message":{"role":"user","content":"` + strings.Repeat("x", 2*1024*1024) + `"}}` + "\n"
+		os.WriteFile(path, []byte(oversizedLine), 0o644)
+
+		digest := buildSessionDigest(path)
+		if digest != "" {
+			t.Errorf("expected empty digest for oversized-only transcript, got %d bytes", len(digest))
+		}
+	})
+
 	t.Run("extracts text from mixed assistant blocks", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "transcript.jsonl")
