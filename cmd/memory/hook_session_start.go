@@ -13,7 +13,8 @@ import (
 type hookOption func(*hookConfig)
 
 type hookConfig struct {
-	writer *captureBuffer
+	writer    *captureBuffer
+	stopInput *stopInput
 }
 
 type captureBuffer struct {

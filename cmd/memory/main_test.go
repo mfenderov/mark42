@@ -480,6 +480,35 @@ func TestStatsCommand(t *testing.T) {
 	store.Close()
 }
 
+func TestStatsCommand_EmbeddingCoverage(t *testing.T) {
+	tmpDir := t.TempDir()
+	testDBPath := filepath.Join(tmpDir, "test.db")
+
+	oldDBPath := dbPath
+	dbPath = testDBPath
+	defer func() { dbPath = oldDBPath }()
+
+	store, err := getStore()
+	if err != nil {
+		t.Fatalf("getStore failed: %v", err)
+	}
+	store.CreateEntity("E1", "test", []string{"obs1"})
+	store.Close()
+
+	// Capture output from stats command
+	var buf bytes.Buffer
+	oldOut := out
+	out = &buf
+	defer func() { out = oldOut }()
+
+	statsCmd.RunE(statsCmd, nil)
+
+	got := buf.String()
+	if !strings.Contains(got, "Embeddings:") {
+		t.Errorf("stats output should contain 'Embeddings:', got:\n%s", got)
+	}
+}
+
 func TestHelperFunctions(t *testing.T) {
 	t.Run("itoa", func(t *testing.T) {
 		tests := []struct {

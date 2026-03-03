@@ -1,0 +1,12 @@
+{"type":"file-history-snapshot","data":{"files":["/tmp/test.go"]}}
+{"type":"progress","data":{"stage":"init"}}
+{"type":"user","message":{"role":"user","content":"Add a new search feature to the CLI"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll implement the search feature using FTS5."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"path":"/tmp/search.go"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"123","content":"file contents here"}]}}
+{"type":"progress","data":{"stage":"running"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let me think about the approach..."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The search implementation uses BM25 ranking for relevance."}]}}
+{"type":"user","message":{"role":"user","content":"Looks good, please also add tests"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll add table-driven tests for the search function."},{"type":"tool_use","name":"Write","input":{"path":"/tmp/search_test.go"}}]}}
+{"type":"system","message":{"role":"system","content":"System reminder text"}}

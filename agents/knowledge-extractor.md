@@ -16,12 +16,20 @@ You analyze session context and extract meaningful knowledge to persist in SQLit
 
 ### 1. Load Session Context
 
+Read the session digest for the full conversation narrative:
+
 ```bash
-# Get recent session summary
-mark42 session recall --hours 1 --tokens 500
+cat .claude/mark42/session-digest.md
 ```
 
-Also use your own conversation context — you have access to the full session transcript.
+This contains what was discussed, decided, and accomplished — filtered to user messages and assistant text (no tool calls or thinking blocks).
+
+Focus on extracting **decisions and patterns**, not summarizing events.
+
+If the digest file doesn't exist, fall back to:
+```bash
+mark42 session recall --hours 1 --tokens 500
+```
 
 ### 2. Identify Extractable Knowledge
 

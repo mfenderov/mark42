@@ -30,7 +30,6 @@
           {
             "type": "command",
             "command": "mark42 hook stop",
-            "async": true,
             "timeout": 30
           },
           {

@@ -3,6 +3,7 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1251,6 +1252,52 @@ func TestHandler_AutoEmbed_NoEmbedder(t *testing.T) {
 	_, withEmb, _ := store.EmbeddingStats()
 	if withEmb != 0 {
 		t.Errorf("expected 0 embeddings without embedder, got %d", withEmb)
+	}
+}
+
+type failingEmbedder struct {
+	calls int
+}
+
+func (f *failingEmbedder) CreateEmbedding(_ context.Context, _ string) ([]float64, error) {
+	f.calls++
+	return nil, fmt.Errorf("connection refused")
+}
+
+func TestHandler_AutoEmbed_FailingEmbedder(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	embedder := &failingEmbedder{}
+	handler.WithEmbedder(embedder)
+
+	args := `{"entities": [{"name": "Go", "entityType": "language", "observations": ["Compiled language", "Has goroutines"]}]}`
+	result, err := handler.CallTool("create_entities", json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("create_entities should succeed even with failing embedder: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+
+	// Entity should still be created
+	entity, err := store.GetEntity("Go")
+	if err != nil {
+		t.Fatalf("entity not created: %v", err)
+	}
+	if len(entity.Observations) != 2 {
+		t.Errorf("expected 2 observations, got %d", len(entity.Observations))
+	}
+
+	// Embedder was called but all failed
+	if embedder.calls != 2 {
+		t.Errorf("expected 2 embedding calls, got %d", embedder.calls)
+	}
+
+	// No embeddings stored
+	_, withEmb, _ := store.EmbeddingStats()
+	if withEmb != 0 {
+		t.Errorf("expected 0 embeddings with failing embedder, got %d", withEmb)
 	}
 }
 
