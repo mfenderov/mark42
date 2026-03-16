@@ -31,11 +31,6 @@
             "type": "command",
             "command": "mark42 hook stop",
             "timeout": 30
-          },
-          {
-            "type": "prompt",
-            "prompt": "You are evaluating whether Claude should stop.\n\nCheck if this session had meaningful activity (multiple tool calls, code changes, architectural discussions, debugging).\n\nIf the session was trivial (greetings, simple lookups, single question), respond with:\n{\"decision\": \"approve\"}\n\nIf the session was meaningful, respond with:\n{\"decision\": \"block\", \"reason\": \"Use the Task tool to spawn the mark42:knowledge-extractor agent in background mode. Reply only with the agent's summary.\"}",
-            "timeout": 10
           }
         ]
       }
