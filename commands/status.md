@@ -2,7 +2,7 @@
 description: Show memory system status
 ---
 
-# /memory:status
+# Memory System Status
 
 Display the current state of the mark42 system.
 

@@ -2,7 +2,7 @@
 description: Force recalibration of CLAUDE.md sections
 ---
 
-# /memory:calibrate
+# Recalibrate Memory
 
 Force a complete recalibration of all CLAUDE.md AUTO-MANAGED sections.
 

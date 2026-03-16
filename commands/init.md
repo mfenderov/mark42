@@ -3,7 +3,7 @@ description: Initialize mark42 for this project
 argument-hint: [--gitmode]
 ---
 
-# /memory:init
+# Initialize mark42
 
 Initialize the mark42 system for this project.
 

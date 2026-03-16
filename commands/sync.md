@@ -2,7 +2,7 @@
 description: Sync CLAUDE.md with recent file changes
 ---
 
-# /memory:sync
+# Sync Memory
 
 Manually trigger CLAUDE.md and memory sync based on git changes.
 
