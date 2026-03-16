@@ -99,20 +99,8 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	clearFile(filepath.Join(m42, "session-events"))
 	clearFile(filepath.Join(m42, "dirty-files"))
 
-	if len(events) == 0 && len(files) == 0 {
-		return
-	}
-
-	mode := "knowledge-only"
-	if len(files) > 0 {
-		mode = "full"
-	}
-
-	output := map[string]any{
-		"systemMessage": fmt.Sprintf("mark42: Session captured (%d events, %s mode)", len(events), mode),
-	}
-	data, _ := json.Marshal(output)
-	hookPrint(cfg, string(data))
+	// Stop hook: silent exit 0 = approve stop (no JSON output).
+	// Only output JSON with {"decision":"block"} when blocking.
 }
 
 const (
