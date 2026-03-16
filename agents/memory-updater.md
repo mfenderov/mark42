@@ -17,21 +17,16 @@ You orchestrate memory updates at session end. Your job depends on the mode:
 
 ## Workflow
 
-### Phase 0: Detect Mode
-
-Read the mode from your invocation context:
-- If the stop hook reason contains **"full mode"** → run all phases (1-4)
-- If the stop hook reason contains **"knowledge-only mode"** → skip Phases 2-3
-
 ### Phase 1: Load Context
 
-**full mode**:
+Check for recent file changes to determine mode:
 - Run `git diff HEAD~3 --name-only` to find changed files
-- If that fails (no recent commits), use `git status` instead
+- If changes exist → **full mode** (run all phases)
+- If no changes (or no recent commits) → **knowledge-only mode** (skip Phases 2-3)
 
-**knowledge-only mode**:
-- Run `mark42 session recall <project> --hours 1 --tokens 500` to get recent session summary
-- Use your own conversation context for additional signal
+For knowledge-only mode, also load:
+- `mark42 session recall <project> --hours 1 --tokens 500` for recent session summary
+- Your own conversation context for additional signal
 
 ### Phase 2: Gather File Context (full mode only)
 

@@ -63,13 +63,9 @@ internal/
       └── handlers.go  → Tool handlers with hybrid search support
 .claude-plugin/
   ├── plugin.json      → Plugin metadata
-  ├── hooks.json       → Hook configuration
-  └── hooks/           → Lifecycle hooks
-      ├── post-tool-use.py → Tracks file modifications (Edit, Write, Bash)
-      ├── session-start.py → Loads context from SQLite
-      └── stop.py          → Triggers memory sync on session end
+  └── hooks.json       → Hook configuration (Go CLI commands)
 .mcp.json              → MCP server configuration
-agents/                → Specialized agents (memory-updater, knowledge-extractor)
+agents/                → Specialized agents (memory-updater)
 skills/                → Skill definitions (memory-processor, codebase-analyzer)
 commands/              → Command documentation (init, status, sync, calibrate)
 ```
@@ -94,7 +90,7 @@ commands/              → Command documentation (init, status, sync, calibrate)
 - Auto-embed on write (new memories immediately vector-searchable)
 - Recency-boosted context injection (exponential decay, ~30 day half-life)
 - Observation consolidation (substring-based dedup)
-- Enriched stop hooks with specific MCP tool instructions
+- Go CLI hooks (`mark42 hook {session-start,post-tool-use,stop}`)
 <!-- END AUTO-MANAGED -->
 
 See `docs/ARCHITECTURE.md` for:
@@ -152,7 +148,6 @@ The project includes a complete Claude Code plugin implementation:
 
 **Agents** (specialized behavior):
 - `memory-updater.md` - Orchestrates CLAUDE.md updates and knowledge extraction
-- `knowledge-extractor.md` - Extracts entities, observations, relations from context
 
 **Skills** (reusable operations):
 - `memory-processor/SKILL.md` - Updates AUTO-MANAGED sections in CLAUDE.md
@@ -164,10 +159,10 @@ The project includes a complete Claude Code plugin implementation:
 - `sync.md` - Synchronize dirty files to memory
 - `calibrate.md` - Tune memory extraction parameters
 
-**Hooks** (lifecycle integration):
-- `post-tool-use.py` - Tracks file modifications (Edit, Write, Bash)
-- `stop.py` - Triggers memory-updater on session end
-- `session-start.py` - Loads context from SQLite
+**Hooks** (lifecycle integration via Go CLI):
+- `mark42 hook session-start` - Injects session recall + knowledge graph context
+- `mark42 hook post-tool-use` - Tracks modified files + session events
+- `mark42 hook stop` - Triggers session capture + memory sync
 
 ## Key Files
 
@@ -243,7 +238,7 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ `get_recent_context` tool for mid-session recency-first retrieval
 - ✅ `summarize_entity` tool with observations, relations, and version history
 - ✅ `consolidate_memories` tool for observation deduplication
-- ✅ Enriched stop hooks with specific MCP tool and fact-type instructions
+- ✅ Go CLI hook commands (`mark42 hook {session-start,post-tool-use,stop}`)
 - ✅ Stop hook fires every session (not just file-edit sessions)
 - ✅ `Embedder` interface for testable auto-embed (fake embedder in tests)
 

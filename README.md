@@ -144,9 +144,9 @@ mark42 includes Claude Code plugin hooks for automatic memory management:
 
 | Hook | Trigger | Action |
 |------|---------|--------|
-| `session-start.py` | Session begins | Injects session recall + knowledge graph context |
-| `post-tool-use.py` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
-| `stop.py` | Session ends | Triggers `capture_session` + memory sync |
+| `mark42 hook session-start` | Session begins | Injects session recall + knowledge graph context |
+| `mark42 hook post-tool-use` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
+| `mark42 hook stop` | Session ends | Triggers `capture_session` + memory sync |
 
 ## Comparison
 
