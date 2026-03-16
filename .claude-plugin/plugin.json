@@ -5,9 +5,5 @@
   "author": {
     "name": "mfenderov"
   },
-  "license": "MIT",
-  "hooks": "./hooks/hooks.json",
-  "agents": "./agents",
-  "skills": "./skills",
-  "commands": "./commands"
+  "license": "MIT"
 }
