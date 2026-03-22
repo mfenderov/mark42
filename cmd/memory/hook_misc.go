@@ -57,11 +57,7 @@ func runPreCompactHook(projectDir string, opts ...hookOption) {
 	files := readLines(filepath.Join(mark42Dir(projectDir), "dirty-files"))
 
 	output := map[string]any{
-		"hookSpecificOutput": map[string]any{
-			"memoriesPreserved": len(files),
-			"project":           projectName,
-			"message":           "Pre-compaction: " + itoa(len(files)) + " files tracked for " + projectName,
-		},
+		"systemMessage": "mark42: pre-compact — " + itoa(len(files)) + " files tracked for " + projectName,
 	}
 
 	data, _ := json.Marshal(output)

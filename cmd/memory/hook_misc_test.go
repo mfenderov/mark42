@@ -27,7 +27,7 @@ func TestHookSessionEnd(t *testing.T) {
 }
 
 func TestHookPreCompact(t *testing.T) {
-	t.Run("outputs hookSpecificOutput with file count", func(t *testing.T) {
+	t.Run("outputs systemMessage with file count", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		os.WriteFile(filepath.Join(mark42Dir(dir), "dirty-files"),
 			[]byte("a.go\nb.go\nc.go\n"), 0o644)
@@ -45,17 +45,16 @@ func TestHookPreCompact(t *testing.T) {
 			t.Fatalf("output not valid JSON: %v\ngot: %s", err, got)
 		}
 
-		specific, ok := output["hookSpecificOutput"].(map[string]any)
+		msg, ok := output["systemMessage"].(string)
 		if !ok {
-			t.Fatal("missing hookSpecificOutput")
+			t.Fatal("missing systemMessage")
 		}
-
-		if specific["memoriesPreserved"] != float64(3) {
-			t.Errorf("memoriesPreserved = %v, want 3", specific["memoriesPreserved"])
+		if !strings.Contains(msg, "3") {
+			t.Errorf("systemMessage should contain file count, got: %s", msg)
 		}
 	})
 
-	t.Run("zero files produces zero count", func(t *testing.T) {
+	t.Run("zero files produces zero count in message", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
 		var buf captureBuffer
@@ -63,10 +62,13 @@ func TestHookPreCompact(t *testing.T) {
 
 		var output map[string]any
 		json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &output)
-		specific := output["hookSpecificOutput"].(map[string]any)
 
-		if specific["memoriesPreserved"] != float64(0) {
-			t.Errorf("memoriesPreserved = %v, want 0", specific["memoriesPreserved"])
+		msg, ok := output["systemMessage"].(string)
+		if !ok {
+			t.Fatal("missing systemMessage")
+		}
+		if !strings.Contains(msg, "0") {
+			t.Errorf("systemMessage should contain 0, got: %s", msg)
 		}
 	})
 }
