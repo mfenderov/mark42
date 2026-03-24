@@ -47,13 +47,13 @@ func main() {
 	}
 	if embedderURL != "disabled" {
 		embedder := storage.NewEmbeddingClient(embedderURL)
-		handler.WithEmbedder(embedder)
-
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
 		if _, err := embedder.CreateEmbedding(ctx, "test"); err != nil {
 			logError("embedder unavailable at %s — semantic search disabled", embedderURL)
+		} else {
+			handler.WithEmbedder(embedder)
 		}
-		cancel()
 	}
 
 	// Run server
