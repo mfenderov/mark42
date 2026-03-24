@@ -138,7 +138,7 @@ func (s *Store) GetRecentContext(hours int, projectName string, tokenBudget int)
 		ORDER BY COALESCE(o.last_accessed, o.created_at) DESC
 	`
 
-	hoursParam := "-" + formatInt(hours)
+	hoursParam := "-" + strconv.Itoa(hours)
 
 	var results []ContextResult
 	if err := s.db.Select(&results, query, hoursParam); err != nil {
@@ -259,18 +259,3 @@ func FormatSessionRecall(results []ContextResult) string {
 	return sb.String()
 }
 
-// formatInt converts int to string without importing fmt.
-func formatInt(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	if n < 0 {
-		return "-" + formatInt(-n)
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
-}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -217,7 +218,7 @@ func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int
 		tokenBudget = 1500
 	}
 
-	hoursParam := "-" + formatInt(hours)
+	hoursParam := "-" + strconv.Itoa(hours)
 
 	query := `
 		SELECT e.name as entity_name, e.entity_type, o.content,
