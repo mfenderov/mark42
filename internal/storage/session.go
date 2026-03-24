@@ -34,7 +34,7 @@ type SessionMetadata struct {
 
 func (s *Store) CreateSession(project string) (*Session, error) {
 	now := time.Now()
-	name := fmt.Sprintf("session-%s-%s", project, now.Format("20060102-150405.000"))
+	name := fmt.Sprintf("session-%s-%s-%d", project, now.Format("20060102-150405"), now.UnixNano()%1e9)
 
 	meta := SessionMetadata{
 		Project:   project,

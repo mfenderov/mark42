@@ -136,7 +136,10 @@ func TestGetSession(t *testing.T) {
 	store := newTestStoreWithMigrations(t)
 	defer store.Close()
 
-	session, _ := store.CreateSession("test-project")
+	session, err := store.CreateSession("test-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
 	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Edit", FilePath: "/a.go"})
 	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Bash", Command: "go test"})
 	store.CompleteSession(session.Name, "Did some work")
@@ -171,10 +174,16 @@ func TestListSessions(t *testing.T) {
 	store := newTestStoreWithMigrations(t)
 	defer store.Close()
 
-	s1, _ := store.CreateSession("project-a")
+	s1, err := store.CreateSession("project-a")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
 	store.CompleteSession(s1.Name, "Work on project A")
 
-	s2, _ := store.CreateSession("project-b")
+	s2, err := store.CreateSession("project-b")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
 	store.CompleteSession(s2.Name, "Work on project B")
 
 	store.CreateSession("project-a") // active session
@@ -220,10 +229,16 @@ func TestGetRecentSessionSummaries(t *testing.T) {
 	store := newTestStoreWithMigrations(t)
 	defer store.Close()
 
-	s1, _ := store.CreateSession("my-project")
+	s1, err := store.CreateSession("my-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
 	store.CompleteSession(s1.Name, "Implemented auth module")
 
-	s2, _ := store.CreateSession("my-project")
+	s2, err := store.CreateSession("my-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
 	store.CompleteSession(s2.Name, "Fixed login bug")
 
 	results, err := store.GetRecentSessionSummaries("my-project", 72, 1500)
