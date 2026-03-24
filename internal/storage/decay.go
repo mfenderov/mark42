@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -83,9 +84,15 @@ func (s *Store) GetArchiveCount() (int, error) {
 // Returns the number of archived observations.
 func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 	cutoffDate := time.Now().AddDate(0, 0, -cfg.ArchiveAfterDays)
+	cutoffStr := cutoffDate.Format("2006-01-02 15:04:05")
 
-	// First, insert into archive (the table is created by migration)
-	result, err := s.db.Exec(`
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return 0, fmt.Errorf("beginning archive transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
 		INSERT INTO archived_observations (original_entity_id, entity_name, content, fact_type, importance, archived_at)
 		SELECT o.entity_id, e.name, o.content, o.fact_type, o.importance, datetime('now')
 		FROM observations o
@@ -94,7 +101,7 @@ func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 		AND o.importance < ?
 		AND COALESCE(o.last_accessed, o.created_at) < ?
 		AND o.fact_type != 'static'
-	`, cfg.MinImportanceToKeep, cutoffDate.Format("2006-01-02 15:04:05"))
+	`, cfg.MinImportanceToKeep, cutoffStr)
 	if err != nil {
 		return 0, err
 	}
@@ -104,8 +111,7 @@ func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 		return 0, nil
 	}
 
-	// Then delete the original observations
-	_, err = s.db.Exec(`
+	if _, err = tx.Exec(`
 		DELETE FROM observations
 		WHERE id IN (
 			SELECT o.id FROM observations o
@@ -115,9 +121,15 @@ func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 			AND COALESCE(o.last_accessed, o.created_at) < ?
 			AND o.fact_type != 'static'
 		)
-	`, cfg.MinImportanceToKeep, cutoffDate.Format("2006-01-02 15:04:05"))
+	`, cfg.MinImportanceToKeep, cutoffStr); err != nil {
+		return 0, err
+	}
 
-	return int(archived), err
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing archive transaction: %w", err)
+	}
+
+	return int(archived), nil
 }
 
 // ForgetExpiredMemories deletes observations that have passed their forget_after date.

@@ -183,6 +183,51 @@ func TestStore_ForgetOldArchivedMemories(t *testing.T) {
 	}
 }
 
+func TestStore_ArchiveOldMemories_AtomicArchiveAndDelete(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("OldFact", "test", []string{"This is stale"})
+	store.SetObservationImportance("OldFact", "This is stale", 0.05)
+
+	// Backdate the observation so it qualifies for archival
+	store.DB().Exec(`
+		UPDATE observations
+		SET created_at = datetime('now', '-100 days'),
+		    last_accessed = datetime('now', '-100 days')
+		WHERE content = 'This is stale'
+	`)
+
+	cfg := storage.DecayConfig{
+		ArchiveAfterDays:    90,
+		MinImportanceToKeep: 0.1,
+	}
+
+	archived, err := store.ArchiveOldMemories(cfg)
+	if err != nil {
+		t.Fatalf("ArchiveOldMemories failed: %v", err)
+	}
+	if archived != 1 {
+		t.Fatalf("expected 1 archived, got %d", archived)
+	}
+
+	// Invariant 1: observation removed from main observations table
+	entity, _ := store.GetEntity("OldFact")
+	if len(entity.Observations) != 0 {
+		t.Errorf("observation should be removed from main table, got: %v", entity.Observations)
+	}
+
+	// Invariant 2: observation present in archive table
+	archiveCount, _ := store.GetArchiveCount()
+	if archiveCount != 1 {
+		t.Errorf("observation should be in archive table, got count: %d", archiveCount)
+	}
+}
+
 func TestStore_SetForgetAfter(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
