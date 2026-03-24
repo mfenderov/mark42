@@ -17,15 +17,10 @@ var logger = log.NewWithOptions(os.Stderr, log.Options{
 	ReportTimestamp: false,
 })
 
-// Embedder generates vector embeddings for text.
-type Embedder interface {
-	CreateEmbedding(ctx context.Context, text string) ([]float64, error)
-}
-
 // Handler processes MCP tool calls using the storage layer.
 type Handler struct {
 	store    *storage.Store
-	embedder Embedder // Optional: enables semantic search + auto-embed on write
+	embedder storage.Embedder // Optional: enables semantic search + auto-embed on write
 }
 
 // NewHandler creates a new MCP handler with the given store.
@@ -34,7 +29,7 @@ func NewHandler(store *storage.Store) *Handler {
 }
 
 // WithEmbedder adds an embedding client for semantic search and auto-embedding.
-func (h *Handler) WithEmbedder(client Embedder) *Handler {
+func (h *Handler) WithEmbedder(client storage.Embedder) *Handler {
 	h.embedder = client
 	return h
 }
