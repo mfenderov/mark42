@@ -157,6 +157,41 @@ func TestStore_GetContextWithContainerTag(t *testing.T) {
 	}
 }
 
+func TestStore_BatchGetContainerTags(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("E1", "project", []string{"obs1"})
+	store.CreateEntity("E2", "project", []string{"obs2"})
+	store.CreateEntity("E3", "project", []string{"obs3"})
+
+	store.SetContainerTag("E1", "proj-a")
+	store.SetContainerTag("E2", "proj-b")
+	// E3 has no tag
+
+	tags, err := store.BatchGetContainerTags([]string{"E1", "E2", "E3", "Missing"})
+	if err != nil {
+		t.Fatalf("BatchGetContainerTags failed: %v", err)
+	}
+
+	if tags["E1"] != "proj-a" {
+		t.Errorf("E1: want proj-a, got %q", tags["E1"])
+	}
+	if tags["E2"] != "proj-b" {
+		t.Errorf("E2: want proj-b, got %q", tags["E2"])
+	}
+	if tags["E3"] != "" {
+		t.Errorf("E3: want empty, got %q", tags["E3"])
+	}
+	if _, ok := tags["Missing"]; ok {
+		t.Error("Missing entity should not appear in result")
+	}
+}
+
 func TestStore_CreateEntityWithContainerTag(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()

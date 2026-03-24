@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // SetContainerTag sets the container_tag for an entity.
@@ -42,6 +43,45 @@ func (s *Store) GetContainerTag(entityName string) (string, error) {
 		return "", err
 	}
 	return tag.String, nil
+}
+
+// BatchGetContainerTags retrieves container tags for multiple entities in one query.
+// Returns a map of entity name → tag (missing entities are not in the map; entities
+// with no tag have an empty string value).
+func (s *Store) BatchGetContainerTags(entityNames []string) (map[string]string, error) {
+	if len(entityNames) == 0 {
+		return map[string]string{}, nil
+	}
+
+	placeholders := strings.Repeat("?,", len(entityNames))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	query := fmt.Sprintf(`
+		SELECT name, COALESCE(container_tag, '') as tag
+		FROM entities
+		WHERE name IN (%s) AND (is_latest = 1 OR is_latest IS NULL)
+	`, placeholders)
+
+	args := make([]any, len(entityNames))
+	for i, n := range entityNames {
+		args[i] = n
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("batch get container tags: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]string, len(entityNames))
+	for rows.Next() {
+		var name, tag string
+		if err := rows.Scan(&name, &tag); err != nil {
+			return nil, err
+		}
+		result[name] = tag
+	}
+	return result, rows.Err()
 }
 
 // GetEntitiesByContainerTag retrieves all entities with a specific container tag.
@@ -132,11 +172,20 @@ func (s *Store) HybridSearchWithBoost(ctx context.Context, query string, queryEm
 		return nil, err
 	}
 
-	// Apply container tag boost
-	for i := range results {
-		tag, _ := s.GetContainerTag(results[i].EntityName)
-		if tag == containerTag && containerTag != "" {
-			results[i].FusionScore *= boostFactor
+	// Apply container tag boost (batch fetch to avoid N+1)
+	if containerTag != "" {
+		names := make([]string, len(results))
+		for i, r := range results {
+			names[i] = r.EntityName
+		}
+		tags, err := s.BatchGetContainerTags(names)
+		if err != nil {
+			return nil, fmt.Errorf("fetching container tags for boost: %w", err)
+		}
+		for i := range results {
+			if tags[results[i].EntityName] == containerTag {
+				results[i].FusionScore *= boostFactor
+			}
 		}
 	}
 
