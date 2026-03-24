@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"math"
 	"time"
 )
@@ -128,75 +129,78 @@ type ObservationImportance struct {
 func (s *Store) RecalculateImportance() (int, error) {
 	cfg := DefaultImportanceConfig()
 
-	// Get max relations for centrality calculation
 	var maxRelations int
-	err := s.db.Get(&maxRelations, `
+	if err := s.db.Get(&maxRelations, `
 		SELECT COALESCE(MAX(rel_count), 0)
 		FROM (
 			SELECT COUNT(*) as rel_count
 			FROM relations
 			GROUP BY from_entity_id
 		)
-	`)
-	if err != nil {
-		maxRelations = 1 // Avoid division by zero
+	`); err != nil {
+		maxRelations = 1
 	}
 	if maxRelations == 0 {
 		maxRelations = 1
 	}
 
-	// Get all observations with their metadata
-	rows, err := s.db.Query(`
+	// Load all observation rows into memory first, then apply updates in a single transaction.
+	// This avoids holding an open read cursor while writing — SQLite cursor+tx interplay.
+	type obsRow struct {
+		ID             int64   `db:"id"`
+		BaseImportance float64 `db:"importance"`
+		FactType       string  `db:"fact_type"`
+		DaysSince      float64 `db:"days_since"`
+		RelationCount  int     `db:"relation_count"`
+	}
+
+	var rows []obsRow
+	if err := s.db.Select(&rows, `
 		SELECT o.id, o.importance, o.fact_type,
 		       COALESCE(julianday('now') - julianday(COALESCE(o.last_accessed, o.created_at)), 0) as days_since,
 		       (SELECT COUNT(*) FROM relations WHERE from_entity_id = o.entity_id OR to_entity_id = o.entity_id) as relation_count
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
-	`)
-	if err != nil {
+	`); err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return 0, fmt.Errorf("beginning importance transaction: %w", err)
+	}
+	defer tx.Rollback()
 
 	updated := 0
-	for rows.Next() {
-		var id int64
-		var baseImportance float64
-		var factType string
-		var daysSince float64
-		var relationCount int
-
-		if err := rows.Scan(&id, &baseImportance, &factType, &daysSince, &relationCount); err != nil {
-			continue
+	for _, row := range rows {
+		baseScore := row.BaseImportance
+		if row.FactType == string(FactTypeStatic) {
+			baseScore = math.Max(baseScore, 0.8)
 		}
 
-		// Static facts get a bonus (they're user-defined and permanent)
-		baseScore := baseImportance
-		if factType == string(FactTypeStatic) {
-			baseScore = math.Max(baseScore, 0.8) // Minimum 0.8 for static facts
-		}
-
-		// Calculate new importance (access count not tracked separately, use 0)
 		newImportance := CalculateImportance(
 			baseScore,
-			daysSince,
-			0, // Access count (could be added to schema if needed)
-			relationCount,
+			row.DaysSince,
+			0, // access_count not yet tracked in schema — Phase 6 work
+			row.RelationCount,
 			maxRelations,
 			cfg,
 		)
 
-		// Update if changed significantly (avoid unnecessary writes)
-		if math.Abs(newImportance-baseImportance) > 0.01 {
-			_, err := s.db.Exec(
+		if math.Abs(newImportance-row.BaseImportance) > 0.01 {
+			if _, err := tx.Exec(
 				"UPDATE observations SET importance = ? WHERE id = ?",
-				newImportance, id,
-			)
-			if err == nil {
-				updated++
+				newImportance, row.ID,
+			); err != nil {
+				return 0, fmt.Errorf("updating observation %d: %w", row.ID, err)
 			}
+			updated++
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing importance transaction: %w", err)
 	}
 
 	return updated, nil

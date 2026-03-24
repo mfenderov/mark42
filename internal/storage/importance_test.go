@@ -284,6 +284,40 @@ func TestStore_RecalculateImportance(t *testing.T) {
 	}
 }
 
+func TestStore_RecalculateImportance_UpdatesAllObservations(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("Entity1", "test", []string{"Observation one"})
+	store.CreateEntity("Entity2", "test", []string{"Observation two"})
+	store.CreateEntity("Entity3", "test", []string{"Observation three"})
+
+	store.SetObservationImportance("Entity1", "Observation one", 1.0)
+	store.SetObservationImportance("Entity2", "Observation two", 1.0)
+	store.SetObservationImportance("Entity3", "Observation three", 1.0)
+
+	// Backdate all observations so recency decay will reduce importance by >0.01
+	store.DB().Exec(`
+		UPDATE observations
+		SET created_at = datetime('now', '-60 days'),
+		    last_accessed = datetime('now', '-60 days')
+	`)
+
+	updated, err := store.RecalculateImportance()
+	if err != nil {
+		t.Fatalf("RecalculateImportance failed: %v", err)
+	}
+
+	// All 3 observations must have been updated (60-day decay causes >0.01 delta)
+	if updated != 3 {
+		t.Errorf("expected 3 observations updated, got %d", updated)
+	}
+}
+
 func TestStore_GetObservationsByImportance(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
