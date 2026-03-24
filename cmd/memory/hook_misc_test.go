@@ -8,22 +8,12 @@ import (
 	"testing"
 )
 
-func TestHookSessionEnd(t *testing.T) {
-	t.Run("produces no output", func(t *testing.T) {
-		dir := setupProjectDir(t)
-
-		var buf captureBuffer
-		runSessionEndHook(dir, withOutput(&buf))
-
-		if buf.String() != "" {
-			t.Errorf("session-end should produce no output, got: %s", buf.String())
-		}
-	})
-
-	t.Run("no panic on missing project dir", func(t *testing.T) {
-		var buf captureBuffer
-		runSessionEndHook("", withOutput(&buf))
-	})
+func TestHookMisc_NoSessionEndCommand(t *testing.T) {
+	// After cleanup, hookSessionEndCmd must not exist.
+	// This file intentionally has no test body — its existence enforces
+	// that the test package compiles without hookSessionEndCmd being referenced.
+	// The real check is that hook_misc.go no longer registers it.
+	_ = hookPreCompactCmd // sanity: pre-compact still exists
 }
 
 func TestHookPreCompact(t *testing.T) {
