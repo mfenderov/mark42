@@ -525,12 +525,12 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	// Try hybrid search (FTS + vector) if embedder is a full EmbeddingClient
-	if ec, ok := h.embedder.(*storage.EmbeddingClient); ok && ec != nil {
+	// Try hybrid search (FTS + vector) if embedder is available
+	if h.embedder != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, ec, 20)
+		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, h.embedder, 20)
 		if err == nil && len(results) > 0 {
 			return h.formatHybridResults(results)
 		}

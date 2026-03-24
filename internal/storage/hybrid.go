@@ -117,7 +117,7 @@ func (s *Store) ftsSearch(query string, limit int) ([]RankedItem, error) {
 
 // HybridSearchWithEmbedder combines search with automatic embedding generation.
 // Uses the provided embedder to generate query embeddings on the fly.
-func (s *Store) HybridSearchWithEmbedder(ctx context.Context, query string, embedder *EmbeddingClient, limit int) ([]FusedResult, error) {
+func (s *Store) HybridSearchWithEmbedder(ctx context.Context, query string, embedder Embedder, limit int) ([]FusedResult, error) {
 	var queryEmbedding []float64
 
 	// Generate embedding for query if embedder is available

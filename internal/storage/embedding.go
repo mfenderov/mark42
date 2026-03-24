@@ -11,6 +11,11 @@ import (
 	"sort"
 )
 
+// Embedder generates vector embeddings for text.
+type Embedder interface {
+	CreateEmbedding(ctx context.Context, text string) ([]float64, error)
+}
+
 // EmbeddingClient handles embedding generation via DMR (Docker Model Runner).
 // Uses OpenAI-compatible API at http://127.0.0.1:12434/engines/v1/
 type EmbeddingClient struct {
