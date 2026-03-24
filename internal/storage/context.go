@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"fmt"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -34,13 +36,28 @@ type ContextResult struct {
 	FinalScore      float64 // After fact type priority, project boost, and recency boost
 }
 
+var validFactTypes = map[string]bool{
+	"static":          true,
+	"dynamic":         true,
+	"session_turn":    true,
+	"session_event":   true,
+	"session_summary": true,
+}
+
 // GetContextForInjection retrieves memories optimized for context injection.
 // Orders by: fact type priority, then importance, respecting token budget.
 func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([]ContextResult, error) {
+	// Validate all fact types before string interpolation into ORDER BY clause
+	for _, ft := range cfg.FactTypePriority {
+		if !validFactTypes[ft] {
+			return nil, fmt.Errorf("invalid fact type in FactTypePriority: %q", ft)
+		}
+	}
+
 	// Build fact type priority case statement
 	var factTypeCases []string
 	for i, ft := range cfg.FactTypePriority {
-		factTypeCases = append(factTypeCases, "WHEN '"+ft+"' THEN "+formatInt(i+1))
+		factTypeCases = append(factTypeCases, "WHEN '"+ft+"' THEN "+strconv.Itoa(i+1))
 	}
 	factTypeOrder := "CASE fact_type " + strings.Join(factTypeCases, " ") + " ELSE 99 END"
 

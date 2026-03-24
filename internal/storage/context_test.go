@@ -287,6 +287,38 @@ func TestStore_GetRecentContext_ProjectBoost(t *testing.T) {
 	}
 }
 
+func TestGetContextForInjection_RejectsInvalidFactType(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	cfg := storage.DefaultContextConfig()
+	cfg.FactTypePriority = []string{"'; DROP TABLE observations; --"}
+
+	_, err := store.GetContextForInjection(cfg, "")
+	if err == nil {
+		t.Error("expected error for invalid fact type in FactTypePriority, got nil")
+	}
+}
+
+func TestGetContextForInjection_AcceptsAllValidFactTypes(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	cfg := storage.DefaultContextConfig()
+	cfg.FactTypePriority = []string{
+		"static", "dynamic", "session_turn", "session_event", "session_summary",
+	}
+
+	_, err := store.GetContextForInjection(cfg, "")
+	if err != nil {
+		t.Errorf("all known fact types should be accepted, got error: %v", err)
+	}
+}
+
 func TestEstimateTokens(t *testing.T) {
 	tests := []struct {
 		text      string
