@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/mfenderov/mark42/internal/mcp"
@@ -56,9 +58,11 @@ func main() {
 		}
 	}
 
-	// Run server
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	server := &Server{handler: handler}
-	if err := server.Run(); err != nil {
+	if err := server.Run(ctx); err != nil {
 		logError("server error: %v", err)
 		os.Exit(1)
 	}
@@ -70,31 +74,48 @@ type Server struct {
 	initialized bool
 }
 
-// Run starts the server's main loop.
-func (s *Server) Run() error {
+// Run starts the server's main loop. Stops when ctx is cancelled or stdin is closed.
+func (s *Server) Run(ctx context.Context) error {
 	scanner := bufio.NewScanner(os.Stdin)
 
-	// Increase buffer size for large requests
 	const maxScannerSize = 10 * 1024 * 1024 // 10MB
 	buf := make([]byte, maxScannerSize)
 	scanner.Buffer(buf, maxScannerSize)
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
+	lines := make(chan []byte)
+	scanErr := make(chan error, 1)
 
-		var req mcp.Request
-		if err := json.Unmarshal(line, &req); err != nil {
-			s.sendError(nil, mcp.ErrCodeParse, "Parse error", err)
-			continue
+	go func() {
+		for scanner.Scan() {
+			line := make([]byte, len(scanner.Bytes()))
+			copy(line, scanner.Bytes())
+			select {
+			case lines <- line:
+			case <-ctx.Done():
+				return
+			}
 		}
+		scanErr <- scanner.Err()
+	}()
 
-		s.handleRequest(&req)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-scanErr:
+			return err
+		case line := <-lines:
+			if len(line) == 0 {
+				continue
+			}
+			var req mcp.Request
+			if err := json.Unmarshal(line, &req); err != nil {
+				s.sendError(nil, mcp.ErrCodeParse, "Parse error", err)
+				continue
+			}
+			s.handleRequest(&req)
+		}
 	}
-
-	return scanner.Err()
 }
 
 func (s *Server) handleRequest(req *mcp.Request) {
