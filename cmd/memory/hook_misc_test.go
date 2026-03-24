@@ -8,14 +8,6 @@ import (
 	"testing"
 )
 
-func TestHookMisc_NoSessionEndCommand(t *testing.T) {
-	// After cleanup, hookSessionEndCmd must not exist.
-	// This file intentionally has no test body — its existence enforces
-	// that the test package compiles without hookSessionEndCmd being referenced.
-	// The real check is that hook_misc.go no longer registers it.
-	_ = hookPreCompactCmd // sanity: pre-compact still exists
-}
-
 func TestHookPreCompact(t *testing.T) {
 	t.Run("outputs systemMessage with file count", func(t *testing.T) {
 		dir := setupProjectDir(t)

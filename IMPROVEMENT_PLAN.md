@@ -15,31 +15,7 @@ This plan outlines improvements to the mark42 plugin (mark42) based on:
 
 ## Priority 1: Hook Enhancements
 
-### 1.1 Add SessionEnd Hook
-
-**Purpose**: Clean shutdown, final context save, session statistics.
-
-**New File**: `hooks/session-end.py`
-
-**Responsibilities**:
-- Flush any pending memory writes
-- Record session duration and statistics
-- Trigger final knowledge extraction if dirty files exist
-- Log session summary to SQLite
-
-**Output Format** (SessionEnd uses standard format):
-```python
-result = {
-    "hookSpecificOutput": {
-        "message": "Session ended, memories synced",
-        "stats": {"entities_updated": N, "duration_seconds": M}
-    }
-}
-```
-
-**Effort**: ~2 hours
-
-### 1.2 Add PreCompact Hook
+### 1.1 Add PreCompact Hook
 
 **Purpose**: Preserve critical memories before context compaction.
 
@@ -200,11 +176,10 @@ mark42 search "<query>" --limit 10 --format json
 ## Implementation Sequence
 
 ### Sprint 1: Hook Enhancements (1 day)
-1. [ ] Add SessionEnd hook
-2. [ ] Add PreCompact hook
-3. [ ] Enhance Stop hook with better context
-4. [ ] Update hooks.json with new hooks
-5. [ ] Test hook chain execution
+1. [ ] Add PreCompact hook
+2. [ ] Enhance Stop hook with better context
+3. [ ] Update hooks.json with new hooks
+4. [ ] Test hook chain execution
 
 ### Sprint 2: Skills/Commands (1 day)
 1. [ ] Create `/memory:context` skill
@@ -228,7 +203,7 @@ mark42 search "<query>" --limit 10 --format json
 - Decay algorithm behavior
 
 ### Integration Tests
-- Full hook chain: SessionStart → PostToolUse → PreCompact → Stop → SessionEnd
+- Full hook chain: SessionStart → PostToolUse → PreCompact → Stop
 - Memory injection and retrieval cycle
 - Cross-session entity tracking
 
@@ -243,7 +218,6 @@ mark42 search "<query>" --limit 10 --format json
 
 | File | Action | Priority |
 |------|--------|----------|
-| `hooks/session-end.py` | Create | P1 |
 | `hooks/pre-compact.py` | Create | P1 |
 | `hooks/stop.py` | Enhance (keep format) | P1 |
 | `hooks.json` | Add new hooks | P1 |
@@ -269,7 +243,7 @@ mark42 search "<query>" --limit 10 --format json
 
 ## Dependencies
 
-- Claude Code 2.1.31+ (for SessionEnd, PreCompact hooks)
+- Claude Code 2.1.31+ (for PreCompact hooks)
 - Ollama running locally (for hybrid search embeddings)
 - SQLite with FTS5 (already in place)
 
@@ -284,7 +258,7 @@ Different hooks use different output formats:
 | Stop, SubagentStop, PostToolUse, UserPromptSubmit | `{"decision": "...", "reason": "..."}` |
 | PreToolUse | `{"hookSpecificOutput": {"permissionDecision": "..."}}` |
 | PermissionRequest | `{"hookSpecificOutput": {"decision": {"behavior": "..."}}}` |
-| SessionEnd, PreCompact | `{"hookSpecificOutput": {...}}` |
+| PreCompact | `{"hookSpecificOutput": {...}}` |
 | SessionStart | No output expected |
 
 ---
