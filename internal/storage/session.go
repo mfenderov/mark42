@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -71,31 +73,60 @@ func (s *Store) CaptureSessionEvent(sessionName string, event SessionEvent) erro
 }
 
 func (s *Store) CompleteSession(sessionName, summary string) error {
-	// Store the summary as a session_summary observation
-	if err := s.AddObservationWithType(sessionName, summary, FactTypeSessionSummary); err != nil {
-		return fmt.Errorf("failed to store session summary: %w", err)
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var entityID int64
+	if err := tx.QueryRow(
+		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
+		sessionName,
+	).Scan(&entityID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("getting session entity: %w", err)
 	}
 
-	// Update metadata to mark as completed
-	tag, err := s.GetContainerTag(sessionName)
-	if err != nil {
-		return fmt.Errorf("failed to get session metadata: %w", err)
+	if _, err := tx.Exec(
+		"INSERT OR IGNORE INTO observations (entity_id, content, fact_type) VALUES (?, ?, ?)",
+		entityID, summary, string(FactTypeSessionSummary),
+	); err != nil {
+		return fmt.Errorf("storing session summary: %w", err)
+	}
+
+	var tag string
+	if err := tx.QueryRow(
+		"SELECT COALESCE(container_tag, '') FROM entities WHERE id = ?",
+		entityID,
+	).Scan(&tag); err != nil {
+		return fmt.Errorf("reading session metadata: %w", err)
 	}
 
 	var meta SessionMetadata
-	if err := json.Unmarshal([]byte(tag), &meta); err != nil {
-		return fmt.Errorf("failed to parse session metadata: %w", err)
+	if tag != "" {
+		if err := json.Unmarshal([]byte(tag), &meta); err != nil {
+			return fmt.Errorf("parsing session metadata: %w", err)
+		}
 	}
-
 	meta.Status = "completed"
 	meta.EndedAt = time.Now().Format(time.RFC3339)
 
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
-		return fmt.Errorf("failed to marshal session metadata: %w", err)
+		return fmt.Errorf("marshaling session metadata: %w", err)
 	}
 
-	return s.SetContainerTag(sessionName, string(metaJSON))
+	if _, err := tx.Exec(
+		"UPDATE entities SET container_tag = ? WHERE id = ?",
+		string(metaJSON), entityID,
+	); err != nil {
+		return fmt.Errorf("updating session metadata: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) GetSession(sessionName string) (*Session, error) {
