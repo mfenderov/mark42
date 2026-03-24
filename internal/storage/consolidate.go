@@ -48,12 +48,30 @@ func (s *Store) ConsolidateObservations(entityName string) (string, error) {
 		}
 	}
 
-	// Delete the duplicates
+	// Delete duplicate observations atomically.
+	// FTS5 triggers fire inside the transaction — observations_fts stays in sync.
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return "", fmt.Errorf("beginning consolidation transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	deleted := 0
 	for _, obs := range uniqueDeletes {
-		if err := s.DeleteObservation(entityName, obs); err == nil {
+		result, execErr := tx.Exec(
+			"DELETE FROM observations WHERE entity_id = ? AND content = ?",
+			entity.ID, obs,
+		)
+		if execErr != nil {
+			return "", fmt.Errorf("deleting observation: %w", execErr)
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
 			deleted++
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("committing consolidation transaction: %w", err)
 	}
 
 	return fmt.Sprintf("%s: consolidated %d redundant observations (kept %d)",
