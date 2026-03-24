@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 )
 
 // SetContainerTag sets the container_tag for an entity.
@@ -152,14 +153,15 @@ func (s *Store) HybridSearchWithBoost(ctx context.Context, query string, queryEm
 
 // sortFusedResultsByScore sorts results by FusionScore descending (higher is better).
 func sortFusedResultsByScore(results []FusedResult) {
-	// Simple bubble sort - results are typically small
-	for i := 0; i < len(results)-1; i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].FusionScore > results[i].FusionScore {
-				results[i], results[j] = results[j], results[i]
-			}
+	slices.SortFunc(results, func(a, b FusedResult) int {
+		if b.FusionScore > a.FusionScore {
+			return 1
 		}
-	}
+		if b.FusionScore < a.FusionScore {
+			return -1
+		}
+		return 0
+	})
 }
 
 // GetContextWithContainerTag retrieves context with container tag boosting.
@@ -216,13 +218,15 @@ func (s *Store) GetContextWithContainerTag(cfg ContextConfig, containerTag strin
 	}
 
 	// Sort by final score (descending)
-	for i := 0; i < len(results)-1; i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].FinalScore > results[i].FinalScore {
-				results[i], results[j] = results[j], results[i]
-			}
+	slices.SortFunc(results, func(a, b ContextResult) int {
+		if b.FinalScore > a.FinalScore {
+			return 1
 		}
-	}
+		if b.FinalScore < a.FinalScore {
+			return -1
+		}
+		return 0
+	})
 
 	// Apply token budget
 	tokenCount := 0
