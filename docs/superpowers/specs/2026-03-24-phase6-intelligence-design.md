@@ -73,7 +73,9 @@ AND (o.valid_until IS NULL)
 - `internal/storage/entity.go` — `GetEntity` (observations loaded for an entity)
 - `internal/storage/importance.go` — `RecalculateImportance` candidate query
 
-**Exempt**: Session observations (`fact_type IN ('session_event', 'session_summary')`) — these are append-only event logs. Temporal validity does not apply; they are never invalidated. The filter is applied at the query level by always including `AND (o.valid_until IS NULL OR e.entity_type = 'session')` rather than patching every session query.
+**Exempt**: Session observations (`fact_type IN ('session_event', 'session_summary')`) — these are append-only event logs. Temporal validity does not apply; they are never invalidated.
+
+Session exemption applies only to **cross-entity queries** (context injection, search, hybrid search) that join across all entity types. These queries use `AND (o.valid_until IS NULL OR e.entity_type = 'session')`. Single-entity queries that already scope to a non-session entity (e.g., `RecalculateImportance`, which operates on one entity at a time) simply use `AND (o.valid_until IS NULL)` — the session exemption clause is unnecessary there.
 
 ### Auto-Detection on Write
 
@@ -103,7 +105,7 @@ type ObservationWithValidity struct {
     Content    string
     FactType   string
     ValidFrom  time.Time
-    ValidUntil *time.Time  // nil = still valid
+    ValidUntil sql.NullTime  // Valid=false means still valid (valid_until IS NULL in DB)
 }
 ```
 
@@ -149,12 +151,13 @@ Extend `consolidate_memories` MCP tool with an optional `mode` parameter:
 
 **Semantic mode algorithm** (`internal/storage/consolidate.go`):
 
+`ConsolidateWithSimilarity` is a standalone function — it does not call `ConsolidateObservations` as a subroutine. It handles all observations itself:
+
 1. Load all valid observations for the entity (respects H2.3's `valid_until IS NULL`)
 2. For each observation, fetch its stored embedding from the `embeddings` table
-3. Skip observations with no embedding (fallback to substring check for those pairs)
-4. Compute pairwise cosine similarity for all pairs with embeddings
-5. Pairs above threshold (default 0.85, optionally overridden via `threshold` MCP param) are duplicates
-6. For each duplicate pair: keep the longer observation (or the more recently accessed if equal length); expire the other via `InvalidateObservation` (H2.3's temporal machinery — no hard delete)
+3. For pairs **with embeddings**: compute cosine similarity; pairs above threshold are duplicates
+4. For pairs **without embeddings** (one or both missing): fall back to substring containment check (same logic as `ConsolidateObservations`)
+5. For each duplicate pair: keep the longer observation (or the more recently accessed if equal length); expire the other via `InvalidateObservation` (H2.3's temporal machinery — no hard delete)
 
 **No LLM merge step** — YAGNI. Expiry + keep-longest is sufficient.
 
@@ -227,7 +230,7 @@ Add optional `query` string to `get_context`. Two code paths:
 
 ### Hook Change (`cmd/memory/hook_session_start.go`)
 
-Pass project name as `query` to `get_context` so session-start context injection is project-scoped from day one.
+The hook calls `store.GetContextForInjection` directly (not via MCP JSON-RPC). The change is: pass `projectName` as the new `query` parameter in the existing `GetContextForInjection` call at line ~98. No JSON marshalling or MCP client code is needed.
 
 ### Test Coverage
 - `TestGetContextForInjection_WithQuery` — verifies query-matching observations score higher than non-matching high-importance observations
