@@ -1,9 +1,14 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"time"
 )
+
+// DefaultSupersessionThreshold is the cosine similarity threshold above which an observation
+// is considered superseded by new content and eligible for automatic expiry.
+const DefaultSupersessionThreshold = 0.85
 
 // ObservationWithValidity represents an observation including its temporal validity window.
 type ObservationWithValidity struct {
@@ -46,6 +51,82 @@ func (s *Store) InvalidateObservation(entityName, content string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// DetectAndExpireSuperseded checks existing observations for the entity against the new content
+// using cosine similarity. Any observation whose similarity to newContent exceeds threshold
+// (and is not identical to newContent) is expired by setting valid_until to now.
+// Returns the list of expired observation contents.
+// Returns nil, nil if embedder is nil or entity is not found.
+func (s *Store) DetectAndExpireSuperseded(entityName, newContent string, embedder Embedder, threshold float64) ([]string, error) {
+	if embedder == nil {
+		return nil, nil
+	}
+
+	var entityID int64
+	err := s.db.QueryRow(
+		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
+		entityName,
+	).Scan(&entityID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	newEmbedding, err := embedder.CreateEmbedding(context.Background(), newContent)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(`
+		SELECT o.id, o.content, oe.embedding
+		FROM observations o
+		JOIN observation_embeddings oe ON oe.observation_id = o.id
+		WHERE o.entity_id = ? AND o.valid_until IS NULL
+	`, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		id      int64
+		content string
+		blob    []byte
+	}
+	var candidates []candidate
+	for rows.Next() {
+		var c candidate
+		if err := rows.Scan(&c.id, &c.content, &c.blob); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var expired []string
+	for _, c := range candidates {
+		if c.content == newContent {
+			continue
+		}
+		stored := decodeEmbedding(c.blob)
+		sim := CosineSimilarity(newEmbedding, stored)
+		if sim > threshold {
+			if _, err := s.db.Exec(
+				"UPDATE observations SET valid_until = CURRENT_TIMESTAMP WHERE id = ?",
+				c.id,
+			); err != nil {
+				return nil, err
+			}
+			expired = append(expired, c.content)
+		}
+	}
+
+	return expired, nil
 }
 
 // GetObservationHistory returns all observations for an entity, including expired ones.

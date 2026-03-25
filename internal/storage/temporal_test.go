@@ -1,6 +1,7 @@
 package storage_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -165,6 +166,196 @@ func TestValidityFilter_ExemptsSessions(t *testing.T) {
 	}
 	if !foundSessionSummary {
 		t.Error("expected session summary content to appear in GetContextForInjection results (sessions exempt from validity filter)")
+	}
+}
+
+func TestDetectAndExpireSuperseded_NilEmbedder(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	_, err := store.CreateEntity("Alice", "person", []string{"uses TDD"})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+
+	expired, err := store.DetectAndExpireSuperseded("Alice", "something new", nil, 0.85)
+	if err != nil {
+		t.Errorf("expected nil error with nil embedder, got %v", err)
+	}
+	if expired != nil {
+		t.Errorf("expected nil expired list with nil embedder, got %v", expired)
+	}
+}
+
+type highSimilarityEmbedder struct{}
+
+func (e *highSimilarityEmbedder) CreateEmbedding(_ context.Context, _ string) ([]float64, error) {
+	return []float64{0.9, 0.1, 0.0}, nil
+}
+
+type lowSimilarityEmbedder struct {
+	calls int
+}
+
+func (e *lowSimilarityEmbedder) CreateEmbedding(_ context.Context, _ string) ([]float64, error) {
+	e.calls++
+	if e.calls%2 == 1 {
+		return []float64{1.0, 0.0, 0.0}, nil
+	}
+	return []float64{0.0, 1.0, 0.0}, nil
+}
+
+func TestDetectAndExpireSuperseded_WithEmbedder(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	oldContent := "old content about TDD"
+	_, err := store.CreateEntity("Dev", "person", []string{oldContent})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+
+	// Get the observation ID and store an embedding for it
+	obs := store.GetObservationWithID("Dev", oldContent)
+	if obs == nil {
+		t.Fatalf("observation not found")
+	}
+	// Store a high-similarity embedding for old content
+	if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	newContent := "new content about TDD practice"
+	embedder := &highSimilarityEmbedder{}
+	expired, err := store.DetectAndExpireSuperseded("Dev", newContent, embedder, 0.85)
+	if err != nil {
+		t.Fatalf("DetectAndExpireSuperseded failed: %v", err)
+	}
+
+	if len(expired) != 1 || expired[0] != oldContent {
+		t.Errorf("expected [%q] in expired list, got %v", oldContent, expired)
+	}
+
+	// Old content should be hidden from GetEntity
+	entityAfter, err := store.GetEntity("Dev")
+	if err != nil {
+		t.Fatalf("GetEntity after expiry failed: %v", err)
+	}
+	for _, o := range entityAfter.Observations {
+		if o == oldContent {
+			t.Errorf("expected old content to be expired and hidden from GetEntity, but found it")
+		}
+	}
+}
+
+func TestDetectAndExpireSuperseded_BelowThreshold(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	oldContent := "orthogonal content"
+	_, err := store.CreateEntity("Dev2", "person", []string{oldContent})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+
+	obs := store.GetObservationWithID("Dev2", oldContent)
+	if obs == nil {
+		t.Fatalf("observation not found")
+	}
+	// Orthogonal embedding: [0, 1, 0] vs query [1, 0, 0] → similarity 0
+	if err := store.StoreEmbedding(obs.ID, []float64{0.0, 1.0, 0.0}, "test"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	// Embedder returns a very different vector from the stored one
+	embedder := &lowSimilarityEmbedder{}
+	expired, err := store.DetectAndExpireSuperseded("Dev2", "new orthogonal content", embedder, 0.85)
+	if err != nil {
+		t.Fatalf("DetectAndExpireSuperseded failed: %v", err)
+	}
+
+	if len(expired) != 0 {
+		t.Errorf("expected empty expired list below threshold, got %v", expired)
+	}
+
+	// Old content should still be visible
+	entity2, err := store.GetEntity("Dev2")
+	if err != nil {
+		t.Fatalf("GetEntity failed: %v", err)
+	}
+	found := false
+	for _, o := range entity2.Observations {
+		if o == oldContent {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected old content to remain visible below threshold")
+	}
+}
+
+func TestDetectAndExpireSuperseded_DoesNotExpireNewContentItself(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	content := "TDD practice"
+	_, err := store.CreateEntity("Dev3", "person", []string{content})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+
+	obs := store.GetObservationWithID("Dev3", content)
+	if obs == nil {
+		t.Fatalf("observation not found")
+	}
+	// Same embedding for both
+	if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	// Call DetectAndExpire with the SAME content — must not expire it
+	embedder := &highSimilarityEmbedder{}
+	expired, err := store.DetectAndExpireSuperseded("Dev3", content, embedder, 0.85)
+	if err != nil {
+		t.Fatalf("DetectAndExpireSuperseded failed: %v", err)
+	}
+
+	if len(expired) != 0 {
+		t.Errorf("expected empty expired list when newContent == existing content, got %v", expired)
+	}
+}
+
+func TestDetectAndExpireSuperseded_MissingEntity(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	embedder := &highSimilarityEmbedder{}
+	expired, err := store.DetectAndExpireSuperseded("NonExistentEntity", "some content", embedder, 0.85)
+	if err != nil {
+		t.Errorf("expected nil error for missing entity, got %v", err)
+	}
+	if expired != nil {
+		t.Errorf("expected nil expired list for missing entity, got %v", expired)
 	}
 }
 

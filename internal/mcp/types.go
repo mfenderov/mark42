@@ -216,3 +216,12 @@ type RecallSessionsInput struct {
 	Hours       int    `json:"hours,omitempty"`
 	TokenBudget int    `json:"tokenBudget,omitempty"`
 }
+
+type InvalidateObservationInput struct {
+	EntityName string `json:"entityName"`
+	Content    string `json:"content"`
+}
+
+type GetEntityHistoryInput struct {
+	EntityName string `json:"entityName"`
+}

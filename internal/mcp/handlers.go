@@ -299,6 +299,29 @@ func (h *Handler) Tools() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "invalidate_observation",
+			Description: "Mark a specific observation as no longer valid (expired). The observation will be hidden from normal queries but preserved in history.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"entityName": {Type: "string", Description: "Entity name"},
+					"content":    {Type: "string", Description: "Exact content of the observation to invalidate"},
+				},
+				Required: []string{"entityName", "content"},
+			},
+		},
+		{
+			Name:        "get_entity_history",
+			Description: "Get the full history of observations for an entity, including expired ones with their validity timestamps.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"entityName": {Type: "string", Description: "Name of the entity"},
+				},
+				Required: []string{"entityName"},
+			},
+		},
 	}
 }
 
@@ -337,6 +360,10 @@ func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, 
 		return h.captureSession(args)
 	case "recall_sessions":
 		return h.recallSessions(args)
+	case "invalidate_observation":
+		return h.invalidateObservation(args)
+	case "get_entity_history":
+		return h.getEntityHistory(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -360,6 +387,9 @@ func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) 
 			created = append(created, entity.Name)
 		}
 		h.embedObservations(e.Name, e.Observations)
+		if e.EntityType != "session" {
+			h.autoDetectSuperseded(e.Name, e.Observations, storage.FactTypeDynamic)
+		}
 	}
 
 	return &ToolCallResult{
@@ -381,6 +411,9 @@ func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult,
 		} else {
 			results = append(results, fmt.Sprintf("%s (v%d)", entity.Name, entity.Version))
 			h.embedObservations(e.Name, e.Observations)
+			if e.EntityType != "session" {
+				h.autoDetectSuperseded(e.Name, e.Observations, storage.FactTypeDynamic)
+			}
 		}
 	}
 
@@ -435,6 +468,7 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 			}
 		}
 		h.embedObservations(obs.EntityName, addedContents)
+		h.autoDetectSuperseded(obs.EntityName, addedContents, factType)
 	}
 
 	return &ToolCallResult{
@@ -753,6 +787,88 @@ func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, er
 	return &ToolCallResult{
 		Content: []ContentBlock{{Type: "text", Text: result}},
 	}, nil
+}
+
+func (h *Handler) invalidateObservation(args json.RawMessage) (*ToolCallResult, error) {
+	var input InvalidateObservationInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if err := h.store.InvalidateObservation(input.EntityName, input.Content); err != nil {
+		return nil, fmt.Errorf("invalidate failed: %w", err)
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: `{"status":"invalidated"}`}},
+	}, nil
+}
+
+func (h *Handler) getEntityHistory(args json.RawMessage) (*ToolCallResult, error) {
+	var input GetEntityHistoryInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	history, err := h.store.GetObservationHistory(input.EntityName)
+	if err != nil {
+		return nil, fmt.Errorf("get history failed: %w", err)
+	}
+
+	type historyEntry struct {
+		Content    string  `json:"content"`
+		FactType   string  `json:"factType"`
+		ValidFrom  string  `json:"validFrom"`
+		ValidUntil *string `json:"validUntil"`
+	}
+
+	entries := make([]historyEntry, len(history))
+	for i, h := range history {
+		entry := historyEntry{
+			Content:   h.Content,
+			FactType:  h.FactType,
+			ValidFrom: h.ValidFrom().Format(time.RFC3339),
+		}
+		if h.ValidUntil.Valid {
+			s := h.ValidUntil.String
+			entry.ValidUntil = &s
+		}
+		entries[i] = entry
+	}
+
+	data, err := json.Marshal(map[string]any{
+		"entityName": input.EntityName,
+		"history":    entries,
+		"count":      len(entries),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal history: %w", err)
+	}
+
+	return &ToolCallResult{
+		Content: []ContentBlock{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
+func isSessionFactType(ft storage.FactType) bool {
+	return ft == storage.FactTypeSessionEvent || ft == storage.FactTypeSessionSummary
+}
+
+func (h *Handler) autoDetectSuperseded(entityName string, contents []string, factType storage.FactType) {
+	if h.embedder == nil {
+		return
+	}
+	if isSessionFactType(factType) {
+		return
+	}
+	for _, content := range contents {
+		expired, err := h.store.DetectAndExpireSuperseded(entityName, content, h.embedder, storage.DefaultSupersessionThreshold)
+		if err != nil {
+			logger.Warn("failed to detect superseded observations", "entity", entityName, "error", err)
+		} else if len(expired) > 0 {
+			logger.Info("auto-expired superseded observations", "entity", entityName, "count", len(expired))
+		}
+	}
 }
 
 func (h *Handler) embedObservations(entityName string, contents []string) {

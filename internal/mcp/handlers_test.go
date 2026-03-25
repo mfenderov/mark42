@@ -52,6 +52,8 @@ func TestHandler_Tools(t *testing.T) {
 		"consolidate_memories",
 		"capture_session",
 		"recall_sessions",
+		"invalidate_observation",
+		"get_entity_history",
 	}
 
 	if len(tools) != len(expectedTools) {
@@ -1195,9 +1197,9 @@ func TestHandler_AutoEmbed_CreateEntities(t *testing.T) {
 		t.Fatalf("create_entities failed: %v", err)
 	}
 
-	// Verify embeddings were generated
-	if embedder.calls != 2 {
-		t.Errorf("expected 2 embedding calls, got %d", embedder.calls)
+	// Verify embeddings were generated (2 for embed + 2 for auto-detect = 4)
+	if embedder.calls != 4 {
+		t.Errorf("expected 4 embedding calls (2 embed + 2 detect), got %d", embedder.calls)
 	}
 
 	// Verify embeddings stored in database
@@ -1225,8 +1227,9 @@ func TestHandler_AutoEmbed_AddObservations(t *testing.T) {
 		t.Fatalf("add_observations failed: %v", err)
 	}
 
-	if embedder.calls != 1 {
-		t.Errorf("expected 1 embedding call, got %d", embedder.calls)
+	// 1 for embed + 1 for auto-detect = 2 total
+	if embedder.calls != 2 {
+		t.Errorf("expected 2 embedding calls (1 embed + 1 detect), got %d", embedder.calls)
 	}
 
 	_, withEmb, _ := store.EmbeddingStats()
@@ -1289,9 +1292,9 @@ func TestHandler_AutoEmbed_FailingEmbedder(t *testing.T) {
 		t.Errorf("expected 2 observations, got %d", len(entity.Observations))
 	}
 
-	// Embedder was called but all failed
-	if embedder.calls != 2 {
-		t.Errorf("expected 2 embedding calls, got %d", embedder.calls)
+	// Embedder was called but all failed (2 for embed + 2 for auto-detect = 4)
+	if embedder.calls != 4 {
+		t.Errorf("expected 4 embedding calls (2 embed + 2 detect), got %d", embedder.calls)
 	}
 
 	// No embeddings stored
@@ -1585,8 +1588,114 @@ func TestHandler_Tools_Count(t *testing.T) {
 	defer store.Close()
 
 	tools := handler.Tools()
-	// 14 original + 2 new (capture_session, recall_sessions)
-	if len(tools) != 16 {
-		t.Errorf("expected 16 tools, got %d", len(tools))
+	// 16 original + 2 new (invalidate_observation, get_entity_history)
+	if len(tools) != 18 {
+		t.Errorf("expected 18 tools, got %d", len(tools))
+	}
+}
+
+// --- invalidate_observation tests ---
+
+func TestHandler_InvalidateObservation(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("Alice", "person", []string{"uses TDD"})
+
+	result, err := handler.CallTool("invalidate_observation", json.RawMessage(`{"entityName":"Alice","content":"uses TDD"}`))
+	if err != nil {
+		t.Fatalf("invalidate_observation failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+
+	// Observation should no longer be returned by open_nodes
+	openResult, err := handler.CallTool("open_nodes", json.RawMessage(`{"names":["Alice"]}`))
+	if err != nil {
+		t.Fatalf("open_nodes failed: %v", err)
+	}
+	if strings.Contains(openResult.Content[0].Text, "uses TDD") {
+		t.Error("expected invalidated observation to be absent from open_nodes result")
+	}
+}
+
+func TestHandler_InvalidateObservation_NotFound(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("Bob", "person", []string{"likes Go"})
+
+	_, err := handler.CallTool("invalidate_observation", json.RawMessage(`{"entityName":"Bob","content":"nonexistent"}`))
+	if err == nil {
+		t.Error("expected error for not-found observation")
+	}
+}
+
+func TestHandler_InvalidateObservation_InvalidJSON(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	_, err := handler.CallTool("invalidate_observation", json.RawMessage(`{invalid}`))
+	if err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+}
+
+// --- get_entity_history tests ---
+
+func TestHandler_GetEntityHistory(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("Carol", "person", []string{"writes failing tests first"})
+	store.InvalidateObservation("Carol", "writes failing tests first")
+
+	result, err := handler.CallTool("get_entity_history", json.RawMessage(`{"entityName":"Carol"}`))
+	if err != nil {
+		t.Fatalf("get_entity_history failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+	var response map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response JSON: %v", err)
+	}
+
+	// Should contain history with validUntil set
+	history, ok := response["history"].([]any)
+	if !ok || len(history) == 0 {
+		t.Fatal("expected non-empty history array")
+	}
+
+	entry := history[0].(map[string]any)
+	if entry["content"] != "writes failing tests first" {
+		t.Errorf("unexpected content: %v", entry["content"])
+	}
+	if entry["validUntil"] == nil {
+		t.Error("expected validUntil to be set for invalidated observation")
+	}
+
+	count, ok := response["count"].(float64)
+	if !ok || count != 1 {
+		t.Errorf("expected count=1, got %v", response["count"])
+	}
+}
+
+func TestHandler_GetEntityHistory_NotFound(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	_, err := handler.CallTool("get_entity_history", json.RawMessage(`{"entityName":"nonexistent"}`))
+	if err == nil {
+		t.Error("expected error for not-found entity")
 	}
 }
