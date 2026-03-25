@@ -20,7 +20,7 @@ func upAddTemporalColumns(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 	if count == 0 {
-		_, err = tx.ExecContext(ctx, `ALTER TABLE observations ADD COLUMN valid_from TIMESTAMP DEFAULT CURRENT_TIMESTAMP`)
+		_, err = tx.ExecContext(ctx, `ALTER TABLE observations ADD COLUMN valid_from TIMESTAMP DEFAULT NULL`)
 		if err != nil {
 			return err
 		}
