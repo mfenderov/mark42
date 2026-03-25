@@ -546,6 +546,9 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 			"entityType":   r.Type,
 			"observations": r.Observations,
 		}
+		if err := h.store.UpdateLastAccessed(r.Name); err != nil {
+			logger.Warn("failed to update last accessed", "entity", r.Name, "error", err)
+		}
 	}
 
 	data, err := json.Marshal(entities)
@@ -591,7 +594,7 @@ func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallR
 		}
 	}
 
-	// Convert to output format
+	// Convert to output format, tracking access per entity
 	entities := make([]map[string]any, 0, len(entityMap))
 	for _, e := range entityMap {
 		entities = append(entities, map[string]any{
@@ -599,6 +602,9 @@ func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallR
 			"entityType":   e.Type,
 			"observations": e.Observations,
 		})
+		if err := h.store.UpdateLastAccessed(e.Name); err != nil {
+			logger.Warn("failed to update last accessed", "entity", e.Name, "error", err)
+		}
 	}
 
 	data, err := json.Marshal(entities)
@@ -628,6 +634,9 @@ func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
 			"entityType":   entity.Type,
 			"observations": entity.Observations,
 		})
+		if err := h.store.UpdateLastAccessed(name); err != nil {
+			logger.Warn("failed to update last accessed", "entity", name, "error", err)
+		}
 	}
 
 	data, err := json.Marshal(entities)
@@ -658,6 +667,16 @@ func (h *Handler) getRecentContext(args json.RawMessage) (*ToolCallResult, error
 	results, err := h.store.GetRecentContext(hours, input.ProjectName, tokenBudget)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent context: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	for _, r := range results {
+		if _, ok := seen[r.EntityName]; !ok {
+			seen[r.EntityName] = struct{}{}
+			if err := h.store.UpdateLastAccessed(r.EntityName); err != nil {
+				logger.Warn("failed to update last accessed", "entity", r.EntityName, "error", err)
+			}
+		}
 	}
 
 	formatted := storage.FormatContextResults(results)
@@ -782,6 +801,16 @@ func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {
 	results, err := h.store.GetContextForInjection(cfg, input.ProjectName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	for _, r := range results {
+		if _, ok := seen[r.EntityName]; !ok {
+			seen[r.EntityName] = struct{}{}
+			if err := h.store.UpdateLastAccessed(r.EntityName); err != nil {
+				logger.Warn("failed to update last accessed", "entity", r.EntityName, "error", err)
+			}
+		}
 	}
 
 	formatted := storage.FormatContextResults(results)

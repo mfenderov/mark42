@@ -1524,6 +1524,60 @@ func TestHandler_ConsolidateMemories_NothingToConsolidate(t *testing.T) {
 	}
 }
 
+// --- Access tracking tests ---
+
+func TestHandler_SearchNodes_TracksAccess(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("TDD", "pattern", []string{"Test-Driven Development"})
+
+	_, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "Test-Driven"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var count int
+	err = store.DB().Get(&count, `
+		SELECT COALESCE(SUM(access_count), 0)
+		FROM observations
+		WHERE entity_id = (SELECT id FROM entities WHERE name = 'TDD' AND is_latest = 1)
+	`)
+	if err != nil {
+		t.Fatalf("querying access_count failed: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected access_count > 0 after search_nodes, got 0")
+	}
+}
+
+func TestHandler_OpenNodes_TracksAccess(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("TDD", "pattern", []string{"Test-Driven Development"})
+
+	_, err := handler.CallTool("open_nodes", json.RawMessage(`{"names": ["TDD"]}`))
+	if err != nil {
+		t.Fatalf("open_nodes failed: %v", err)
+	}
+
+	var count int
+	err = store.DB().Get(&count, `
+		SELECT COALESCE(SUM(access_count), 0)
+		FROM observations
+		WHERE entity_id = (SELECT id FROM entities WHERE name = 'TDD' AND is_latest = 1)
+	`)
+	if err != nil {
+		t.Fatalf("querying access_count failed: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected access_count > 0 after open_nodes, got 0")
+	}
+}
+
 // --- Tools count test update ---
 
 func TestHandler_Tools_Count(t *testing.T) {
