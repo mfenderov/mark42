@@ -55,15 +55,17 @@ func (s *Store) ConsolidateWithSimilarity(entityName string, threshold float64) 
 		return fmt.Sprintf("%s: nothing to consolidate (%d observations)", entityName, len(observations)), nil
 	}
 
-	// Track which observations should be expired (by content)
+	// Track which observations should be expired (by content for InvalidateObservation)
 	toExpire := make(map[string]bool)
+	// Track which observation IDs are already marked for expiry (prevents double-processing)
+	seen := make(map[int64]bool)
 
 	for i := 0; i < len(observations); i++ {
-		if toExpire[observations[i].content] {
+		if seen[observations[i].id] {
 			continue
 		}
 		for j := i + 1; j < len(observations); j++ {
-			if toExpire[observations[j].content] {
+			if seen[observations[j].id] {
 				continue
 			}
 
@@ -86,8 +88,10 @@ func (s *Store) ConsolidateWithSimilarity(entityName string, threshold float64) 
 				// Expire the shorter one; if equal length, expire b (later encountered = b)
 				if len(a.content) >= len(b.content) {
 					toExpire[b.content] = true
+					seen[b.id] = true
 				} else {
 					toExpire[a.content] = true
+					seen[a.id] = true
 				}
 			}
 		}

@@ -169,6 +169,7 @@ func (s *Store) GetObservationWithID(entityName, content string) *ObservationWit
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.name = ? AND o.content = ?
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 	`, entityName, content).Scan(&obs.ID, &obs.Content, &obs.EntityName, &obs.EntityType)
 	if err != nil {
 		return nil
