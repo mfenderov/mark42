@@ -1733,3 +1733,115 @@ func TestHandler_GetEntityHistory_NotFound(t *testing.T) {
 		t.Error("expected error for not-found entity")
 	}
 }
+
+// --- consolidate_memories semantic mode tests ---
+
+func TestHandler_ConsolidateMemories_SemanticMode_NoEmbedder(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.CreateEntity("Go", "language", []string{"Compiled language", "Go is compiled"})
+
+	// No embedder configured — semantic mode should return error response
+	result, err := handler.CallTool("consolidate_memories", json.RawMessage(`{"entityName":"Go","mode":"semantic"}`))
+	if err != nil {
+		t.Fatalf("consolidate_memories should not return error (returns IsError result): %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+	if !result.IsError {
+		t.Error("expected IsError=true when semantic mode used without embedder")
+	}
+	if !strings.Contains(result.Content[0].Text, "requires embedder") {
+		t.Errorf("expected 'requires embedder' in error message, got: %s", result.Content[0].Text)
+	}
+}
+
+func TestHandler_ConsolidateMemories_SemanticMode_WithEmbedder(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	embedder := &fakeEmbedder{}
+	handler.WithEmbedder(embedder)
+
+	store.CreateEntity("Go", "language", []string{"dogs are great", "dogs"})
+
+	// With embedder but no stored embeddings — falls back to substring matching
+	result, err := handler.CallTool("consolidate_memories", json.RawMessage(`{"entityName":"Go","mode":"semantic"}`))
+	if err != nil {
+		t.Fatalf("consolidate_memories failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+	if result.IsError {
+		t.Errorf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	// "dogs" is substring of "dogs are great", shorter should be expired
+	entity, err := store.GetEntity("Go")
+	if err != nil {
+		t.Fatalf("GetEntity failed: %v", err)
+	}
+	if len(entity.Observations) != 1 {
+		t.Errorf("expected 1 observation remaining, got %d: %v", len(entity.Observations), entity.Observations)
+	}
+	if entity.Observations[0] != "dogs are great" {
+		t.Errorf("expected 'dogs are great' to remain, got: %q", entity.Observations[0])
+	}
+}
+
+func TestHandler_ConsolidateMemories_DefaultMode(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.CreateEntity("Go", "language", []string{
+		"Compiled language",
+		"Go is a compiled language with fast build times",
+	})
+
+	result, err := handler.CallTool("consolidate_memories", json.RawMessage(`{"entityName":"Go"}`))
+	if err != nil {
+		t.Fatalf("consolidate_memories failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+	if result.IsError {
+		t.Errorf("unexpected error: %s", result.Content[0].Text)
+	}
+
+	entity, _ := store.GetEntity("Go")
+	for _, obs := range entity.Observations {
+		if obs == "Compiled language" {
+			t.Error("short duplicate should have been removed by default mode")
+		}
+	}
+}
+
+func TestHandler_ConsolidateMemories_SemanticMode_CustomThreshold(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	embedder := &fakeEmbedder{}
+	handler.WithEmbedder(embedder)
+
+	store.CreateEntity("Pets", "concept", []string{"cats", "dogs"})
+
+	// Both have no embeddings — fallback to substring (neither contains the other)
+	// With a very low threshold (0.0), substring check won't match either
+	result, err := handler.CallTool("consolidate_memories", json.RawMessage(`{"entityName":"Pets","mode":"semantic","threshold":0.99}`))
+	if err != nil {
+		t.Fatalf("consolidate_memories failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+
+	// No observations should be expired (neither is a substring of the other)
+	entity, _ := store.GetEntity("Pets")
+	if len(entity.Observations) != 2 {
+		t.Errorf("expected 2 observations unchanged, got %d: %v", len(entity.Observations), entity.Observations)
+	}
+}

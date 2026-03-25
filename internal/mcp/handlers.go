@@ -257,6 +257,8 @@ func (h *Handler) Tools() []Tool {
 				Type: "object",
 				Properties: map[string]Property{
 					"entityName": {Type: "string", Description: "Name of the entity whose observations to consolidate"},
+					"mode":       {Type: "string", Description: "Consolidation mode: 'semantic' uses embedding similarity, default uses substring matching"},
+					"threshold":  {Type: "number", Description: "Similarity threshold for semantic mode (0.0-1.0, default 0.85)"},
 				},
 				Required: []string{"entityName"},
 			},
@@ -779,7 +781,25 @@ func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, er
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	result, err := h.store.ConsolidateObservations(input.EntityName)
+	var result string
+	var err error
+
+	if input.Mode == "semantic" {
+		if h.embedder == nil {
+			return &ToolCallResult{
+				Content: []ContentBlock{{Type: "text", Text: "semantic mode requires embedder"}},
+				IsError: true,
+			}, nil
+		}
+		threshold := input.Threshold
+		if threshold == 0 {
+			threshold = storage.DefaultSupersessionThreshold
+		}
+		result, err = h.store.ConsolidateWithSimilarity(input.EntityName, threshold)
+	} else {
+		result, err = h.store.ConsolidateObservations(input.EntityName)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("consolidation failed: %w", err)
 	}

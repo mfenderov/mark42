@@ -195,7 +195,9 @@ type SummarizeEntityInput struct {
 }
 
 type ConsolidateMemoriesInput struct {
-	EntityName string `json:"entityName"`
+	EntityName string  `json:"entityName"`
+	Mode       string  `json:"mode,omitempty"`      // "semantic" or "" (default: substring)
+	Threshold  float64 `json:"threshold,omitempty"` // default: 0.85
 }
 
 type CaptureSessionEventInput struct {
