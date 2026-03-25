@@ -362,4 +362,3 @@ func FormatSessionRecall(results []ContextResult) string {
 
 	return sb.String()
 }
-
