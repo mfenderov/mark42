@@ -210,7 +210,7 @@ func (s *Store) GetEntity(name string) (*Entity, error) {
 		return nil, err
 	}
 
-	// Load observations — exclude invalidated ones (valid_until IS NOT NULL)
+	// Load observations — only return currently valid observations (valid_until IS NULL)
 	err = s.db.Select(&entity.Observations,
 		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL ORDER BY created_at",
 		entity.ID)

@@ -68,7 +68,16 @@ func TestInvalidateObservation_NotFound(t *testing.T) {
 
 	err = store.InvalidateObservation("Bob", "nonexistent observation")
 	if !errors.Is(err, storage.ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
+		t.Errorf("expected ErrNotFound for missing observation, got %v", err)
+	}
+
+	// Double-invalidate: second call on an already-invalidated observation must also return ErrNotFound.
+	if err := store.InvalidateObservation("Bob", "likes Go"); err != nil {
+		t.Fatalf("first InvalidateObservation failed: %v", err)
+	}
+	err = store.InvalidateObservation("Bob", "likes Go")
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("expected ErrNotFound on double-invalidate, got %v", err)
 	}
 }
 

@@ -14,7 +14,8 @@ type ObservationWithValidity struct {
 }
 
 // ValidFrom parses the ValidFromStr field as a time.Time.
-// Returns zero time on parse failure.
+// Accepts SQLite datetime format ("2006-01-02 15:04:05") or RFC3339.
+// Returns zero time.Time if parsing fails — callers must check for zero if exactness matters.
 func (o *ObservationWithValidity) ValidFrom() time.Time {
 	t, err := time.Parse("2006-01-02 15:04:05", o.ValidFromStr)
 	if err != nil {
@@ -31,6 +32,7 @@ func (s *Store) InvalidateObservation(entityName, content string) error {
 		SET valid_until = CURRENT_TIMESTAMP
 		WHERE entity_id = (SELECT id FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL))
 		  AND content = ?
+		  AND valid_until IS NULL
 	`, entityName, content)
 	if err != nil {
 		return err
