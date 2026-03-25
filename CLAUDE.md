@@ -6,7 +6,7 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 
 **Purpose**: Replace JSON-based Memory MCP with SQLite-backed implementation offering superior search capabilities (FTS5 + future vector search).
 
-**Status**: Phase 4 Complete - Session Capture & Recall
+**Status**: Phase 6 Complete — Core Intelligence
 
 **Key differentiators**:
 - Privacy-first: All data stays local (no cloud, no telemetry)
@@ -212,8 +212,10 @@ The project includes a complete Claude Code plugin implementation:
 | `consolidate_memories` | ✅ ConsolidateObservations | ✅ DONE | Observation deduplication |
 | `capture_session` | ✅ CreateSession+Events | ✅ DONE | Session capture with events |
 | `recall_sessions` | ✅ GetRecentSessionSummaries | ✅ DONE | Cross-session recall |
+| `invalidate_observation` | ✅ InvalidateObservation | ✅ DONE | Temporal validity |
+| `get_entity_history` | ✅ GetObservationHistory | ✅ DONE | Full observation history |
 
-**All 16 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 18 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
@@ -250,7 +252,15 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ Hook integration: post-tool-use tracks events, stop triggers capture, session-start injects recall
 - ✅ New fact types: `session_event`, `session_summary`
 
-**Phase 5**: Analytics & Advanced Decay (Future)
+**Phase 6 (Complete)**: Core Intelligence ✅
+- ✅ access_count tracking wired into importance scoring (H2.6)
+- ✅ Temporal validity: valid_from/valid_until, InvalidateObservation, GetObservationHistory (H2.3)
+- ✅ Auto-detection of superseded observations on write (cosine similarity) (H2.3)
+- ✅ invalidate_observation and get_entity_history MCP tools (H2.3)
+- ✅ Semantic consolidation mode with embedding similarity (H2.4)
+- ✅ Query-aware context injection in get_context (H2.5)
+
+**Phase 7**: Analytics & Advanced Decay (Future)
 - Automatic importance decay for stale memories
 - Memory analytics (decay curves, most-accessed entities)
 - Smarter consolidation with vector similarity
