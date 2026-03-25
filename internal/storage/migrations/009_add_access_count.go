@@ -28,5 +28,6 @@ func upAddAccessCount(ctx context.Context, tx *sql.Tx) error {
 }
 
 func downAddAccessCount(ctx context.Context, tx *sql.Tx) error {
+	// SQLite does not support DROP COLUMN — down migration is intentionally a no-op.
 	return nil
 }

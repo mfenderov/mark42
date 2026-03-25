@@ -377,23 +377,29 @@ func TestRecalculateImportance_UsesRealAccessCount(t *testing.T) {
 	}
 
 	// Backdate both so recency is equal
-	store.DB().Exec(`UPDATE observations SET last_accessed = datetime('now', '-30 days'), created_at = datetime('now', '-30 days')`)
+	if _, err := store.DB().Exec(`UPDATE observations SET last_accessed = datetime('now', '-30 days'), created_at = datetime('now', '-30 days')`); err != nil {
+		t.Fatalf("backdating observations failed: %v", err)
+	}
 
 	if _, err := store.RecalculateImportance(); err != nil {
 		t.Fatalf("RecalculateImportance failed: %v", err)
 	}
 
 	var freqImportance, rareImportance float64
-	store.DB().Get(&freqImportance, `
+	if err := store.DB().Get(&freqImportance, `
 		SELECT importance FROM observations
 		WHERE entity_id = (SELECT id FROM entities WHERE name = 'FrequentEntity' AND is_latest = 1)
 		LIMIT 1
-	`)
-	store.DB().Get(&rareImportance, `
+	`); err != nil {
+		t.Fatalf("querying FrequentEntity importance failed: %v", err)
+	}
+	if err := store.DB().Get(&rareImportance, `
 		SELECT importance FROM observations
 		WHERE entity_id = (SELECT id FROM entities WHERE name = 'RareEntity' AND is_latest = 1)
 		LIMIT 1
-	`)
+	`); err != nil {
+		t.Fatalf("querying RareEntity importance failed: %v", err)
+	}
 
 	if freqImportance <= rareImportance {
 		t.Errorf("FrequentEntity importance (%v) should be higher than RareEntity importance (%v)", freqImportance, rareImportance)

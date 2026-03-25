@@ -8,7 +8,7 @@ import (
 
 // ExpectedMigrationCount is the total number of goose migrations.
 // Update this when adding new migrations.
-const ExpectedMigrationCount int64 = 8
+const ExpectedMigrationCount int64 = 9
 
 func TestMigrate_CreatesSchemaVersion(t *testing.T) {
 	tmpDir := t.TempDir()
