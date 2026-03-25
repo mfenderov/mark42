@@ -107,6 +107,9 @@ func (s *Store) initSchema() error {
 		importance REAL DEFAULT 1.0,
 		forget_after TIMESTAMP,
 		last_accessed TIMESTAMP,
+		-- Temporal validity fields (Phase 6)
+		valid_from TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		valid_until TIMESTAMP DEFAULT NULL,
 		UNIQUE(entity_id, content)
 	);
 
