@@ -107,7 +107,7 @@ func runSessionStartHook(projectDir string, store *storage.Store, opts ...hookOp
 		return
 	}
 
-	combined := strings.Join(parts, "\n\n")
+	combined := strings.ToValidUTF8(strings.Join(parts, "\n\n"), "")
 	estimatedTokens := storage.EstimateTokens(combined)
 
 	hookPrintf(cfg, "=== mark42: %s ===\n", projectName)
