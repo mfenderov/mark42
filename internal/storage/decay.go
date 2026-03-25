@@ -47,6 +47,7 @@ func (s *Store) ApplySoftDecay(threshold float64) (int, error) {
 		)
 		WHERE importance >= ? AND importance < 1.0
 		AND entity_id IN (SELECT id FROM entities WHERE is_latest = 1)
+		AND valid_until IS NULL
 	`, cfg.DecayConstant, threshold)
 	if err != nil {
 		return 0, err
@@ -101,6 +102,7 @@ func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 		AND o.importance < ?
 		AND COALESCE(o.last_accessed, o.created_at) < ?
 		AND o.fact_type != 'static'
+		AND o.valid_until IS NULL
 	`, cfg.MinImportanceToKeep, cutoffStr)
 	if err != nil {
 		return 0, err
@@ -120,6 +122,7 @@ func (s *Store) ArchiveOldMemories(cfg DecayConfig) (int, error) {
 			AND o.importance < ?
 			AND COALESCE(o.last_accessed, o.created_at) < ?
 			AND o.fact_type != 'static'
+			AND o.valid_until IS NULL
 		)
 	`, cfg.MinImportanceToKeep, cutoffStr); err != nil {
 		return 0, err
@@ -182,6 +185,7 @@ func (s *Store) GetDecayStats() (*DecayStats, error) {
 		SELECT COUNT(*) FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
+		AND o.valid_until IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -192,6 +196,7 @@ func (s *Store) GetDecayStats() (*DecayStats, error) {
 		SELECT COUNT(*) FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance < 0.3
+		AND o.valid_until IS NULL
 	`)
 	if err != nil {
 		return nil, err
@@ -214,6 +219,7 @@ func (s *Store) GetDecayStats() (*DecayStats, error) {
 		SELECT COALESCE(AVG(importance), 0) FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
+		AND o.valid_until IS NULL
 	`)
 	if err != nil {
 		stats.AvgImportance = 0

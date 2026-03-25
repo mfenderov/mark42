@@ -69,6 +69,7 @@ func (s *Store) ftsSearch(query string, limit int) ([]RankedItem, error) {
 			FROM observations_fts f
 			JOIN observations o ON o.id = f.rowid
 			WHERE observations_fts MATCH ?
+			AND o.valid_until IS NULL
 		),
 		entity_matches AS (
 			SELECT e.id as entity_id, e.name as content, bm25(entities_fts) as score

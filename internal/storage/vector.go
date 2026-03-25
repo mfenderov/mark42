@@ -79,6 +79,7 @@ func (s *Store) VectorSearch(queryEmbedding []float64, limit int) ([]VectorResul
 		FROM observation_embeddings oe
 		JOIN observations o ON o.id = oe.observation_id
 		JOIN entities e ON e.id = o.entity_id
+		WHERE (o.valid_until IS NULL OR e.entity_type = 'session')
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("loading embeddings: %w", err)
@@ -127,6 +128,7 @@ func (s *Store) GetObservationsWithoutEmbeddings() ([]ObservationWithID, error) 
 		JOIN entities e ON e.id = o.entity_id
 		LEFT JOIN observation_embeddings oe ON oe.observation_id = o.id
 		WHERE oe.observation_id IS NULL
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 	`)
 	if err != nil {
 		return nil, err

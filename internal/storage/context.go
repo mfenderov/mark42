@@ -70,6 +70,7 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance >= ?
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY ` + factTypeOrder + `, o.importance DESC
 	`
 
@@ -135,6 +136,7 @@ func (s *Store) GetRecentContext(hours int, projectName string, tokenBudget int)
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
 		AND COALESCE(o.last_accessed, o.created_at) > datetime('now', ? || ' hours')
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY COALESCE(o.last_accessed, o.created_at) DESC
 	`
 

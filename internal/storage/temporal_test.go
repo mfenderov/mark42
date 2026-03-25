@@ -81,6 +81,97 @@ func TestInvalidateObservation_NotFound(t *testing.T) {
 	}
 }
 
+func TestValidityFilter_HidesExpiredFromSearch(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	_, err := store.CreateEntity("Languages", "concept", []string{"Go is great", "Python is also great"})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+
+	if err := store.InvalidateObservation("Languages", "Python is also great"); err != nil {
+		t.Fatalf("InvalidateObservation failed: %v", err)
+	}
+
+	results, err := store.Search("Python")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	for _, r := range results {
+		for _, obs := range r.Observations {
+			if obs == "Python is also great" {
+				t.Errorf("expected invalidated observation to be absent from Search results, but found it")
+			}
+		}
+	}
+}
+
+func TestValidityFilter_ExemptsSessions(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	// Create a regular entity with one observation
+	_, err := store.CreateEntity("Dave", "person", []string{"regular fact"})
+	if err != nil {
+		t.Fatalf("CreateEntity person failed: %v", err)
+	}
+
+	// Create a session entity with a session_summary observation
+	_, err = store.CreateEntity("session-2024-01", "session", []string{})
+	if err != nil {
+		t.Fatalf("CreateEntity session failed: %v", err)
+	}
+	if err := store.AddObservationWithType("session-2024-01", "session summary content", storage.FactTypeSessionSummary); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	// Set importance > MinImportance so both observations pass the importance filter
+	store.SetObservationImportance("Dave", "regular fact", 0.9)
+	store.SetObservationImportance("session-2024-01", "session summary content", 0.9)
+
+	// Invalidate the regular entity's observation
+	if err := store.InvalidateObservation("Dave", "regular fact"); err != nil {
+		t.Fatalf("InvalidateObservation failed: %v", err)
+	}
+
+	cfg := storage.DefaultContextConfig()
+	cfg.TokenBudget = 10000
+	cfg.MinImportance = 0.3
+
+	results, err := store.GetContextForInjection(cfg, "testproject")
+	if err != nil {
+		t.Fatalf("GetContextForInjection failed: %v", err)
+	}
+
+	foundRegularFact := false
+	foundSessionSummary := false
+	for _, r := range results {
+		if r.Content == "regular fact" {
+			foundRegularFact = true
+		}
+		if r.Content == "session summary content" {
+			foundSessionSummary = true
+		}
+	}
+
+	if foundRegularFact {
+		t.Error("expected invalidated regular fact to be absent from GetContextForInjection results")
+	}
+	if !foundSessionSummary {
+		t.Error("expected session summary content to appear in GetContextForInjection results (sessions exempt from validity filter)")
+	}
+}
+
 func TestGetObservationHistory(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()

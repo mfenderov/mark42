@@ -75,6 +75,7 @@ func (s *Store) GetObservationsByFactType(factType FactType) ([]ObservationWithM
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE o.fact_type = ?
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY o.created_at DESC
 	`, string(factType))
 	return results, err
@@ -88,6 +89,7 @@ func (s *Store) GetContextByFactType() (*ContextByFactType, error) {
 		       COALESCE(o.fact_type, 'dynamic') as fact_type
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
+		WHERE (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY
 			CASE o.fact_type
 				WHEN 'static' THEN 1

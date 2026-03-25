@@ -34,6 +34,7 @@ func (s *Store) SearchWithLimit(query string, limit int) ([]*SearchResult, error
 			FROM observations_fts f
 			JOIN observations o ON o.id = f.rowid
 			WHERE observations_fts MATCH ?
+			AND o.valid_until IS NULL
 		),
 		entity_matches AS (
 			SELECT e.id as entity_id, bm25(entities_fts) as score
@@ -132,7 +133,7 @@ func (s *Store) ReadGraph() (*Graph, error) {
 func (s *Store) loadObservations(entityID int64) ([]string, error) {
 	var observations []string
 	err := s.db.Select(&observations,
-		"SELECT content FROM observations WHERE entity_id = ? ORDER BY created_at",
+		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL ORDER BY created_at",
 		entityID)
 	return observations, err
 }

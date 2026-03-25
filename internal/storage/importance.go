@@ -164,6 +164,7 @@ func (s *Store) RecalculateImportance() (int, error) {
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
+		AND o.valid_until IS NULL
 	`); err != nil {
 		return 0, err
 	}
@@ -228,6 +229,7 @@ func (s *Store) GetObservationsByImportance(minImportance float64) ([]Observatio
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance >= ?
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY o.importance DESC
 	`, minImportance)
 	return results, err
