@@ -318,6 +318,88 @@ func TestStore_RecalculateImportance_UpdatesAllObservations(t *testing.T) {
 	}
 }
 
+func TestUpdateLastAccessed_IncrementsAccessCount(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	_, err := store.CreateEntity("AccessTest", "test", []string{"some observation"})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := store.UpdateLastAccessed("AccessTest"); err != nil {
+			t.Fatalf("UpdateLastAccessed call %d failed: %v", i+1, err)
+		}
+	}
+
+	var count int
+	err = store.DB().Get(&count, `
+		SELECT access_count FROM observations
+		WHERE entity_id = (SELECT id FROM entities WHERE name = 'AccessTest' AND is_latest = 1)
+		LIMIT 1
+	`)
+	if err != nil {
+		t.Fatalf("querying access_count failed: %v", err)
+	}
+
+	if count != 3 {
+		t.Errorf("expected access_count = 3, got %d", count)
+	}
+}
+
+func TestRecalculateImportance_UsesRealAccessCount(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	_, err := store.CreateEntity("FrequentEntity", "test", []string{"frequently accessed observation"})
+	if err != nil {
+		t.Fatalf("CreateEntity A failed: %v", err)
+	}
+	_, err = store.CreateEntity("RareEntity", "test", []string{"rarely accessed observation"})
+	if err != nil {
+		t.Fatalf("CreateEntity B failed: %v", err)
+	}
+
+	// Access entity A 10 times, entity B zero times
+	for i := 0; i < 10; i++ {
+		if err := store.UpdateLastAccessed("FrequentEntity"); err != nil {
+			t.Fatalf("UpdateLastAccessed failed: %v", err)
+		}
+	}
+
+	// Backdate both so recency is equal
+	store.DB().Exec(`UPDATE observations SET last_accessed = datetime('now', '-30 days'), created_at = datetime('now', '-30 days')`)
+
+	if _, err := store.RecalculateImportance(); err != nil {
+		t.Fatalf("RecalculateImportance failed: %v", err)
+	}
+
+	var freqImportance, rareImportance float64
+	store.DB().Get(&freqImportance, `
+		SELECT importance FROM observations
+		WHERE entity_id = (SELECT id FROM entities WHERE name = 'FrequentEntity' AND is_latest = 1)
+		LIMIT 1
+	`)
+	store.DB().Get(&rareImportance, `
+		SELECT importance FROM observations
+		WHERE entity_id = (SELECT id FROM entities WHERE name = 'RareEntity' AND is_latest = 1)
+		LIMIT 1
+	`)
+
+	if freqImportance <= rareImportance {
+		t.Errorf("FrequentEntity importance (%v) should be higher than RareEntity importance (%v)", freqImportance, rareImportance)
+	}
+}
+
 func TestStore_GetObservationsByImportance(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()

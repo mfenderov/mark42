@@ -88,7 +88,7 @@ func CalculateImportance(
 func (s *Store) UpdateLastAccessed(entityName string) error {
 	_, err := s.db.Exec(`
 		UPDATE observations
-		SET last_accessed = CURRENT_TIMESTAMP
+		SET last_accessed = CURRENT_TIMESTAMP, access_count = access_count + 1
 		WHERE entity_id = (SELECT id FROM entities WHERE name = ? AND is_latest = 1)
 	`, entityName)
 	return err
@@ -152,13 +152,15 @@ func (s *Store) RecalculateImportance() (int, error) {
 		FactType       string  `db:"fact_type"`
 		DaysSince      float64 `db:"days_since"`
 		RelationCount  int     `db:"relation_count"`
+		AccessCount    int     `db:"access_count"`
 	}
 
 	var rows []obsRow
 	if err := s.db.Select(&rows, `
 		SELECT o.id, o.importance, o.fact_type,
 		       COALESCE(julianday('now') - julianday(COALESCE(o.last_accessed, o.created_at)), 0) as days_since,
-		       (SELECT COUNT(*) FROM relations WHERE from_entity_id = o.entity_id OR to_entity_id = o.entity_id) as relation_count
+		       (SELECT COUNT(*) FROM relations WHERE from_entity_id = o.entity_id OR to_entity_id = o.entity_id) as relation_count,
+		       COALESCE(o.access_count, 0) as access_count
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
@@ -182,7 +184,7 @@ func (s *Store) RecalculateImportance() (int, error) {
 		newImportance := CalculateImportance(
 			baseScore,
 			row.DaysSince,
-			0, // access_count not yet tracked in schema — Phase 6 work
+			row.AccessCount,
 			row.RelationCount,
 			maxRelations,
 			cfg,
