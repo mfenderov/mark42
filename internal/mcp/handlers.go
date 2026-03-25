@@ -830,8 +830,16 @@ func (h *Handler) getEntityHistory(args json.RawMessage) (*ToolCallResult, error
 			ValidFrom: h.ValidFrom().Format(time.RFC3339),
 		}
 		if h.ValidUntil.Valid {
-			s := h.ValidUntil.String
-			entry.ValidUntil = &s
+			var validUntilTime time.Time
+			if t, err := time.Parse("2006-01-02 15:04:05", h.ValidUntil.String); err == nil {
+				validUntilTime = t
+			} else if t, err := time.Parse(time.RFC3339, h.ValidUntil.String); err == nil {
+				validUntilTime = t
+			}
+			if !validUntilTime.IsZero() {
+				s := validUntilTime.Format(time.RFC3339)
+				entry.ValidUntil = &s
+			}
 		}
 		entries[i] = entry
 	}
@@ -851,7 +859,9 @@ func (h *Handler) getEntityHistory(args json.RawMessage) (*ToolCallResult, error
 }
 
 func isSessionFactType(ft storage.FactType) bool {
-	return ft == storage.FactTypeSessionEvent || ft == storage.FactTypeSessionSummary
+	return ft == storage.FactTypeSessionEvent ||
+		ft == storage.FactTypeSessionSummary ||
+		ft == storage.FactTypeSessionTurn
 }
 
 func (h *Handler) autoDetectSuperseded(entityName string, contents []string, factType storage.FactType) {

@@ -479,6 +479,18 @@ func TestHandler_AddObservations(t *testing.T) {
 			wantAdded: 1,
 		},
 		{
+			name: "add observations with session_turn fact type",
+			setup: func(s *storage.Store) {
+				s.CreateEntity("TDD", "pattern", nil)
+			},
+			args: `{
+				"observations": [
+					{"entityName": "TDD", "contents": ["turn observation"], "factType": "session_turn"}
+				]
+			}`,
+			wantAdded: 1,
+		},
+		{
 			name:  "add to nonexistent entity",
 			setup: func(s *storage.Store) {},
 			args: `{
@@ -1265,6 +1277,28 @@ type failingEmbedder struct {
 func (f *failingEmbedder) CreateEmbedding(_ context.Context, _ string) ([]float64, error) {
 	f.calls++
 	return nil, fmt.Errorf("connection refused")
+}
+
+func TestHandler_AutoEmbed_SessionTurnSkipsAutoDetect(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.CreateEntity("Go", "language", nil)
+
+	embedder := &fakeEmbedder{}
+	handler.WithEmbedder(embedder)
+
+	// session_turn fact type must skip auto-detection
+	args := `{"observations": [{"entityName": "Go", "contents": ["turn content"], "factType": "session_turn"}]}`
+	_, err := handler.CallTool("add_observations", json.RawMessage(args))
+	if err != nil {
+		t.Fatalf("add_observations failed: %v", err)
+	}
+
+	// Only 1 call for embedding — no auto-detect call for session_turn
+	if embedder.calls != 1 {
+		t.Errorf("expected 1 embedding call (embed only, no auto-detect for session_turn), got %d", embedder.calls)
+	}
 }
 
 func TestHandler_AutoEmbed_FailingEmbedder(t *testing.T) {

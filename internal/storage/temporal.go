@@ -65,7 +65,7 @@ func (s *Store) DetectAndExpireSuperseded(entityName, newContent string, embedde
 
 	var entityID int64
 	err := s.db.QueryRow(
-		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
+		"SELECT id FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)",
 		entityName,
 	).Scan(&entityID)
 	if err == sql.ErrNoRows {
