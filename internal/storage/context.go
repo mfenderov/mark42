@@ -4,10 +4,17 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/log"
 )
+
+var storageLogger = log.NewWithOptions(os.Stderr, log.Options{
+	ReportTimestamp: false,
+})
 
 // ContextConfig holds configuration for context injection.
 type ContextConfig struct {
@@ -106,7 +113,9 @@ func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string
 	if embedder != nil {
 		ctx := context.Background()
 		hybridResults, err := s.HybridSearchWithEmbedder(ctx, query, embedder, candidateLimit)
-		if err == nil {
+		if err != nil {
+			storageLogger.Warn("hybrid search failed, falling back to FTS", "query", query, "error", err)
+		} else {
 			for _, r := range hybridResults {
 				entityNames[r.EntityName] = struct{}{}
 			}
@@ -114,6 +123,8 @@ func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string
 	}
 
 	// FTS path (also used as fallback when embedder is nil or hybrid returned nothing)
+	// TODO: SearchWithLimit does not filter by is_latest; superseded entity versions can consume
+	// candidate slots. The second SQL (below) enforces is_latest=1, so results stay correct.
 	if len(entityNames) == 0 {
 		ftsResults, err := s.SearchWithLimit(query, candidateLimit)
 		if err == nil {
@@ -159,6 +170,8 @@ func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string
 		return nil, err
 	}
 
+	// Note: unlike getContextFlat, this path sorts by FinalScore only.
+	// FactTypePriority SQL ordering is not applied; static facts get a 1.2× score boost instead.
 	applyScores(results, projectName, cfg.ProjectBoost)
 
 	// Sort by FinalScore descending
