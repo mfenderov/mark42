@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -45,8 +47,10 @@ var validFactTypes = map[string]bool{
 }
 
 // GetContextForInjection retrieves memories optimized for context injection.
-// Orders by: fact type priority, then importance, respecting token budget.
-func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([]ContextResult, error) {
+// When query is non-empty, performs candidate search (FTS or hybrid) then re-ranks
+// by importance×recency before applying token budget.
+// When query is empty, uses flat importance ordering (original behavior).
+func (s *Store) GetContextForInjection(cfg ContextConfig, projectName, query string, embedder Embedder) ([]ContextResult, error) {
 	// Validate all fact types before string interpolation into ORDER BY clause
 	for _, ft := range cfg.FactTypePriority {
 		if !validFactTypes[ft] {
@@ -54,6 +58,15 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 		}
 	}
 
+	if strings.TrimSpace(query) != "" {
+		return s.getContextWithQuery(cfg, projectName, query, embedder)
+	}
+
+	return s.getContextFlat(cfg, projectName)
+}
+
+// getContextFlat is the original flat-importance path (query == "").
+func (s *Store) getContextFlat(cfg ContextConfig, projectName string) ([]ContextResult, error) {
 	// Build fact type priority case statement
 	var factTypeCases []string
 	for i, ft := range cfg.FactTypePriority {
@@ -62,7 +75,7 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 	factTypeOrder := "CASE fact_type " + strings.Join(factTypeCases, " ") + " ELSE 99 END"
 
 	// Query with ordering — includes days since last access for recency boost
-	query := `
+	sqlQuery := `
 		SELECT e.name as entity_name, e.entity_type, o.content,
 		       COALESCE(o.fact_type, 'dynamic') as fact_type,
 		       COALESCE(o.importance, 1.0) as importance,
@@ -75,13 +88,90 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 	`
 
 	var results []ContextResult
-	err := s.db.Select(&results, query, cfg.MinImportance)
-	if err != nil {
+	if err := s.db.Select(&results, sqlQuery, cfg.MinImportance); err != nil {
 		return nil, err
 	}
 
-	// Apply boosts and calculate final scores:
-	// final_score = importance × recency_boost × project_boost × fact_type_boost
+	applyScores(results, projectName, cfg.ProjectBoost)
+	return applyTokenBudget(results, cfg.TokenBudget), nil
+}
+
+// getContextWithQuery performs candidate search then re-ranks by importance×recency.
+func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string, embedder Embedder) ([]ContextResult, error) {
+	candidateLimit := cfg.TokenBudget * 3
+
+	// Collect candidate entity names from search
+	entityNames := make(map[string]struct{})
+
+	if embedder != nil {
+		ctx := context.Background()
+		hybridResults, err := s.HybridSearchWithEmbedder(ctx, query, embedder, candidateLimit)
+		if err == nil {
+			for _, r := range hybridResults {
+				entityNames[r.EntityName] = struct{}{}
+			}
+		}
+	}
+
+	// FTS path (also used as fallback when embedder is nil or hybrid returned nothing)
+	if len(entityNames) == 0 {
+		ftsResults, err := s.SearchWithLimit(query, candidateLimit)
+		if err == nil {
+			for _, r := range ftsResults {
+				entityNames[r.Name] = struct{}{}
+			}
+		}
+	}
+
+	if len(entityNames) == 0 {
+		return []ContextResult{}, nil
+	}
+
+	// Build IN clause for candidate entity names
+	names := make([]string, 0, len(entityNames))
+	for n := range entityNames {
+		names = append(names, n)
+	}
+
+	placeholders := make([]string, len(names))
+	args := make([]any, len(names)+1)
+	args[0] = cfg.MinImportance
+	for i, n := range names {
+		placeholders[i] = "?"
+		args[i+1] = n
+	}
+
+	inClause := strings.Join(placeholders, ", ")
+	sqlQuery := `
+		SELECT e.name as entity_name, e.entity_type, o.content,
+		       COALESCE(o.fact_type, 'dynamic') as fact_type,
+		       COALESCE(o.importance, 1.0) as importance,
+		       COALESCE(julianday('now') - julianday(COALESCE(o.last_accessed, o.created_at)), 0) as days_since_access
+		FROM observations o
+		JOIN entities e ON e.id = o.entity_id
+		WHERE e.is_latest = 1 AND o.importance >= ?
+		AND e.name IN (` + inClause + `)
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
+	`
+
+	var results []ContextResult
+	if err := s.db.Select(&results, sqlQuery, args...); err != nil {
+		return nil, err
+	}
+
+	applyScores(results, projectName, cfg.ProjectBoost)
+
+	// Sort by FinalScore descending
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].FinalScore > results[j].FinalScore
+	})
+
+	return applyTokenBudget(results, cfg.TokenBudget), nil
+}
+
+// applyScores calculates FinalScore for each result in place.
+func applyScores(results []ContextResult, projectName string, projectBoost float64) {
+	lowerProject := strings.ToLower(projectName)
 	for i := range results {
 		results[i].FinalScore = results[i].Importance
 
@@ -91,10 +181,9 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 
 		// Boost if entity or content matches project name
 		if projectName != "" {
-			lowerProject := strings.ToLower(projectName)
 			if strings.Contains(strings.ToLower(results[i].EntityName), lowerProject) ||
 				strings.Contains(strings.ToLower(results[i].Content), lowerProject) {
-				results[i].FinalScore *= cfg.ProjectBoost
+				results[i].FinalScore *= projectBoost
 			}
 		}
 
@@ -103,21 +192,21 @@ func (s *Store) GetContextForInjection(cfg ContextConfig, projectName string) ([
 			results[i].FinalScore *= 1.2
 		}
 	}
+}
 
-	// Apply token budget (estimate 4 chars per token)
+// applyTokenBudget returns the subset of results that fit within the token budget.
+func applyTokenBudget(results []ContextResult, tokenBudget int) []ContextResult {
 	tokenCount := 0
 	var selected []ContextResult
 	for _, r := range results {
-		// Estimate tokens for this entry
 		entryTokens := (len(r.EntityName) + len(r.Content) + 20) / 4 // +20 for formatting
-		if tokenCount+entryTokens > cfg.TokenBudget {
+		if tokenCount+entryTokens > tokenBudget {
 			break
 		}
 		tokenCount += entryTokens
 		selected = append(selected, r)
 	}
-
-	return selected, nil
+	return selected
 }
 
 // GetRecentContext retrieves memories ordered by recency, within the given time window.

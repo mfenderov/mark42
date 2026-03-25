@@ -646,7 +646,7 @@ func TestContextCommand(t *testing.T) {
 		cfg := store.DefaultContextConfig()
 		cfg.MinImportance = 0 // Include all
 
-		results, err := store.GetContextForInjection(cfg, "")
+		results, err := store.GetContextForInjection(cfg, "", "", nil)
 		if err != nil {
 			t.Fatalf("GetContextForInjection failed: %v", err)
 		}

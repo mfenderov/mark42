@@ -1173,7 +1173,7 @@ Respects token budget to avoid context overflow.`,
 			cfg.MinImportance = minImportance
 		}
 
-		results, err := store.GetContextForInjection(cfg, projectName)
+		results, err := store.GetContextForInjection(cfg, projectName, "", nil)
 		if err != nil {
 			return err
 		}

@@ -145,7 +145,7 @@ func TestValidityFilter_ExemptsSessions(t *testing.T) {
 	cfg.TokenBudget = 10000
 	cfg.MinImportance = 0.3
 
-	results, err := store.GetContextForInjection(cfg, "testproject")
+	results, err := store.GetContextForInjection(cfg, "testproject", "", nil)
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}

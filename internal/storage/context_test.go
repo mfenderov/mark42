@@ -40,7 +40,7 @@ func TestStore_GetContextForInjection(t *testing.T) {
 	cfg := storage.DefaultContextConfig()
 	cfg.MinImportance = 0.3
 
-	results, err := store.GetContextForInjection(cfg, "")
+	results, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestStore_GetContextForInjection_TokenBudget(t *testing.T) {
 	cfg.TokenBudget = 200 // Very small budget
 	cfg.MinImportance = 0.3
 
-	results, err := store.GetContextForInjection(cfg, "")
+	results, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestStore_GetContextForInjection_ProjectBoost(t *testing.T) {
 	cfg.MinImportance = 0.3
 	cfg.ProjectBoost = 2.0
 
-	results, err := store.GetContextForInjection(cfg, "mark42")
+	results, err := store.GetContextForInjection(cfg, "mark42", "", nil)
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestStore_GetContextForInjection_RecencyBoost(t *testing.T) {
 	cfg := storage.DefaultContextConfig()
 	cfg.MinImportance = 0.3
 
-	results, err := store.GetContextForInjection(cfg, "")
+	results, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestGetContextForInjection_RejectsInvalidFactType(t *testing.T) {
 	cfg := storage.DefaultContextConfig()
 	cfg.FactTypePriority = []string{"'; DROP TABLE observations; --"}
 
-	_, err := store.GetContextForInjection(cfg, "")
+	_, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err == nil {
 		t.Error("expected error for invalid fact type in FactTypePriority, got nil")
 	}
@@ -313,9 +313,120 @@ func TestGetContextForInjection_AcceptsAllValidFactTypes(t *testing.T) {
 		"static", "dynamic", "session_turn", "session_event", "session_summary",
 	}
 
-	_, err := store.GetContextForInjection(cfg, "")
+	_, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err != nil {
 		t.Errorf("all known fact types should be accepted, got error: %v", err)
+	}
+}
+
+func TestGetContextForInjection_WithQuery(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("GoLanguage", "language", []string{"Go is a compiled language"})
+	store.CreateEntity("KubernetesOrchestrator", "tool", []string{"Kubernetes is an orchestrator"})
+
+	store.SetObservationImportance("GoLanguage", "Go is a compiled language", 0.7)
+	store.SetObservationImportance("KubernetesOrchestrator", "Kubernetes is an orchestrator", 0.7)
+
+	cfg := storage.DefaultContextConfig()
+	cfg.MinImportance = 0.3
+
+	results, err := store.GetContextForInjection(cfg, "testproject", "Go", nil)
+	if err != nil {
+		t.Fatalf("GetContextForInjection with query failed: %v", err)
+	}
+
+	if len(results) == 0 {
+		t.Fatal("expected at least one result")
+	}
+
+	found := false
+	for _, r := range results {
+		if r.EntityName == "GoLanguage" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected GoLanguage entity to be in results when querying 'Go'")
+	}
+}
+
+func TestGetContextForInjection_NoQuery_Unchanged(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("HighImportance", "test", []string{"Very important fact"})
+	store.CreateEntity("LowImportance", "test", []string{"Less important fact"})
+
+	store.SetObservationImportance("HighImportance", "Very important fact", 0.9)
+	store.SetObservationImportance("LowImportance", "Less important fact", 0.4)
+
+	cfg := storage.DefaultContextConfig()
+	cfg.MinImportance = 0.3
+
+	// query="" path: should return results ordered by importance
+	results, err := store.GetContextForInjection(cfg, "", "", nil)
+	if err != nil {
+		t.Fatalf("GetContextForInjection (no query) failed: %v", err)
+	}
+
+	if len(results) == 0 {
+		t.Fatal("expected results with no query")
+	}
+
+	// Both should be present
+	var highFound, lowFound bool
+	for _, r := range results {
+		if r.EntityName == "HighImportance" {
+			highFound = true
+		}
+		if r.EntityName == "LowImportance" {
+			lowFound = true
+		}
+	}
+	if !highFound || !lowFound {
+		t.Errorf("expected both entities in results (high: %v, low: %v)", highFound, lowFound)
+	}
+}
+
+func TestGetContextForInjection_NoEmbedder_FallsBackToFTS(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("MLModel", "concept", []string{"machine learning model"})
+	store.SetObservationImportance("MLModel", "machine learning model", 0.7)
+
+	cfg := storage.DefaultContextConfig()
+	cfg.MinImportance = 0.3
+
+	results, err := store.GetContextForInjection(cfg, "project", "machine learning", nil)
+	if err != nil {
+		t.Fatalf("GetContextForInjection with FTS fallback failed: %v", err)
+	}
+
+	found := false
+	for _, r := range results {
+		if r.EntityName == "MLModel" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected MLModel entity to be found via FTS when querying 'machine learning'")
 	}
 }
 

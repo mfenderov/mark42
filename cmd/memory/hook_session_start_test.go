@@ -51,8 +51,11 @@ func TestHookSessionStart(t *testing.T) {
 	})
 
 	t.Run("outputs context when memories exist", func(t *testing.T) {
-		dir := t.TempDir()
-		dbPath := filepath.Join(dir, "test.db")
+		tmpBase := t.TempDir()
+		// Use a fixed project name so FTS query on projectName finds the entity
+		projectDir := filepath.Join(tmpBase, "myproject")
+		os.MkdirAll(projectDir, 0o755)
+		dbPath := filepath.Join(tmpBase, "test.db")
 		store, err := storage.NewStore(dbPath)
 		if err != nil {
 			t.Fatal(err)
@@ -60,10 +63,11 @@ func TestHookSessionStart(t *testing.T) {
 		defer store.Close()
 		store.Migrate()
 
-		store.CreateEntity("Go Conventions", "convention", []string{"Use gofmt"})
+		// Entity content contains the project name so FTS query ("myproject") finds it
+		store.CreateEntity("myproject Conventions", "convention", []string{"myproject uses gofmt"})
 
 		var buf captureBuffer
-		runSessionStartHook(dir, store, withOutput(&buf))
+		runSessionStartHook(projectDir, store, withOutput(&buf))
 
 		got := buf.String()
 		if got == "" {

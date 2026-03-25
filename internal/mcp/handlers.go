@@ -224,6 +224,7 @@ func (h *Handler) Tools() []Tool {
 					"projectName":   {Type: "string", Description: "Current project name for boosting relevant memories"},
 					"tokenBudget":   {Type: "integer", Description: "Maximum tokens to include (default: 2000)"},
 					"minImportance": {Type: "number", Description: "Minimum importance score (0-1, default: 0.3)"},
+					"query":         {Type: "string", Description: "Optional search query to focus context on relevant entities"},
 				},
 			},
 		},
@@ -944,7 +945,7 @@ func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {
 		cfg.MinImportance = input.MinImportance
 	}
 
-	results, err := h.store.GetContextForInjection(cfg, input.ProjectName)
+	results, err := h.store.GetContextForInjection(cfg, input.ProjectName, input.Query, h.embedder)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get context: %w", err)
 	}

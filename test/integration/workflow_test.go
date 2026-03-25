@@ -372,7 +372,7 @@ func BenchmarkContextInjection(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = store.GetContextForInjection(cfg, "")
+		_, _ = store.GetContextForInjection(cfg, "", "", nil)
 	}
 }
 
@@ -555,7 +555,7 @@ func TestWorkflow_FactTypes(t *testing.T) {
 	cfg := storage.DefaultContextConfig()
 	cfg.MinImportance = 0
 
-	results, err := store.GetContextForInjection(cfg, "")
+	results, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err != nil {
 		t.Fatalf("GetContextForInjection failed: %v", err)
 	}

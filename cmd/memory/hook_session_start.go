@@ -95,7 +95,7 @@ func runSessionStartHook(projectDir string, store *storage.Store, opts ...hookOp
 	// Knowledge graph context
 	ctxCfg := storage.DefaultContextConfig()
 	ctxCfg.TokenBudget = 1500
-	ctxResults, err := store.GetContextForInjection(ctxCfg, projectName)
+	ctxResults, err := store.GetContextForInjection(ctxCfg, projectName, projectName, nil)
 	if err == nil && len(ctxResults) > 0 {
 		formatted := storage.FormatContextResults(ctxResults)
 		if formatted != "" {
