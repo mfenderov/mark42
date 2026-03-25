@@ -225,6 +225,7 @@ func (s *Store) GetContextWithContainerTag(cfg ContextConfig, containerTag strin
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance >= ?
+		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY o.importance DESC
 	`
 

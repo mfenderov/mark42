@@ -103,12 +103,8 @@ func TestValidityFilter_HidesExpiredFromSearch(t *testing.T) {
 		t.Fatalf("Search failed: %v", err)
 	}
 
-	for _, r := range results {
-		for _, obs := range r.Observations {
-			if obs == "Python is also great" {
-				t.Errorf("expected invalidated observation to be absent from Search results, but found it")
-			}
-		}
+	if len(results) != 0 {
+		t.Errorf("expected no results for 'Python' after invalidation, got %d result(s)", len(results))
 	}
 }
 

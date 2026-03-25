@@ -101,6 +101,7 @@ func (s *Store) GetLastAccessed(entityName string) (time.Time, error) {
 		SELECT COALESCE(MAX(last_accessed), created_at) as last_accessed
 		FROM observations
 		WHERE entity_id = (SELECT id FROM entities WHERE name = ? AND is_latest = 1)
+		AND valid_until IS NULL
 	`, entityName)
 	if err != nil {
 		return time.Time{}, err
