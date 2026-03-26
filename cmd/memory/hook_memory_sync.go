@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 type ccMemory struct {
@@ -102,4 +104,66 @@ func ccMemoryDir(projectDir string) string {
 		return ""
 	}
 	return filepath.Join(home, ".claude", "projects", projectSlug(projectDir), "memory")
+}
+
+func syncCCMemory(projectSlugName, memoryDir string, store *storage.Store, checksumPath string) {
+	entries, err := os.ReadDir(memoryDir)
+	if err != nil {
+		return
+	}
+
+	checksums := loadChecksums(checksumPath)
+	changed := false
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+
+		if strings.EqualFold(name, "MEMORY.md") {
+			continue
+		}
+
+		if !strings.HasSuffix(name, ".md") {
+			continue
+		}
+
+		path := filepath.Join(memoryDir, name)
+
+		sum := fileChecksum(path)
+		if sum == "" {
+			continue
+		}
+		if checksums[name] == sum {
+			continue
+		}
+
+		mem, err := parseCCMemoryFile(path)
+		if err != nil {
+			continue
+		}
+
+		entityName := "cc-memory/" + projectSlugName + "/" + mem.Name
+
+		_, err = store.CreateOrUpdateEntity(entityName, mem.Type, nil)
+		if err != nil {
+			continue
+		}
+
+		if mem.Description != "" {
+			_ = store.AddObservationWithType(entityName, mem.Description, storage.FactTypeStatic)
+		}
+
+		if mem.Body != "" {
+			_ = store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic)
+		}
+
+		checksums[name] = sum
+		changed = true
+	}
+
+	if changed {
+		saveChecksums(checksumPath, checksums)
+	}
 }

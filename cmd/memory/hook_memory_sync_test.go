@@ -3,7 +3,10 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestProjectSlug(t *testing.T) {
@@ -184,5 +187,169 @@ func TestCCMemoryDir(t *testing.T) {
 		if got != want {
 			t.Errorf("ccMemoryDir = %q, want %q", got, want)
 		}
+	})
+}
+
+func TestSyncCCMemory(t *testing.T) {
+	t.Run("syncs memory files into store", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		memDir := filepath.Join(dir, "cc-memory")
+		os.MkdirAll(memDir, 0o755)
+		content := "---\nname: Hook debugging\ndescription: Use debug mode for hook errors\ntype: feedback\n---\n\nWhen hook errors appear, use claude --debug.\n"
+		os.WriteFile(filepath.Join(memDir, "feedback_hook.md"), []byte(content), 0o644)
+
+		os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte("# Index\n"), 0o644)
+
+		dbPath := filepath.Join(dir, "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create store: %v", err)
+		}
+		defer store.Close()
+		if err := store.Migrate(); err != nil {
+			t.Fatalf("failed to migrate: %v", err)
+		}
+
+		checksumPath := filepath.Join(dir, "checksums.json")
+		syncCCMemory("test-project", memDir, store, checksumPath)
+
+		entity, err := store.GetEntity("cc-memory/test-project/Hook debugging")
+		if err != nil {
+			t.Fatalf("entity not found: %v", err)
+		}
+		if entity.Type != "feedback" {
+			t.Errorf("entity type = %q, want %q", entity.Type, "feedback")
+		}
+
+		found := false
+		for _, obs := range entity.Observations {
+			if strings.Contains(obs, "Use debug mode") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected description observation, got: %v", entity.Observations)
+		}
+
+		checksums := loadChecksums(checksumPath)
+		if checksums["feedback_hook.md"] == "" {
+			t.Error("checksum not saved for feedback_hook.md")
+		}
+	})
+
+	t.Run("skips unchanged files on second sync", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		memDir := filepath.Join(dir, "cc-memory")
+		os.MkdirAll(memDir, 0o755)
+		content := "---\nname: Test mem\ndescription: A test\ntype: user\n---\n\nBody.\n"
+		os.WriteFile(filepath.Join(memDir, "test.md"), []byte(content), 0o644)
+
+		dbPath := filepath.Join(dir, "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create store: %v", err)
+		}
+		defer store.Close()
+		if err := store.Migrate(); err != nil {
+			t.Fatalf("failed to migrate: %v", err)
+		}
+
+		checksumPath := filepath.Join(dir, "checksums.json")
+
+		syncCCMemory("test-project", memDir, store, checksumPath)
+
+		_, err = store.GetEntity("cc-memory/test-project/Test mem")
+		if err != nil {
+			t.Fatalf("entity not found after first sync: %v", err)
+		}
+
+		syncCCMemory("test-project", memDir, store, checksumPath)
+
+		entity, err := store.GetEntity("cc-memory/test-project/Test mem")
+		if err != nil {
+			t.Fatalf("entity not found after second sync: %v", err)
+		}
+		if entity.Version != 1 {
+			t.Errorf("version = %d, want 1 (no new version on unchanged file)", entity.Version)
+		}
+	})
+
+	t.Run("creates new version when content changes", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		memDir := filepath.Join(dir, "cc-memory")
+		os.MkdirAll(memDir, 0o755)
+		path := filepath.Join(memDir, "evolving.md")
+		os.WriteFile(path, []byte("---\nname: Evolving\ndescription: V1\ntype: project\n---\n\nOld body.\n"), 0o644)
+
+		dbPath := filepath.Join(dir, "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create store: %v", err)
+		}
+		defer store.Close()
+		if err := store.Migrate(); err != nil {
+			t.Fatalf("failed to migrate: %v", err)
+		}
+
+		checksumPath := filepath.Join(dir, "checksums.json")
+		syncCCMemory("test-project", memDir, store, checksumPath)
+
+		os.WriteFile(path, []byte("---\nname: Evolving\ndescription: V2 updated\ntype: project\n---\n\nNew body.\n"), 0o644)
+		syncCCMemory("test-project", memDir, store, checksumPath)
+
+		entity, err := store.GetEntity("cc-memory/test-project/Evolving")
+		if err != nil {
+			t.Fatalf("entity not found: %v", err)
+		}
+		if entity.Version != 2 {
+			t.Errorf("version = %d, want 2", entity.Version)
+		}
+	})
+
+	t.Run("skips MEMORY.md", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		memDir := filepath.Join(dir, "cc-memory")
+		os.MkdirAll(memDir, 0o755)
+		os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte("# Index\n- entry\n"), 0o644)
+
+		dbPath := filepath.Join(dir, "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create store: %v", err)
+		}
+		defer store.Close()
+		if err := store.Migrate(); err != nil {
+			t.Fatalf("failed to migrate: %v", err)
+		}
+
+		checksumPath := filepath.Join(dir, "checksums.json")
+		syncCCMemory("test-project", memDir, store, checksumPath)
+
+		entities, _ := store.ListEntities("")
+		for _, e := range entities {
+			if strings.Contains(e.Name, "Index") || strings.Contains(e.Name, "MEMORY") {
+				t.Errorf("MEMORY.md should be skipped, but found entity: %s", e.Name)
+			}
+		}
+	})
+
+	t.Run("handles missing memory directory gracefully", func(t *testing.T) {
+		dir := setupProjectDir(t)
+
+		dbPath := filepath.Join(dir, "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatalf("failed to create store: %v", err)
+		}
+		defer store.Close()
+		if err := store.Migrate(); err != nil {
+			t.Fatalf("failed to migrate: %v", err)
+		}
+
+		syncCCMemory("test-project", "/nonexistent/memory", store, filepath.Join(dir, "checksums.json"))
 	})
 }
