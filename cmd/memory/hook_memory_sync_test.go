@@ -146,6 +146,15 @@ func TestFileChecksum(t *testing.T) {
 		if sum1 == "" {
 			t.Error("checksum should not be empty")
 		}
+		if len(sum1) != 64 {
+			t.Errorf("expected 64-char hex, got len=%d: %q", len(sum1), sum1)
+		}
+		for _, c := range sum1 {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				t.Errorf("checksum contains non-lowercase-hex character %q in %q", c, sum1)
+				break
+			}
+		}
 	})
 
 	t.Run("returns different checksum for different content", func(t *testing.T) {
