@@ -339,3 +339,31 @@ func TestSyncCCMemory(t *testing.T) {
 		syncCCMemory("test-project", "/nonexistent/memory", store, filepath.Join(dir, "checksums.json"))
 	})
 }
+
+func TestStopHookTriggersCCMemorySync(t *testing.T) {
+	t.Run("syncs CC memory files during stop hook", func(t *testing.T) {
+		dir := t.TempDir()
+		m42 := mark42Dir(dir)
+		os.MkdirAll(m42, 0o755)
+
+		home, _ := os.UserHomeDir()
+		slug := projectSlug(dir)
+		memDir := filepath.Join(home, ".claude", "projects", slug, "memory")
+		os.MkdirAll(memDir, 0o755)
+		t.Cleanup(func() { os.RemoveAll(filepath.Join(home, ".claude", "projects", slug)) })
+
+		content := "---\nname: Integration test memory\ndescription: Created during stop hook test\ntype: project\n---\n\nThis was synced via stop hook.\n"
+		os.WriteFile(filepath.Join(memDir, "integration_test.md"), []byte(content), 0o644)
+
+		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Edit"}`+"\n"), 0o644)
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
+
+		var buf captureBuffer
+		runStopHook(dir, withOutput(&buf))
+
+		checksumPath := filepath.Join(m42, "memory-checksums.json")
+		if _, err := os.Stat(checksumPath); os.IsNotExist(err) {
+			t.Error("memory-checksums.json should exist after stop hook")
+		}
+	})
+}

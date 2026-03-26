@@ -99,6 +99,14 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	clearFile(filepath.Join(m42, "session-events"))
 	clearFile(filepath.Join(m42, "dirty-files"))
 
+	// Sync CC auto-memory files into mark42 (silent, non-blocking)
+	if memDir := ccMemoryDir(projectDir); memDir != "" {
+		if syncStore, err := getStore(); err == nil {
+			syncCCMemory(projectName, memDir, syncStore, filepath.Join(m42, "memory-checksums.json"))
+			syncStore.Close()
+		}
+	}
+
 	// Stop hook: silent exit 0 = approve stop (no JSON output).
 	// Only output JSON with {"decision":"block"} when blocking.
 }
