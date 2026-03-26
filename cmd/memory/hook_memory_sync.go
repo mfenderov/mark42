@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -106,7 +107,7 @@ func ccMemoryDir(projectDir string) string {
 	return filepath.Join(home, ".claude", "projects", projectSlug(projectDir), "memory")
 }
 
-func syncCCMemory(projectSlugName, memoryDir string, store *storage.Store, checksumPath string) {
+func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumPath string) {
 	entries, err := os.ReadDir(memoryDir)
 	if err != nil {
 		return
@@ -145,7 +146,7 @@ func syncCCMemory(projectSlugName, memoryDir string, store *storage.Store, check
 			continue
 		}
 
-		entityName := "cc-memory/" + projectSlugName + "/" + mem.Name
+		entityName := "cc-memory/" + projectName + "/" + mem.Name
 
 		_, err = store.CreateOrUpdateEntity(entityName, mem.Type, nil)
 		if err != nil {
@@ -159,6 +160,13 @@ func syncCCMemory(projectSlugName, memoryDir string, store *storage.Store, check
 
 		if mem.Body != "" {
 			_ = store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic)
+		}
+
+		// Ensure project entity exists, then link memory to it
+		projectEntityName := "project:" + projectName
+		_, projErr := store.CreateEntity(projectEntityName, "project", nil)
+		if projErr == nil || errors.Is(projErr, storage.ErrEntityExists) {
+			_ = store.CreateRelation(entityName, projectEntityName, "belongs_to")
 		}
 
 		checksums[name] = sum

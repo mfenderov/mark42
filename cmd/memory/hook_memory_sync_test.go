@@ -259,6 +259,21 @@ func TestSyncCCMemory(t *testing.T) {
 		if checksums["feedback_hook.md"] == "" {
 			t.Error("checksum not saved for feedback_hook.md")
 		}
+
+		// Verify belongs_to relation was created
+		relations, err := store.ListRelations("cc-memory/test-project/Hook debugging")
+		if err != nil {
+			t.Fatalf("failed to list relations: %v", err)
+		}
+		foundRelation := false
+		for _, rel := range relations {
+			if rel.From == "cc-memory/test-project/Hook debugging" && rel.To == "project:test-project" && rel.Type == "belongs_to" {
+				foundRelation = true
+			}
+		}
+		if !foundRelation {
+			t.Error("expected belongs_to relation to project:test-project")
+		}
 	})
 
 	t.Run("skips unchanged files on second sync", func(t *testing.T) {
