@@ -141,6 +141,7 @@ func syncCCMemory(projectSlugName, memoryDir string, store *storage.Store, check
 
 		mem, err := parseCCMemoryFile(path)
 		if err != nil {
+			logger.Warn("failed to parse cc memory file", "file", name, "err", err)
 			continue
 		}
 
@@ -148,6 +149,7 @@ func syncCCMemory(projectSlugName, memoryDir string, store *storage.Store, check
 
 		_, err = store.CreateOrUpdateEntity(entityName, mem.Type, nil)
 		if err != nil {
+			logger.Warn("failed to upsert entity", "entity", entityName, "err", err)
 			continue
 		}
 

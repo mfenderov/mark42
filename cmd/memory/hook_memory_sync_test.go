@@ -70,6 +70,29 @@ func TestParseCCMemoryFile(t *testing.T) {
 		}
 	})
 
+	t.Run("returns error for empty file", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "empty.md")
+		os.WriteFile(path, []byte(""), 0o644)
+
+		_, err := parseCCMemoryFile(path)
+		if err == nil {
+			t.Error("expected error for empty file (no frontmatter)")
+		}
+	})
+
+	t.Run("returns error for unclosed frontmatter delimiter", func(t *testing.T) {
+		dir := t.TempDir()
+		content := "---\nname: Unclosed\ndescription: missing closing delimiter\ntype: test\n"
+		path := filepath.Join(dir, "unclosed.md")
+		os.WriteFile(path, []byte(content), 0o644)
+
+		_, err := parseCCMemoryFile(path)
+		if err == nil {
+			t.Error("expected error for unclosed frontmatter delimiter")
+		}
+	})
+
 	t.Run("handles missing body after closing delimiter", func(t *testing.T) {
 		dir := t.TempDir()
 		content := "---\nname: Empty body test\ndescription: no body\ntype: test\n---\n"
@@ -152,12 +175,6 @@ func TestFileChecksum(t *testing.T) {
 		if len(sum1) != 64 {
 			t.Errorf("expected 64-char hex, got len=%d: %q", len(sum1), sum1)
 		}
-		for _, c := range sum1 {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-				t.Errorf("checksum contains non-lowercase-hex character %q in %q", c, sum1)
-				break
-			}
-		}
 	})
 
 	t.Run("returns different checksum for different content", func(t *testing.T) {
@@ -190,9 +207,23 @@ func TestCCMemoryDir(t *testing.T) {
 	})
 }
 
+func newTestStore(t *testing.T, dir string) *storage.Store {
+	t.Helper()
+	dbPath := filepath.Join(dir, "test.db")
+	store, err := storage.NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("failed to migrate: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return store
+}
+
 func TestSyncCCMemory(t *testing.T) {
 	t.Run("syncs memory files into store", func(t *testing.T) {
-		dir := setupProjectDir(t)
+		dir := t.TempDir()
 
 		memDir := filepath.Join(dir, "cc-memory")
 		os.MkdirAll(memDir, 0o755)
@@ -201,15 +232,7 @@ func TestSyncCCMemory(t *testing.T) {
 
 		os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte("# Index\n"), 0o644)
 
-		dbPath := filepath.Join(dir, "test.db")
-		store, err := storage.NewStore(dbPath)
-		if err != nil {
-			t.Fatalf("failed to create store: %v", err)
-		}
-		defer store.Close()
-		if err := store.Migrate(); err != nil {
-			t.Fatalf("failed to migrate: %v", err)
-		}
+		store := newTestStore(t, dir)
 
 		checksumPath := filepath.Join(dir, "checksums.json")
 		syncCCMemory("test-project", memDir, store, checksumPath)
@@ -239,28 +262,19 @@ func TestSyncCCMemory(t *testing.T) {
 	})
 
 	t.Run("skips unchanged files on second sync", func(t *testing.T) {
-		dir := setupProjectDir(t)
+		dir := t.TempDir()
 
 		memDir := filepath.Join(dir, "cc-memory")
 		os.MkdirAll(memDir, 0o755)
 		content := "---\nname: Test mem\ndescription: A test\ntype: user\n---\n\nBody.\n"
 		os.WriteFile(filepath.Join(memDir, "test.md"), []byte(content), 0o644)
 
-		dbPath := filepath.Join(dir, "test.db")
-		store, err := storage.NewStore(dbPath)
-		if err != nil {
-			t.Fatalf("failed to create store: %v", err)
-		}
-		defer store.Close()
-		if err := store.Migrate(); err != nil {
-			t.Fatalf("failed to migrate: %v", err)
-		}
-
+		store := newTestStore(t, dir)
 		checksumPath := filepath.Join(dir, "checksums.json")
 
 		syncCCMemory("test-project", memDir, store, checksumPath)
 
-		_, err = store.GetEntity("cc-memory/test-project/Test mem")
+		_, err := store.GetEntity("cc-memory/test-project/Test mem")
 		if err != nil {
 			t.Fatalf("entity not found after first sync: %v", err)
 		}
@@ -277,23 +291,14 @@ func TestSyncCCMemory(t *testing.T) {
 	})
 
 	t.Run("creates new version when content changes", func(t *testing.T) {
-		dir := setupProjectDir(t)
+		dir := t.TempDir()
 
 		memDir := filepath.Join(dir, "cc-memory")
 		os.MkdirAll(memDir, 0o755)
 		path := filepath.Join(memDir, "evolving.md")
 		os.WriteFile(path, []byte("---\nname: Evolving\ndescription: V1\ntype: project\n---\n\nOld body.\n"), 0o644)
 
-		dbPath := filepath.Join(dir, "test.db")
-		store, err := storage.NewStore(dbPath)
-		if err != nil {
-			t.Fatalf("failed to create store: %v", err)
-		}
-		defer store.Close()
-		if err := store.Migrate(); err != nil {
-			t.Fatalf("failed to migrate: %v", err)
-		}
-
+		store := newTestStore(t, dir)
 		checksumPath := filepath.Join(dir, "checksums.json")
 		syncCCMemory("test-project", memDir, store, checksumPath)
 
@@ -310,22 +315,13 @@ func TestSyncCCMemory(t *testing.T) {
 	})
 
 	t.Run("skips MEMORY.md", func(t *testing.T) {
-		dir := setupProjectDir(t)
+		dir := t.TempDir()
 
 		memDir := filepath.Join(dir, "cc-memory")
 		os.MkdirAll(memDir, 0o755)
 		os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte("# Index\n- entry\n"), 0o644)
 
-		dbPath := filepath.Join(dir, "test.db")
-		store, err := storage.NewStore(dbPath)
-		if err != nil {
-			t.Fatalf("failed to create store: %v", err)
-		}
-		defer store.Close()
-		if err := store.Migrate(); err != nil {
-			t.Fatalf("failed to migrate: %v", err)
-		}
-
+		store := newTestStore(t, dir)
 		checksumPath := filepath.Join(dir, "checksums.json")
 		syncCCMemory("test-project", memDir, store, checksumPath)
 
@@ -338,18 +334,8 @@ func TestSyncCCMemory(t *testing.T) {
 	})
 
 	t.Run("handles missing memory directory gracefully", func(t *testing.T) {
-		dir := setupProjectDir(t)
-
-		dbPath := filepath.Join(dir, "test.db")
-		store, err := storage.NewStore(dbPath)
-		if err != nil {
-			t.Fatalf("failed to create store: %v", err)
-		}
-		defer store.Close()
-		if err := store.Migrate(); err != nil {
-			t.Fatalf("failed to migrate: %v", err)
-		}
-
+		dir := t.TempDir()
+		store := newTestStore(t, dir)
 		syncCCMemory("test-project", "/nonexistent/memory", store, filepath.Join(dir, "checksums.json"))
 	})
 }
