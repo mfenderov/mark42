@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,4 +64,42 @@ func parseCCMemoryFile(path string) (*ccMemory, error) {
 	mem.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
 
 	return mem, nil
+}
+
+func loadChecksums(path string) map[string]string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return map[string]string{}
+	}
+	var checksums map[string]string
+	if json.Unmarshal(data, &checksums) != nil {
+		return map[string]string{}
+	}
+	return checksums
+}
+
+func saveChecksums(path string, checksums map[string]string) {
+	data, err := json.Marshal(checksums)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, data, 0o644)
+}
+
+func fileChecksum(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func ccMemoryDir(projectDir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude", "projects", projectSlug(projectDir), "memory")
 }

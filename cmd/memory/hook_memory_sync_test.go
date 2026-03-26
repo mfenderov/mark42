@@ -89,3 +89,91 @@ func TestParseCCMemoryFile(t *testing.T) {
 		}
 	})
 }
+
+func TestChecksums(t *testing.T) {
+	t.Run("round-trips checksums to JSON file", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "checksums.json")
+
+		original := map[string]string{
+			"feedback_hook.md":  "abc123",
+			"project_phase6.md": "def456",
+		}
+		saveChecksums(path, original)
+
+		loaded := loadChecksums(path)
+		if len(loaded) != 2 {
+			t.Fatalf("loaded %d checksums, want 2", len(loaded))
+		}
+		if loaded["feedback_hook.md"] != "abc123" {
+			t.Errorf("feedback_hook.md = %q, want %q", loaded["feedback_hook.md"], "abc123")
+		}
+		if loaded["project_phase6.md"] != "def456" {
+			t.Errorf("project_phase6.md = %q, want %q", loaded["project_phase6.md"], "def456")
+		}
+	})
+
+	t.Run("returns empty map for nonexistent file", func(t *testing.T) {
+		loaded := loadChecksums("/nonexistent/checksums.json")
+		if len(loaded) != 0 {
+			t.Errorf("expected empty map, got %d entries", len(loaded))
+		}
+	})
+
+	t.Run("returns empty map for corrupt JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "bad.json")
+		os.WriteFile(path, []byte("not json"), 0o644)
+
+		loaded := loadChecksums(path)
+		if len(loaded) != 0 {
+			t.Errorf("expected empty map for corrupt file, got %d entries", len(loaded))
+		}
+	})
+}
+
+func TestFileChecksum(t *testing.T) {
+	t.Run("returns consistent SHA256 for same content", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.md")
+		os.WriteFile(path, []byte("hello world"), 0o644)
+
+		sum1 := fileChecksum(path)
+		sum2 := fileChecksum(path)
+		if sum1 != sum2 {
+			t.Errorf("checksums differ for same file: %q vs %q", sum1, sum2)
+		}
+		if sum1 == "" {
+			t.Error("checksum should not be empty")
+		}
+	})
+
+	t.Run("returns different checksum for different content", func(t *testing.T) {
+		dir := t.TempDir()
+		p1 := filepath.Join(dir, "a.md")
+		p2 := filepath.Join(dir, "b.md")
+		os.WriteFile(p1, []byte("hello"), 0o644)
+		os.WriteFile(p2, []byte("world"), 0o644)
+
+		if fileChecksum(p1) == fileChecksum(p2) {
+			t.Error("different content should produce different checksums")
+		}
+	})
+
+	t.Run("returns empty string for missing file", func(t *testing.T) {
+		if got := fileChecksum("/nonexistent"); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+}
+
+func TestCCMemoryDir(t *testing.T) {
+	t.Run("derives path from project dir", func(t *testing.T) {
+		got := ccMemoryDir("/Users/mark/dev/private/deutsch")
+		home, _ := os.UserHomeDir()
+		want := filepath.Join(home, ".claude", "projects", "-Users-mark-dev-private-deutsch", "memory")
+		if got != want {
+			t.Errorf("ccMemoryDir = %q, want %q", got, want)
+		}
+	})
+}
