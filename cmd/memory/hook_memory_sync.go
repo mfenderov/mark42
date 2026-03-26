@@ -27,7 +27,7 @@ func parseCCMemoryFile(path string) (*ccMemory, error) {
 
 	lines := strings.Split(string(data), "\n")
 
-	if len(lines) == 0 || lines[0] != "---" {
+	if lines[0] != "---" {
 		return nil, fmt.Errorf("no frontmatter found in %s", filepath.Base(path))
 	}
 
@@ -39,18 +39,17 @@ func parseCCMemoryFile(path string) (*ccMemory, error) {
 			closingIdx = i
 			break
 		}
-		parts := strings.SplitN(lines[i], ":", 2)
-		if len(parts) != 2 {
+		key, value, ok := strings.Cut(lines[i], ":")
+		if !ok {
 			continue
 		}
-		value := strings.TrimSpace(parts[1])
-		switch strings.TrimSpace(parts[0]) {
+		switch strings.TrimSpace(key) {
 		case "name":
-			mem.Name = value
+			mem.Name = strings.TrimSpace(value)
 		case "description":
-			mem.Description = value
+			mem.Description = strings.TrimSpace(value)
 		case "type":
-			mem.Type = value
+			mem.Type = strings.TrimSpace(value)
 		}
 	}
 
