@@ -7,6 +7,10 @@ claude-memory-server
 !npm/bin/
 !npm/bin/*.js
 
+# plugin: track shell launchers but not downloaded native binaries
+!plugin/mark42/bin/
+!plugin/mark42/bin/*.sh
+
 # Test artifacts
 *.db
 coverage.out
@@ -24,3 +28,4 @@ coverage.html
 vendor/
 .worktrees/
 npm/bin/native/
+plugin/mark42/.bin-cache/
