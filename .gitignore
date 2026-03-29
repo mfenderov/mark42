@@ -3,6 +3,10 @@ bin/
 claude-memory
 claude-memory-server
 
+# npm package: track JS launchers but not downloaded native binaries
+!npm/bin/
+!npm/bin/*.js
+
 # Test artifacts
 *.db
 coverage.out
