@@ -3,21 +3,33 @@
   "version": "0.0.0",
   "description": "Local, privacy-first RAG memory system for Claude Code",
   "bin": {
-    "mark42": "./bin/mark42.js",
-    "mark42-server": "./bin/mark42-server.js"
+    "mark42": "bin/mark42.js",
+    "mark42-server": "bin/mark42-server.js"
   },
   "scripts": {
     "postinstall": "node install.js",
     "prepublishOnly": "node -e \"if(require('./package.json').version==='0.0.0')throw new Error('version is placeholder — run release to set version')\""
   },
-  "files": ["bin/", "install.js"],
-  "engines": { "node": ">=18" },
+  "files": [
+    "bin/mark42.js",
+    "bin/mark42-server.js",
+    "install.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT",
   "homepage": "https://github.com/mfenderov/mark42",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mfenderov/mark42.git"
+    "url": "git+https://github.com/mfenderov/mark42.git"
   },
   "author": "mfenderov",
-  "keywords": ["mcp", "memory", "claude", "llm", "rag"]
+  "keywords": [
+    "mcp",
+    "memory",
+    "claude",
+    "llm",
+    "rag"
+  ]
 }
