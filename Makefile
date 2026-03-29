@@ -57,7 +57,6 @@ install-server: build-server
 install-all: build-all
 	mkdir -p ~/bin
 	cp $(BINARY) $(SERVER) ~/bin/
-	cp $(BINARY) $(SERVER) /opt/homebrew/bin/ 2>/dev/null || true
 
 ## Plugin Installation
 

@@ -19,39 +19,27 @@ Claude Code sessions are ephemeral. Valuable context—patterns learned, decisio
 - **Session capture & recall** for cross-session continuity
 - **MCP interface** for seamless Claude Code integration
 
-## Quick Start
-
-### Option 1: Plugin (recommended)
+## Installation
 
 ```bash
-# Add mark42 marketplace and install the plugin
-/plugin marketplace add mfenderov/mark42
-/plugin install mark42@mark42
+claude plugin install mark42@mark42
 ```
 
-This installs everything: hooks (session capture, event tracking, context injection), skills, agents, and commands.
+That's it. The MCP server registers automatically. The binary downloads on first Claude Code start (~30s one-time). All subsequent starts are instant.
 
-### Option 2: Homebrew (CLI + MCP server)
+### Updating
 
 ```bash
-# Install binaries
-brew tap mfenderov/tap
-brew install mark42
-
-# Register the MCP server with Claude Code
-claude mcp add mark42 --scope user --transport stdio -- \
-  $(which mark42-server)
-
-# Verify
-mark42 version
-mark42 stats
+claude plugin update mark42@mark42
 ```
 
-### Option 3: Build from source
+### Migration from brew
+
+If you previously installed via brew:
 
 ```bash
-git clone https://github.com/mfenderov/mark42.git
-cd mark42 && make build-all
+claude mcp remove mark42 --scope user
+claude plugin install mark42@mark42
 ```
 
 ## Architecture
