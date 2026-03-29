@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mark42 hook session-start",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook session-start",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mark42 hook post-tool-use",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook post-tool-use",
             "timeout": 5
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mark42 hook stop",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook stop",
             "timeout": 30
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "mark42 hook pre-compact",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook pre-compact",
             "timeout": 10
           }
         ]
