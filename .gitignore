@@ -19,3 +19,4 @@ coverage.html
 # Go
 vendor/
 .worktrees/
+npm/bin/native/
