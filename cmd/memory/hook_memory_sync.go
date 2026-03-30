@@ -63,6 +63,13 @@ func parseCCMemoryFile(path string) (*ccMemory, error) {
 		return nil, fmt.Errorf("no closing frontmatter delimiter in %s", filepath.Base(path))
 	}
 
+	if strings.TrimSpace(mem.Name) == "" {
+		return nil, fmt.Errorf("missing required 'name' frontmatter in %s", filepath.Base(path))
+	}
+	if strings.TrimSpace(mem.Type) == "" {
+		return nil, fmt.Errorf("missing required 'type' frontmatter in %s", filepath.Base(path))
+	}
+
 	bodyLines := lines[closingIdx+1:]
 	mem.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
 
@@ -86,8 +93,13 @@ func saveChecksums(path string, checksums map[string]string) {
 	if err != nil {
 		return
 	}
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, data, 0o644)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		logger.Warn("failed to create checksum dir", "err", err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		logger.Warn("failed to save checksums", "err", err)
+	}
 }
 
 func fileChecksum(path string) string {
@@ -110,11 +122,21 @@ func ccMemoryDir(projectDir string) string {
 func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumPath string) {
 	entries, err := os.ReadDir(memoryDir)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Warn("failed to read cc memory dir", "dir", memoryDir, "err", err)
+		}
 		return
 	}
 
 	checksums := loadChecksums(checksumPath)
 	changed := false
+
+	// Ensure project entity exists once before processing files
+	projectEntityName := "project:" + projectName
+	_, projErr := store.CreateEntity(projectEntityName, "project", nil)
+	if projErr != nil && !errors.Is(projErr, storage.ErrEntityExists) {
+		logger.Warn("failed to create project entity", "entity", projectEntityName, "err", projErr)
+	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -162,12 +184,7 @@ func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumP
 			_ = store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic)
 		}
 
-		// Ensure project entity exists, then link memory to it
-		projectEntityName := "project:" + projectName
-		_, projErr := store.CreateEntity(projectEntityName, "project", nil)
-		if projErr == nil || errors.Is(projErr, storage.ErrEntityExists) {
-			_ = store.CreateRelation(entityName, projectEntityName, "belongs_to")
-		}
+		_ = store.CreateRelation(entityName, projectEntityName, "belongs_to")
 
 		checksums[name] = sum
 		changed = true

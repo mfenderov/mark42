@@ -79,7 +79,7 @@ bin/native/
 
 **`npm/install.js`** (~40 lines, zero external dependencies)
 - Maps `process.platform + process.arch` to goreleaser artifact names
-  - `.tar.gz` for darwin/linux, `.zip` for windows
+  - `.tar.gz` for darwin/linux (Windows not supported)
 - Prints progress to stderr: `Downloading mark42 vX.Y.Z...` / `✓ Done`
 - Downloads tarball from GitHub releases for the current package version
 - Extracts both `mark42` and `mark42-server` into `bin/native/`
@@ -100,8 +100,9 @@ bin/native/
 {
   "mcpServers": {
     "mark42": {
+      "type": "stdio",
       "command": "npx",
-      "args": ["--yes", "@mfenderov/mark42@latest"],
+      "args": ["--yes", "--package", "@mfenderov/mark42@latest", "mark42-server"],
       "timeout": 120000,
       "env": { "CLAUDE_MEMORY_DB": "${HOME}/.claude/memory.db" }
     }

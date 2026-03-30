@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook session-start",
-            "timeout": 10
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook session-start",
+            "timeout": 120
           }
         ]
       }
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook post-tool-use",
-            "timeout": 5
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook post-tool-use",
+            "timeout": 120
           }
         ]
       }
@@ -29,8 +29,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook stop",
-            "timeout": 30
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook stop",
+            "timeout": 120
           }
         ]
       }
@@ -41,8 +41,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/hook.sh hook pre-compact",
-            "timeout": 10
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook pre-compact",
+            "timeout": 120
           }
         ]
       }

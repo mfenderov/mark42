@@ -29,3 +29,4 @@ vendor/
 .worktrees/
 npm/bin/native/
 plugin/mark42/.bin-cache/
+dist/
