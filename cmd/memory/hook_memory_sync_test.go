@@ -160,14 +160,11 @@ func TestChecksums(t *testing.T) {
 
 func TestFileChecksum(t *testing.T) {
 	t.Run("returns consistent SHA256 for same content", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "test.md")
-		os.WriteFile(path, []byte("hello world"), 0o644)
-
-		sum1 := fileChecksum(path)
-		sum2 := fileChecksum(path)
+		data := []byte("hello world")
+		sum1 := checksumBytes(data)
+		sum2 := checksumBytes(data)
 		if sum1 != sum2 {
-			t.Errorf("checksums differ for same file: %q vs %q", sum1, sum2)
+			t.Errorf("checksums differ for same data: %q vs %q", sum1, sum2)
 		}
 		if sum1 == "" {
 			t.Error("checksum should not be empty")
@@ -178,20 +175,15 @@ func TestFileChecksum(t *testing.T) {
 	})
 
 	t.Run("returns different checksum for different content", func(t *testing.T) {
-		dir := t.TempDir()
-		p1 := filepath.Join(dir, "a.md")
-		p2 := filepath.Join(dir, "b.md")
-		os.WriteFile(p1, []byte("hello"), 0o644)
-		os.WriteFile(p2, []byte("world"), 0o644)
-
-		if fileChecksum(p1) == fileChecksum(p2) {
+		if checksumBytes([]byte("hello")) == checksumBytes([]byte("world")) {
 			t.Error("different content should produce different checksums")
 		}
 	})
 
-	t.Run("returns empty string for missing file", func(t *testing.T) {
-		if got := fileChecksum("/nonexistent"); got != "" {
-			t.Errorf("expected empty string, got %q", got)
+	t.Run("returns lowercase hex", func(t *testing.T) {
+		sum := checksumBytes([]byte("test"))
+		if sum != strings.ToLower(sum) {
+			t.Errorf("expected lowercase hex, got %q", sum)
 		}
 	})
 }
@@ -357,15 +349,21 @@ func TestSyncCCMemory(t *testing.T) {
 
 func TestStopHookTriggersCCMemorySync(t *testing.T) {
 	t.Run("syncs CC memory files during stop hook", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		t.Setenv("HOME", tmpHome)
+
+		// Point dbPath at a temp DB so the test never touches ~/.claude/memory.db
+		origDB := dbPath
+		dbPath = filepath.Join(tmpHome, "test.db")
+		t.Cleanup(func() { dbPath = origDB })
+
 		dir := t.TempDir()
 		m42 := mark42Dir(dir)
 		os.MkdirAll(m42, 0o755)
 
-		home, _ := os.UserHomeDir()
 		slug := projectSlug(dir)
-		memDir := filepath.Join(home, ".claude", "projects", slug, "memory")
+		memDir := filepath.Join(tmpHome, ".claude", "projects", slug, "memory")
 		os.MkdirAll(memDir, 0o755)
-		t.Cleanup(func() { os.RemoveAll(filepath.Join(home, ".claude", "projects", slug)) })
 
 		content := "---\nname: Integration test memory\ndescription: Created during stop hook test\ntype: project\n---\n\nThis was synced via stop hook.\n"
 		os.WriteFile(filepath.Join(memDir, "integration_test.md"), []byte(content), 0o644)

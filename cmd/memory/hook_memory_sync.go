@@ -28,16 +28,19 @@ func projectSlug(projectDir string) string {
 func parseCCMemoryFile(path string) (*ccMemory, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading cc memory file: %w", err)
+		return nil, fmt.Errorf("failed to read cc memory file: %w", err)
 	}
+	return parseCCMemoryBytes(data, filepath.Base(path))
+}
 
+func parseCCMemoryBytes(data []byte, fileName string) (*ccMemory, error) {
 	lines := strings.Split(string(data), "\n")
 
 	if lines[0] != "---" {
-		return nil, fmt.Errorf("no frontmatter found in %s", filepath.Base(path))
+		return nil, fmt.Errorf("no frontmatter found in %s", fileName)
 	}
 
-	mem := &ccMemory{FileName: filepath.Base(path)}
+	mem := &ccMemory{FileName: fileName}
 
 	closingIdx := -1
 	for i := 1; i < len(lines); i++ {
@@ -60,14 +63,14 @@ func parseCCMemoryFile(path string) (*ccMemory, error) {
 	}
 
 	if closingIdx == -1 {
-		return nil, fmt.Errorf("no closing frontmatter delimiter in %s", filepath.Base(path))
+		return nil, fmt.Errorf("no closing frontmatter delimiter in %s", fileName)
 	}
 
 	if strings.TrimSpace(mem.Name) == "" {
-		return nil, fmt.Errorf("missing required 'name' frontmatter in %s", filepath.Base(path))
+		return nil, fmt.Errorf("missing required 'name' frontmatter in %s", fileName)
 	}
 	if strings.TrimSpace(mem.Type) == "" {
-		return nil, fmt.Errorf("missing required 'type' frontmatter in %s", filepath.Base(path))
+		return nil, fmt.Errorf("missing required 'type' frontmatter in %s", fileName)
 	}
 
 	bodyLines := lines[closingIdx+1:]
@@ -102,11 +105,7 @@ func saveChecksums(path string, checksums map[string]string) {
 	}
 }
 
-func fileChecksum(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
+func checksumBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
@@ -152,17 +151,20 @@ func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumP
 			continue
 		}
 
-		path := filepath.Join(memoryDir, name)
+		filePath := filepath.Join(memoryDir, name)
 
-		sum := fileChecksum(path)
-		if sum == "" {
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			logger.Warn("failed to read cc memory file", "file", name, "err", err)
 			continue
 		}
+
+		sum := checksumBytes(data)
 		if checksums[name] == sum {
 			continue
 		}
 
-		mem, err := parseCCMemoryFile(path)
+		mem, err := parseCCMemoryBytes(data, name)
 		if err != nil {
 			logger.Warn("failed to parse cc memory file", "file", name, "err", err)
 			continue
