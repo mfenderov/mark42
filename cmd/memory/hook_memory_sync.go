@@ -134,7 +134,9 @@ func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumP
 	projectEntityName := "project:" + projectName
 	_, projErr := store.CreateEntity(projectEntityName, "project", nil)
 	if projErr != nil && !errors.Is(projErr, storage.ErrEntityExists) {
-		logger.Warn("failed to create project entity", "entity", projectEntityName, "err", projErr)
+		logger.Warn("failed to create project entity, aborting cc memory sync",
+			"entity", projectEntityName, "err", projErr)
+		return
 	}
 
 	for _, entry := range entries {
@@ -179,14 +181,22 @@ func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumP
 		}
 
 		if mem.Description != "" {
-			_ = store.AddObservationWithType(entityName, mem.Description, storage.FactTypeStatic)
+			if err := store.AddObservationWithType(entityName, mem.Description, storage.FactTypeStatic); err != nil {
+				logger.Warn("failed to add description observation", "entity", entityName, "err", err)
+				continue
+			}
 		}
 
 		if mem.Body != "" {
-			_ = store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic)
+			if err := store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic); err != nil {
+				logger.Warn("failed to add body observation", "entity", entityName, "err", err)
+				continue
+			}
 		}
 
-		_ = store.CreateRelation(entityName, projectEntityName, "belongs_to")
+		if err := store.CreateRelation(entityName, projectEntityName, "belongs_to"); err != nil {
+			logger.Warn("failed to create belongs_to relation", "from", entityName, "to", projectEntityName, "err", err)
+		}
 
 		checksums[name] = sum
 		changed = true
