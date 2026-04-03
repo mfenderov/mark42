@@ -206,10 +206,10 @@ func newTestStore(t *testing.T, dir string) *storage.Store {
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
+	t.Cleanup(func() { store.Close() })
 	if err := store.Migrate(); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
 	return store
 }
 
@@ -394,7 +394,7 @@ func TestStopHookTriggersCCMemorySync(t *testing.T) {
 			t.Fatalf("failed to open test store for verification: %v", err)
 		}
 		defer verifyStore.Close()
-		if err := verifyStore.Migrate(); err != nil {
+		if err = verifyStore.Migrate(); err != nil {
 			t.Fatalf("migrate failed: %v", err)
 		}
 		entityName := "cc-memory/" + slug + "/Integration test memory"
