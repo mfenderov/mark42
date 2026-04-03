@@ -247,6 +247,16 @@ func TestSyncCCMemory(t *testing.T) {
 			t.Errorf("expected description observation, got: %v", entity.Observations)
 		}
 
+		bodyFound := false
+		for _, obs := range entity.Observations {
+			if strings.Contains(obs, "use claude --debug") {
+				bodyFound = true
+			}
+		}
+		if !bodyFound {
+			t.Errorf("expected body observation, got: %v", entity.Observations)
+		}
+
 		checksums := loadChecksums(checksumPath)
 		if checksums["feedback_hook.md"] == "" {
 			t.Error("checksum not saved for feedback_hook.md")
@@ -377,6 +387,23 @@ func TestStopHookTriggersCCMemorySync(t *testing.T) {
 		checksumPath := filepath.Join(m42, "memory-checksums.json")
 		if _, err := os.Stat(checksumPath); os.IsNotExist(err) {
 			t.Error("memory-checksums.json should exist after stop hook")
+		}
+
+		verifyStore, err := storage.NewStore(filepath.Join(tmpHome, "test.db"))
+		if err != nil {
+			t.Fatalf("failed to open test store for verification: %v", err)
+		}
+		defer verifyStore.Close()
+		if err := verifyStore.Migrate(); err != nil {
+			t.Fatalf("migrate failed: %v", err)
+		}
+		entityName := "cc-memory/" + slug + "/Integration test memory"
+		entity, err := verifyStore.GetEntity(entityName)
+		if err != nil {
+			t.Fatalf("entity not found in DB after stop hook: %v", err)
+		}
+		if entity.Type != "project" {
+			t.Errorf("entity type = %q, want %q", entity.Type, "project")
 		}
 	})
 }
