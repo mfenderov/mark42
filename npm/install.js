@@ -126,7 +126,11 @@ download(url, tmpFile, (err) => {
       console.error(`[mark42] Extraction failed: ${e.message}`);
       process.exit(1);
     }
-    fs.unlinkSync(tmpFile);
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch (e) {
+      console.error(`[mark42] Warning: failed to remove temporary file ${tmpFile}: ${e.message}`);
+    }
 
     // Chmod (Block 2)
     try {
