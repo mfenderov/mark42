@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook post-tool-use",
-            "timeout": 120
+            "timeout": 15
           }
         ]
       }
