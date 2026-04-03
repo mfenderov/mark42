@@ -102,8 +102,8 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	// Sync CC auto-memory files into mark42 (silent, non-blocking)
 	if memDir := ccMemoryDir(projectDir); memDir != "" {
 		if syncStore, err := getStore(); err == nil {
+			defer syncStore.Close()
 			syncCCMemory(projectSlug(projectDir), memDir, syncStore, filepath.Join(m42, "memory-checksums.json"))
-			syncStore.Close()
 		} else {
 			logger.Warn("failed to open store for cc memory sync", "err", err)
 		}
