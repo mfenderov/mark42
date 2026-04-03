@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const os = require('os');
+const crypto = require('crypto');
 
 const pkg = require('./package.json');
 const version = pkg.version;
@@ -56,11 +57,19 @@ function download(url, dest, cb, redirects = 0, sendAuth = true) {
     res.on('error', cb);
     const file = fs.createWriteStream(dest);
     res.pipe(file);
-    file.on('finish', () => file.close(cb));
-    file.on('error', cb);
+    file.on('finish', () => file.close((closeErr) => cb(closeErr || null)));
+    file.on('error', (writeErr) => {
+      file.close(() => {
+        try { fs.unlinkSync(dest); } catch (_) {}
+        cb(writeErr);
+      });
+    });
   }).on('error', cb);
   req.setTimeout(30000, () => req.destroy(new Error('Download timed out after 30s')));
 }
+
+const checksumsUrl = `https://github.com/mfenderov/mark42/releases/download/v${version}/checksums.txt`;
+const tmpChecksums = path.join(os.tmpdir(), `mark42_${version}_checksums.txt`);
 
 download(url, tmpFile, (err) => {
   if (err) {
@@ -68,14 +77,59 @@ download(url, tmpFile, (err) => {
     console.error(`[mark42] Download failed: ${err.message}`);
     process.exit(1);
   }
-  try {
-    execFileSync('tar', ['xzf', tmpFile, '-C', nativeDir, 'mark42', 'mark42-server'], { stdio: 'inherit' });
-    fs.chmodSync(path.join(nativeDir, 'mark42'), 0o755);
-    fs.chmodSync(path.join(nativeDir, 'mark42-server'), 0o755);
+
+  download(checksumsUrl, tmpChecksums, (checksumErr) => {
+    if (checksumErr) {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      console.error(`[mark42] Failed to download checksums: ${checksumErr.message}`);
+      process.exit(1);
+    }
+
+    // Verify SHA256
+    let checksumLine;
+    try {
+      const lines = fs.readFileSync(tmpChecksums, 'utf8').split('\n');
+      try { fs.unlinkSync(tmpChecksums); } catch (_) {}
+      checksumLine = lines.find(l => l.includes(tarball));
+    } catch (e) {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      console.error(`[mark42] Failed to read checksums: ${e.message}`);
+      process.exit(1);
+    }
+
+    if (!checksumLine) {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      console.error(`[mark42] Checksum not found for ${tarball}`);
+      process.exit(1);
+    }
+
+    const expectedHash = checksumLine.trim().split(/\s+/)[0];
+    const actualHash = crypto.createHash('sha256').update(fs.readFileSync(tmpFile)).digest('hex');
+
+    if (actualHash !== expectedHash) {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      console.error(`[mark42] SHA256 mismatch for ${tarball}: expected ${expectedHash}, got ${actualHash}`);
+      process.exit(1);
+    }
+
+    // Extraction (Block 1)
+    try {
+      execFileSync('tar', ['xzf', tmpFile, '-C', nativeDir, 'mark42', 'mark42-server'], { stdio: 'inherit' });
+    } catch (e) {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+      console.error(`[mark42] Extraction failed: ${e.message}`);
+      process.exit(1);
+    }
     fs.unlinkSync(tmpFile);
-    process.stderr.write(`[mark42] ✓ Done\n`);
-  } catch (e) {
-    console.error(`[mark42] Extraction failed: ${e.message}`);
-    process.exit(1);
-  }
+
+    // Chmod (Block 2)
+    try {
+      fs.chmodSync(path.join(nativeDir, 'mark42'), 0o755);
+      fs.chmodSync(path.join(nativeDir, 'mark42-server'), 0o755);
+    } catch (e) {
+      console.error(`[mark42] Failed to set binary permissions: ${e.message}`);
+      process.exit(1);
+    }
+    process.stderr.write('[mark42] ✓ Done\n');
+  }, 0, true);
 });
