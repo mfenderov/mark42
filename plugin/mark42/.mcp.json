@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mark42": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "--package", "@mfenderov/mark42@latest", "mark42-server"],
+      "timeout": 120000,
+      "env": { "CLAUDE_MEMORY_DB": "${HOME}/.claude/memory.db" }
+    }
+  }
+}

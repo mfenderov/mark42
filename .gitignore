@@ -3,6 +3,14 @@ bin/
 claude-memory
 claude-memory-server
 
+# npm package: track JS launchers but not downloaded native binaries
+!npm/bin/
+!npm/bin/*.js
+
+# plugin: track shell launchers but not downloaded native binaries
+!plugin/mark42/bin/
+!plugin/mark42/bin/*.sh
+
 # Test artifacts
 *.db
 coverage.out
@@ -19,3 +27,6 @@ coverage.html
 # Go
 vendor/
 .worktrees/
+npm/bin/native/
+plugin/mark42/.bin-cache/
+dist/
