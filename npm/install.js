@@ -86,16 +86,22 @@ download(url, tmpFile, (err) => {
     }
 
     // Verify SHA256
-    let checksumLine;
+    let checksumContent;
     try {
-      const lines = fs.readFileSync(tmpChecksums, 'utf8').split('\n');
-      try { fs.unlinkSync(tmpChecksums); } catch (_) {}
-      checksumLine = lines.find(l => l.includes(tarball));
+      checksumContent = fs.readFileSync(tmpChecksums, 'utf8');
     } catch (e) {
       try { fs.unlinkSync(tmpFile); } catch (_) {}
+      try { fs.unlinkSync(tmpChecksums); } catch (_) {}
       console.error(`[mark42] Failed to read checksums: ${e.message}`);
       process.exit(1);
     }
+    try { fs.unlinkSync(tmpChecksums); } catch (_) {}
+
+    const lines = checksumContent.split('\n');
+    const checksumLine = lines.find(l => {
+      const parts = l.trim().split(/\s+/);
+      return parts.length >= 2 && parts[parts.length - 1] === tarball;
+    });
 
     if (!checksumLine) {
       try { fs.unlinkSync(tmpFile); } catch (_) {}
