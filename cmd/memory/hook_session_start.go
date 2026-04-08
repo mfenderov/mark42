@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -15,6 +16,13 @@ type hookOption func(*hookConfig)
 type hookConfig struct {
 	writer    *captureBuffer
 	stopInput *stopInput
+	store     *storage.Store
+}
+
+func withStore(s *storage.Store) hookOption {
+	return func(cfg *hookConfig) {
+		cfg.store = s
+	}
 }
 
 type captureBuffer struct {
@@ -81,6 +89,17 @@ func runSessionStartHook(projectDir string, store *storage.Store, opts ...hookOp
 	}
 
 	projectName := filepath.Base(projectDir)
+
+	// Create pending session and record its name for PostToolUse and Stop hooks
+	session, err := store.CreateSession(projectName)
+	if err == nil {
+		_ = os.WriteFile(
+			filepath.Join(mark42Dir(projectDir), "current-session"),
+			[]byte(session.Name),
+			0o644,
+		)
+	}
+
 	var parts []string
 
 	// Session recall

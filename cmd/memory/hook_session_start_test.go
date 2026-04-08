@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mfenderov/mark42/internal/storage"
@@ -45,7 +46,7 @@ func TestHookSessionStart(t *testing.T) {
 		if got == "" {
 			t.Error("expected output from session recall")
 		}
-		if !contains(got, "Recent Sessions") {
+		if !strings.Contains(got, "Recent Sessions") {
 			t.Errorf("output missing session recall header, got: %s", got)
 		}
 	})
@@ -73,7 +74,7 @@ func TestHookSessionStart(t *testing.T) {
 		if got == "" {
 			t.Error("expected context output")
 		}
-		if !contains(got, "Relevant Memories") {
+		if !strings.Contains(got, "Relevant Memories") {
 			t.Errorf("output missing context header, got: %s", got)
 		}
 	})
@@ -87,17 +88,41 @@ func TestHookSessionStart(t *testing.T) {
 			t.Errorf("expected no output, got: %s", buf.String())
 		}
 	})
-}
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || s != "" && containsStr(s, substr))
-}
-
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+	t.Run("creates current-session file when store is not nil", func(t *testing.T) {
+		dir := t.TempDir()
+		projectDir := filepath.Join(dir, "testproject")
+		os.MkdirAll(mark42Dir(projectDir), 0o755)
+		dbPath := filepath.Join(dir, "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	return false
+		defer store.Close()
+		store.Migrate()
+
+		var buf captureBuffer
+		runSessionStartHook(projectDir, store, withOutput(&buf))
+
+		data, err := os.ReadFile(filepath.Join(mark42Dir(projectDir), "current-session"))
+		if err != nil {
+			t.Fatalf("current-session file not created: %v", err)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(string(data)), "session-testproject-") {
+			t.Errorf("unexpected session name: %q", strings.TrimSpace(string(data)))
+		}
+	})
+
+	t.Run("no current-session file when store is nil", func(t *testing.T) {
+		dir := t.TempDir()
+		os.MkdirAll(mark42Dir(dir), 0o755)
+
+		var buf captureBuffer
+		runSessionStartHook(dir, nil, withOutput(&buf))
+
+		if _, err := os.Stat(filepath.Join(mark42Dir(dir), "current-session")); !os.IsNotExist(err) {
+			t.Error("current-session should not be created when store is nil")
+		}
+	})
 }
+
