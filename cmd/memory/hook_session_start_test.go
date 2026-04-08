@@ -125,4 +125,3 @@ func TestHookSessionStart(t *testing.T) {
 		}
 	})
 }
-
