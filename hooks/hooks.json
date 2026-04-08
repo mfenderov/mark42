@@ -14,12 +14,13 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|Bash",
+        "matcher": ".*",
         "hooks": [
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook post-tool-use",
-            "timeout": 15
+            "timeout": 15,
+            "async": true
           }
         ]
       }
@@ -30,7 +31,8 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/hook.sh\" hook stop",
-            "timeout": 120
+            "timeout": 120,
+            "async": true
           }
         ]
       }

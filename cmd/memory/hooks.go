@@ -75,3 +75,11 @@ func touchFlag(path string) bool {
 func clearFlag(path string) {
 	_ = os.Remove(path)
 }
+
+func readCurrentSession(projectDir string) string {
+	data, err := os.ReadFile(filepath.Join(mark42Dir(projectDir), "current-session"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
