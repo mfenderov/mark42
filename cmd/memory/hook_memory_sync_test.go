@@ -378,7 +378,6 @@ func TestStopHookTriggersCCMemorySync(t *testing.T) {
 		content := "---\nname: Integration test memory\ndescription: Created during stop hook test\ntype: project\n---\n\nThis was synced via stop hook.\n"
 		os.WriteFile(filepath.Join(memDir, "integration_test.md"), []byte(content), 0o644)
 
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Edit"}`+"\n"), 0o644)
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
 
 		var buf captureBuffer

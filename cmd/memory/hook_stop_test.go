@@ -157,8 +157,6 @@ func TestStopHookWritesDigest(t *testing.T) {
 		line := `{"type":"user","message":{"role":"user","content":"Hello world"}}` + "\n"
 		os.WriteFile(transcriptPath, []byte(line), 0o644)
 
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Edit"}`+"\n"), 0o644)
-
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf), withStopInput(&stopInput{
 			TranscriptPath: transcriptPath,
@@ -178,8 +176,6 @@ func TestStopHookWritesDigest(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Edit"}`+"\n"), 0o644)
-
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf))
 
@@ -193,14 +189,10 @@ func TestStopHookWritesDigest(t *testing.T) {
 
 func TestBuildAutoSummaryWithContext(t *testing.T) {
 	t.Run("enriches summary with last_assistant_message", func(t *testing.T) {
-		type eventEntry struct {
-			ToolName string `json:"toolName"`
-		}
-		events := []eventEntry{{ToolName: "Edit"}}
 		files := []string{"main.go"}
 		lastMsg := "Implemented the search feature with FTS5 ranking."
 
-		summary := buildAutoSummary(events, files, lastMsg)
+		summary := buildAutoSummary(files, lastMsg)
 		if !strings.Contains(summary, "Session context:") {
 			t.Errorf("summary should contain session context, got: %s", summary)
 		}
@@ -210,14 +202,10 @@ func TestBuildAutoSummaryWithContext(t *testing.T) {
 	})
 
 	t.Run("truncates long last_assistant_message at 200 chars", func(t *testing.T) {
-		type eventEntry struct {
-			ToolName string `json:"toolName"`
-		}
-		events := []eventEntry{{ToolName: "Edit"}}
 		files := []string{"main.go"}
 		longMsg := strings.Repeat("z", 300)
 
-		summary := buildAutoSummary(events, files, longMsg)
+		summary := buildAutoSummary(files, longMsg)
 		contextLine := ""
 		for _, line := range strings.Split(summary, ". ") {
 			if strings.HasPrefix(line, "Session context:") {
@@ -235,13 +223,9 @@ func TestBuildAutoSummaryWithContext(t *testing.T) {
 	})
 
 	t.Run("skips context line when no last message", func(t *testing.T) {
-		type eventEntry struct {
-			ToolName string `json:"toolName"`
-		}
-		events := []eventEntry{{ToolName: "Edit"}}
 		files := []string{"main.go"}
 
-		summary := buildAutoSummary(events, files, "")
+		summary := buildAutoSummary(files, "")
 		if strings.Contains(summary, "Session context:") {
 			t.Errorf("summary should not contain session context when empty, got: %s", summary)
 		}
@@ -255,8 +239,6 @@ func TestHookStop(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"),
 			[]byte("src/main.go\nsrc/lib.go\n"), 0o644)
-		os.WriteFile(filepath.Join(m42, "session-events"),
-			[]byte(`{"toolName":"Edit","filePath":"/a.go"}`+"\n"), 0o644)
 
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf))
@@ -272,24 +254,17 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("silent output with events but no files", func(t *testing.T) {
+	t.Run("silent output with no dirty files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Read"}`+"\n"), 0o644)
 
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("stop hook should produce no output (silent approve), got: %s", buf.String())
-		}
-
-		// Verify side effect: session-events cleared
-		events, _ := os.ReadFile(filepath.Join(m42, "session-events"))
-		if strings.TrimSpace(string(events)) != "" {
-			t.Error("session-events should be cleared")
 		}
 	})
 
@@ -298,7 +273,6 @@ func TestHookStop(t *testing.T) {
 		m42 := mark42Dir(dir)
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(""), 0o644)
 
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf))
@@ -335,12 +309,11 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("clears both buffers after output", func(t *testing.T) {
+	t.Run("clears dirty-files after output", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("a.go\n"), 0o644)
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(`{"toolName":"Edit"}`+"\n"), 0o644)
 
 		var buf captureBuffer
 		runStopHook(dir, withOutput(&buf))
@@ -348,11 +321,6 @@ func TestHookStop(t *testing.T) {
 		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
 		if strings.TrimSpace(string(dirty)) != "" {
 			t.Error("dirty-files should be cleared by hook")
-		}
-
-		events, _ := os.ReadFile(filepath.Join(m42, "session-events"))
-		if strings.TrimSpace(string(events)) != "" {
-			t.Error("session-events should be cleared")
 		}
 	})
 
@@ -365,15 +333,10 @@ func TestHookStop(t *testing.T) {
 		}
 	})
 
-	t.Run("handles 60+ events without error", func(t *testing.T) {
+	t.Run("produces no output when only dirty files present", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
-		var sb strings.Builder
-		for range 60 {
-			sb.WriteString(`{"toolName":"Edit"}` + "\n")
-		}
-		os.WriteFile(filepath.Join(m42, "session-events"), []byte(sb.String()), 0o644)
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("a.go\n"), 0o644)
 
 		var buf captureBuffer
@@ -382,11 +345,67 @@ func TestHookStop(t *testing.T) {
 		if buf.String() != "" {
 			t.Errorf("stop hook should produce no output, got: %s", buf.String())
 		}
+	})
 
-		// Verify side effect: buffers cleared even with many events
-		events, _ := os.ReadFile(filepath.Join(m42, "session-events"))
-		if strings.TrimSpace(string(events)) != "" {
-			t.Error("session-events should be cleared after processing")
+	t.Run("completes existing session when current-session file present", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		m42 := mark42Dir(dir)
+
+		store := newTestStore(t, t.TempDir())
+
+		session, _ := store.CreateSession(filepath.Base(dir))
+		os.WriteFile(filepath.Join(m42, "current-session"), []byte(session.Name), 0o644)
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("main.go\n"), 0o644)
+
+		runStopHook(dir, withStore(store))
+
+		got, err := store.GetSession(session.Name)
+		if err != nil {
+			t.Fatalf("GetSession failed: %v", err)
+		}
+		if got.Status != "completed" {
+			t.Errorf("session status = %q, want completed", got.Status)
+		}
+		if got.Summary == "" {
+			t.Error("session should have a non-empty summary")
+		}
+
+		if _, err := os.Stat(filepath.Join(m42, "current-session")); !os.IsNotExist(err) {
+			t.Error("current-session file should be deleted after stop")
+		}
+	})
+
+	t.Run("creates fallback session when current-session file absent", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		m42 := mark42Dir(dir)
+
+		store := newTestStore(t, t.TempDir())
+
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("main.go\n"), 0o644)
+
+		runStopHook(dir, withStore(store))
+
+		sessions, _ := store.ListSessions(filepath.Base(dir), "completed", 10)
+		if len(sessions) != 1 {
+			t.Errorf("expected 1 completed fallback session, got %d", len(sessions))
+		}
+	})
+
+	t.Run("creates fallback session when current-session file has stale name", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		m42 := mark42Dir(dir)
+
+		store := newTestStore(t, t.TempDir())
+
+		// Write a session name that doesn't exist in the database (crashed session)
+		os.WriteFile(filepath.Join(m42, "current-session"), []byte("session-stale-name-does-not-exist"), 0o644)
+		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("main.go\n"), 0o644)
+
+		runStopHook(dir, withStore(store))
+
+		sessions, _ := store.ListSessions(filepath.Base(dir), "completed", 10)
+		if len(sessions) != 1 {
+			t.Errorf("expected 1 fallback completed session, got %d", len(sessions))
 		}
 	})
 }

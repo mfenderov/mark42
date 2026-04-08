@@ -65,17 +65,10 @@ func runStopHook(projectDir string, opts ...hookOption) {
 
 	projectName := filepath.Base(projectDir)
 
-	// Read session events
-	type eventEntry struct {
-		ToolName  string `json:"toolName"`
-		FilePath  string `json:"filePath,omitempty"`
-		Command   string `json:"command,omitempty"`
-		Timestamp string `json:"timestamp,omitempty"`
-	}
-	events := readJSONLines[eventEntry](filepath.Join(m42, "session-events"))
-	if len(events) > 50 {
-		events = events[:50]
-	}
+	// Read current-session file written by SessionStart
+	currentSessionFile := filepath.Join(m42, "current-session")
+	sessionNameBytes, _ := os.ReadFile(currentSessionFile)
+	sessionName := strings.TrimSpace(string(sessionNameBytes))
 
 	// Read dirty files
 	files := readLines(filepath.Join(m42, "dirty-files"))
@@ -92,11 +85,13 @@ func runStopHook(projectDir string, opts ...hookOption) {
 		}
 	}
 
-	// Capture session directly in SQLite (silent, no blocking)
-	captureSessionDirectly(projectName, events, files, lastMsg)
+	summary := buildAutoSummary(files, lastMsg)
+	completeSession(projectName, sessionName, summary, cfg.store)
 
-	// Clear both buffers (deterministic cleanup — don't rely on agent)
-	clearFile(filepath.Join(m42, "session-events"))
+	// Remove current-session file — session lifecycle is complete
+	_ = os.Remove(currentSessionFile)
+
+	// Clear dirty-files buffer
 	clearFile(filepath.Join(m42, "dirty-files"))
 
 	// Sync CC auto-memory files into mark42 (silent, non-blocking)
@@ -111,6 +106,32 @@ func runStopHook(projectDir string, opts ...hookOption) {
 
 	// Stop hook: silent exit 0 = approve stop (no JSON output).
 	// Only output JSON with {"decision":"block"} when blocking.
+}
+
+func completeSession(projectName, sessionName, summary string, storeOverride *storage.Store) {
+	store := storeOverride
+	if store == nil {
+		var err error
+		store, err = getStore()
+		if err != nil {
+			return
+		}
+		defer store.Close()
+	}
+
+	if sessionName != "" {
+		if err := store.CompleteSession(sessionName, summary); err == nil {
+			return
+		}
+		// any error (stale session name, DB failure) — fall through to create fallback
+	}
+
+	// Fallback: create and complete (SessionStart never ran, or stale session name)
+	session, err := store.CreateSession(projectName)
+	if err != nil {
+		return
+	}
+	_ = store.CompleteSession(session.Name, summary)
 }
 
 const (
@@ -233,51 +254,20 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-func captureSessionDirectly[E any](projectName string, events []E, files []string, lastMsg string) {
-	store, err := getStore()
-	if err != nil {
-		return // fail silently
-	}
-	defer store.Close()
-
-	session, err := store.CreateSession(projectName)
-	if err != nil {
-		return
-	}
-
-	// Store each event as observation
-	for _, evt := range events {
-		raw, err := json.Marshal(evt)
-		if err != nil {
-			continue
-		}
-		var se storage.SessionEvent
-		if err := json.Unmarshal(raw, &se); err != nil {
-			continue
-		}
-		_ = store.CaptureSessionEvent(session.Name, se)
-	}
-
-	// Auto-generate summary from events and files
-	summary := buildAutoSummary(events, files, lastMsg)
-	_ = store.CompleteSession(session.Name, summary)
-}
-
-func buildAutoSummary[E any](events []E, files []string, lastMsg string) string {
-	if len(events) == 0 && len(files) == 0 && lastMsg == "" {
+func buildAutoSummary(files []string, lastMsg string) string {
+	if len(files) == 0 && lastMsg == "" {
 		return "Session with no tracked changes."
 	}
 
 	var parts []string
 
-	// Summarize files
 	if len(files) > 0 {
 		names := make([]string, 0, len(files))
 		for _, f := range files {
-			name := filepath.Base(strings.SplitN(f, " [", 2)[0])
+			base, _, _ := strings.Cut(f, " [")
+			name := filepath.Base(base)
 			names = append(names, name)
 		}
-		// Deduplicate
 		seen := map[string]bool{}
 		unique := names[:0]
 		for _, n := range names {
@@ -293,27 +283,6 @@ func buildAutoSummary[E any](events []E, files []string, lastMsg string) string 
 		}
 	}
 
-	// Count tool usage
-	type eventEntry struct {
-		ToolName string `json:"toolName"`
-	}
-	toolCounts := map[string]int{}
-	for _, evt := range events {
-		raw, _ := json.Marshal(evt)
-		var e eventEntry
-		if json.Unmarshal(raw, &e) == nil && e.ToolName != "" {
-			toolCounts[e.ToolName]++
-		}
-	}
-	if len(toolCounts) > 0 {
-		var tools []string
-		for tool, count := range toolCounts {
-			tools = append(tools, fmt.Sprintf("%d %s", count, tool))
-		}
-		parts = append(parts, fmt.Sprintf("%d tool calls (%s)", len(events), strings.Join(tools, ", ")))
-	}
-
-	// Add session context from last assistant message
 	if lastMsg != "" {
 		parts = append(parts, "Session context: "+truncate(lastMsg, maxContextLen))
 	}
