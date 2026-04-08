@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 type hookInput struct {
@@ -38,6 +40,17 @@ var hookPostToolUseCmd = &cobra.Command{
 	},
 }
 
+func getOrUseStore(cfg *hookConfig) (*storage.Store, bool) {
+	if cfg.store != nil {
+		return cfg.store, false
+	}
+	s, err := getStore()
+	if err != nil {
+		return nil, false
+	}
+	return s, true
+}
+
 func init() {
 	hookCmd.AddCommand(hookPostToolUseCmd)
 }
@@ -57,8 +70,13 @@ func loadPluginConfig(projectDir string) pluginConfig {
 	return cfg
 }
 
-func runPostToolUseHook(projectDir string, input hookInput) {
+func runPostToolUseHook(projectDir string, input hookInput, opts ...hookOption) {
 	cfg := loadPluginConfig(projectDir)
+
+	hookCfg := &hookConfig{}
+	for _, o := range opts {
+		o(hookCfg)
+	}
 
 	command := ""
 	isGitCommit := false
@@ -101,28 +119,30 @@ func runPostToolUseHook(projectDir string, input hookInput) {
 	m42 := mark42Dir(projectDir)
 	_ = os.MkdirAll(m42, 0o755)
 
-	// Always write session event (activity tracking for knowledge-only sessions)
-	event := map[string]string{
-		"toolName":  input.ToolName,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-	if (input.ToolName == "Edit" || input.ToolName == "Write") && len(trackable) > 0 {
-		event["filePath"] = trackable[0]
-	} else if input.ToolName == "Bash" && command != "" {
-		cmd := command
-		if len(cmd) > 200 {
-			cmd = cmd[:200]
+	// Write session event to SQLite when current-session is present
+	sessionName := readCurrentSession(projectDir)
+	if sessionName != "" {
+		se := storage.SessionEvent{
+			ToolName:  input.ToolName,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}
-		event["command"] = cmd
-	}
+		if (input.ToolName == "Edit" || input.ToolName == "Write") && len(trackable) > 0 {
+			se.FilePath = trackable[0]
+		} else if input.ToolName == "Bash" && command != "" {
+			cmd := command
+			if len(cmd) > 200 {
+				cmd = cmd[:200]
+			}
+			se.Command = cmd
+		}
 
-	eventJSON, _ := json.Marshal(event)
-	eventsPath := filepath.Join(m42, "session-events")
-	f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err == nil {
-		_, _ = f.Write(eventJSON)
-		_, _ = f.WriteString("\n")
-		f.Close()
+		s, owned := getOrUseStore(hookCfg)
+		if s != nil {
+			if owned {
+				defer s.Close()
+			}
+			_ = s.CaptureSessionEvent(sessionName, se)
+		}
 	}
 
 	// Update dirty-files (only when files were modified)
@@ -131,8 +151,8 @@ func runPostToolUseHook(projectDir string, input hookInput) {
 		existing := make(map[string]string)
 		for _, line := range readLines(dirtyPath) {
 			path := line
-			if idx := strings.Index(line, " ["); idx != -1 {
-				path = line[:idx]
+			if before, _, found := strings.Cut(line, " ["); found {
+				path = before
 			}
 			existing[path] = line
 		}

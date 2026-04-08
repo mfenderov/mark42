@@ -1,11 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestShouldTrack(t *testing.T) {
@@ -146,11 +147,6 @@ func TestPostToolUseHook(t *testing.T) {
 		if !strings.Contains(dirty[0], "main.go") {
 			t.Errorf("dirty file should contain main.go, got %q", dirty[0])
 		}
-
-		events := readLines(filepath.Join(mark42Dir(dir), "session-events"))
-		if len(events) != 1 {
-			t.Fatalf("got %d events, want 1", len(events))
-		}
 	})
 
 	t.Run("tracks Write file", func(t *testing.T) {
@@ -215,26 +211,6 @@ func TestPostToolUseHook(t *testing.T) {
 		}
 	})
 
-	t.Run("writes session events as JSONL", func(t *testing.T) {
-		dir := setupProjectDir(t)
-
-		input := hookInput{
-			ToolName:  "Edit",
-			ToolInput: map[string]any{"file_path": filepath.Join(dir, "a.go")},
-		}
-		runPostToolUseHook(dir, input)
-
-		eventPath := filepath.Join(mark42Dir(dir), "session-events")
-		data, _ := os.ReadFile(eventPath)
-		var evt map[string]any
-		if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &evt); err != nil {
-			t.Fatalf("event not valid JSON: %v", err)
-		}
-		if evt["toolName"] != "Edit" {
-			t.Errorf("event toolName = %v, want Edit", evt["toolName"])
-		}
-	})
-
 	t.Run("gitmode skips non-commit", func(t *testing.T) {
 		dir := setupProjectDir(t)
 		configDir := mark42Dir(dir)
@@ -253,7 +229,7 @@ func TestPostToolUseHook(t *testing.T) {
 		}
 	})
 
-	t.Run("read-only Bash writes event but no dirty files", func(t *testing.T) {
+	t.Run("read-only Bash: no dirty files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
 		input := hookInput{
@@ -266,25 +242,9 @@ func TestPostToolUseHook(t *testing.T) {
 		if len(dirty) != 0 {
 			t.Errorf("read-only Bash should not create dirty files, got %d", len(dirty))
 		}
-
-		events := readLines(filepath.Join(mark42Dir(dir), "session-events"))
-		if len(events) != 1 {
-			t.Fatalf("read-only Bash should still write event, got %d events", len(events))
-		}
-
-		var evt map[string]any
-		if err := json.Unmarshal([]byte(events[0]), &evt); err != nil {
-			t.Fatalf("event not valid JSON: %v", err)
-		}
-		if evt["toolName"] != "Bash" {
-			t.Errorf("event toolName = %v, want Bash", evt["toolName"])
-		}
-		if evt["command"] != "go test ./..." {
-			t.Errorf("event command = %v, want 'go test ./...'", evt["command"])
-		}
 	})
 
-	t.Run("excluded Edit writes event but no dirty files", func(t *testing.T) {
+	t.Run("excluded Edit: no dirty files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
 		input := hookInput{
@@ -296,11 +256,6 @@ func TestPostToolUseHook(t *testing.T) {
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 0 {
 			t.Errorf("excluded file should not create dirty files, got %d", len(dirty))
-		}
-
-		events := readLines(filepath.Join(mark42Dir(dir), "session-events"))
-		if len(events) != 1 {
-			t.Fatalf("excluded Edit should still write event, got %d events", len(events))
 		}
 	})
 
@@ -316,6 +271,56 @@ func TestPostToolUseHook(t *testing.T) {
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 1 {
 			t.Fatalf("got %d dirty files, want 1", len(dirty))
+		}
+	})
+
+	t.Run("writes event to SQLite when current-session present", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		dbPath := filepath.Join(t.TempDir(), "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		store.Migrate()
+
+		session, _ := store.CreateSession(filepath.Base(dir))
+		os.WriteFile(filepath.Join(mark42Dir(dir), "current-session"), []byte(session.Name), 0o644)
+
+		input := hookInput{
+			ToolName:  "Read",
+			ToolInput: map[string]any{},
+		}
+		runPostToolUseHook(dir, input, withStore(store))
+
+		got, err := store.GetSession(session.Name)
+		if err != nil {
+			t.Fatalf("GetSession failed: %v", err)
+		}
+		if got.EventCount != 1 {
+			t.Errorf("expected 1 event in SQLite, got %d", got.EventCount)
+		}
+	})
+
+	t.Run("skips SQLite when current-session absent", func(t *testing.T) {
+		dir := setupProjectDir(t)
+		dbPath := filepath.Join(t.TempDir(), "test.db")
+		store, err := storage.NewStore(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		store.Migrate()
+
+		input := hookInput{
+			ToolName:  "Read",
+			ToolInput: map[string]any{},
+		}
+		runPostToolUseHook(dir, input, withStore(store))
+
+		sessions, _ := store.ListSessions("", "", 10)
+		if len(sessions) != 0 {
+			t.Errorf("no sessions should exist when current-session absent, got %d", len(sessions))
 		}
 	})
 }
