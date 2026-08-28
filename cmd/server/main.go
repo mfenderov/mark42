@@ -19,7 +19,7 @@ var Version = "dev"
 
 func main() {
 	// Determine database path
-	dbPath := os.Getenv("CLAUDE_MEMORY_DB")
+	dbPath := resolvePath(os.Getenv("CLAUDE_MEMORY_DB"))
 	if dbPath == "" {
 		home, _ := os.UserHomeDir()
 		dbPath = filepath.Join(home, ".claude", "memory.db")
