@@ -6,7 +6,7 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 
 **Purpose**: Replace JSON-based Memory MCP with SQLite-backed implementation offering superior search capabilities (FTS5 + future vector search).
 
-**Status**: Phase 6 Complete — Core Intelligence
+**Status**: Phase 4 Complete — Session Capture & Recall
 
 **Key differentiators**:
 - Privacy-first: All data stays local (no cloud, no telemetry)
@@ -243,6 +243,12 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ Go CLI hook commands (`mark42 hook {session-start,post-tool-use,stop}`)
 - ✅ Stop hook fires every session (not just file-edit sessions)
 - ✅ `Embedder` interface for testable auto-embed (fake embedder in tests)
+- ✅ access_count tracking wired into importance scoring (H2.6)
+- ✅ Temporal validity: valid_from/valid_until, InvalidateObservation, GetObservationHistory (H2.3)
+- ✅ Auto-detection of superseded observations on write (cosine similarity) (H2.3)
+- ✅ invalidate_observation and get_entity_history MCP tools (H2.3)
+- ✅ Semantic consolidation mode with embedding similarity (H2.4)
+- ✅ Query-aware context injection in get_context (H2.5)
 
 **Phase 4 (Complete)**: Session Capture & Recall ✅
 - ✅ Sessions modeled as entities (no new tables, reuses FTS5+vector infrastructure)
@@ -252,15 +258,7 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ Hook integration: post-tool-use tracks events, stop triggers capture, session-start injects recall
 - ✅ New fact types: `session_event`, `session_summary`
 
-**Phase 6 (Complete)**: Core Intelligence ✅
-- ✅ access_count tracking wired into importance scoring (H2.6)
-- ✅ Temporal validity: valid_from/valid_until, InvalidateObservation, GetObservationHistory (H2.3)
-- ✅ Auto-detection of superseded observations on write (cosine similarity) (H2.3)
-- ✅ invalidate_observation and get_entity_history MCP tools (H2.3)
-- ✅ Semantic consolidation mode with embedding similarity (H2.4)
-- ✅ Query-aware context injection in get_context (H2.5)
-
-**Phase 7**: Analytics & Advanced Decay (Future)
+**Phase 5**: Analytics & Advanced Decay (Future)
 - Automatic importance decay for stale memories
 - Memory analytics (decay curves, most-accessed entities)
 - Smarter consolidation with vector similarity
