@@ -3,15 +3,16 @@
 BINARY=mark42
 SERVER=mark42-server
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
+CLI_LDFLAGS=-ldflags "-X github.com/mfenderov/mark42/internal/cli.Version=$(VERSION)"
+SERVER_LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 
 ## Build
 
 build:
-	go build $(LDFLAGS) -o $(BINARY) ./cmd/memory
+	go build $(CLI_LDFLAGS) -o $(BINARY) ./cmd/memory
 
 build-server:
-	go build $(LDFLAGS) -o $(SERVER) ./cmd/server
+	go build $(SERVER_LDFLAGS) -o $(SERVER) ./cmd/server
 
 build-all: build build-server
 
