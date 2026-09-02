@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -201,10 +202,17 @@ func (s *Store) ListSessions(project, status string, limit int) ([]*Session, err
 			Status:    meta.Status,
 			StartedAt: entity.CreatedAt,
 		})
+	}
 
-		if len(sessions) >= limit {
-			break
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].StartedAt.Equal(sessions[j].StartedAt) {
+			return sessions[i].Name > sessions[j].Name
 		}
+		return sessions[i].StartedAt.After(sessions[j].StartedAt)
+	})
+
+	if limit > 0 && len(sessions) > limit {
+		sessions = sessions[:limit]
 	}
 
 	return sessions, nil

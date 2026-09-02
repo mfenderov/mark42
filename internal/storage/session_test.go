@@ -225,6 +225,34 @@ func TestListSessions(t *testing.T) {
 	}
 }
 
+func TestListSessions_NewestFirst(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	s1, err := store.CreateSession("order-test")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	store.CompleteSession(s1.Name, "first")
+
+	s2, err := store.CreateSession("order-test")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	store.CompleteSession(s2.Name, "second")
+
+	sessions, err := store.ListSessions("", "", 10)
+	if err != nil {
+		t.Fatalf("ListSessions failed: %v", err)
+	}
+	if len(sessions) < 2 {
+		t.Fatalf("expected at least 2 sessions, got %d", len(sessions))
+	}
+	if sessions[0].Name != s2.Name {
+		t.Errorf("expected newest session first, got %q (want %q)", sessions[0].Name, s2.Name)
+	}
+}
+
 func TestGetRecentSessionSummaries(t *testing.T) {
 	store := newTestStoreWithMigrations(t)
 	defer store.Close()
