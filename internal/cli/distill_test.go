@@ -40,6 +40,10 @@ func TestDistillCommand(t *testing.T) {
 		t.Fatalf("distill command failed: %v", err)
 	}
 
+	if !bytes.Contains(buf.Bytes(), []byte("Consolidate:")) {
+		t.Errorf("expected consolidate step in output, got: %s", buf.String())
+	}
+
 	store2, err := getStore()
 	if err != nil {
 		t.Fatalf("getStore failed: %v", err)

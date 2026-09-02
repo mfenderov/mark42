@@ -215,7 +215,13 @@ var distillCmd = &cobra.Command{
 			return err
 		}
 
+		consolidated, err := store.ConsolidateObservations(sessionName)
+		if err != nil {
+			return err
+		}
+
 		output(successStyle.Render("✓") + " Distilled: " + entityStyle.Render(sessionName))
+		output("  " + dimStyle.Render("Consolidate:") + " " + consolidated)
 		return nil
 	},
 }
