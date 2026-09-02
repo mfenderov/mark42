@@ -170,6 +170,25 @@ func TestMigrate_PersistsAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestMigrate_IgnoresStraySQLInCWD(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "not_a_migration.sql"), []byte("-- not a migration\n"), 0o644); err != nil {
+		t.Fatalf("failed to write decoy sql: %v", err)
+	}
+	t.Chdir(dir)
+
+	dbPath := filepath.Join(dir, "test_stray_sql.db")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed with stray sql in CWD: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
