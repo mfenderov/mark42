@@ -54,17 +54,17 @@ const plugin = await Mark42(ctx);
 await plugin.event({
   event: { type: "session.created", properties: { info: { id: "s1" } } },
 });
-await plugin["tool.execute.after"](
-  { tool: "bash", args: { command: "go test ./..." } },
-  {},
+await plugin["tool.execute.before"](
+  { tool: "bash" },
+  { args: { command: "go test ./..." } },
 );
-await plugin["tool.execute.after"](
-  { tool: "edit", args: { filePath: "/tmp/smoke-project/main.go" } },
-  {},
+await plugin["tool.execute.before"](
+  { tool: "edit" },
+  { args: { filePath: "/tmp/smoke-project/main.go" } },
 );
-await plugin["tool.execute.after"](
-  { tool: "grep", args: { path: "/tmp/smoke-project/src" } },
-  {},
+await plugin["tool.execute.before"](
+  { tool: "grep" },
+  { args: { path: "/tmp/smoke-project/src" } },
 );
 await plugin.event({
   event: { type: "session.idle", properties: { sessionID: "s1" } },
