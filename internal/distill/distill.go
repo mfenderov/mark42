@@ -106,5 +106,8 @@ func Run(store *storage.Store, sessionName string, s Summarizer) error {
 	}
 	extract := ExtractFromEvents(events)
 	summary := s.Summarize(extract)
-	return store.UpdateSessionSummary(sessionName, summary)
+	if err := store.UpdateSessionSummary(sessionName, summary); err != nil {
+		return err
+	}
+	return store.DeleteSessionEvents(sessionName)
 }

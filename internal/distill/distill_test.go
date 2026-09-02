@@ -167,6 +167,36 @@ func TestRun_NotFound(t *testing.T) {
 	}
 }
 
+func TestRun_ConsumesEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	sessionName := captureSession(t, store, "test-project", []storage.SessionEvent{
+		{ToolName: "Edit", FilePath: "/a.go"},
+		{ToolName: "Bash", Command: "go test ./..."},
+	})
+
+	if err := Run(store, sessionName, StructuralSummarizer{}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	events, err := store.GetSessionEvents(sessionName)
+	if err != nil {
+		t.Fatalf("GetSessionEvents failed: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected raw events consumed after distill, got %d", len(events))
+	}
+
+	s, err := store.GetSession(sessionName)
+	if err != nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	if s.Summary == "" {
+		t.Error("expected summary to persist after events consumed")
+	}
+}
+
 func TestRun_SwappableSummarizer(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
