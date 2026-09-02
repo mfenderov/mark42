@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mfenderov/mark42/internal/mcp"
+	"github.com/mfenderov/mark42/internal/paths"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -19,11 +20,8 @@ var Version = "dev"
 
 func main() {
 	// Determine database path
-	dbPath := resolvePath(os.Getenv("CLAUDE_MEMORY_DB"))
-	if dbPath == "" {
-		home, _ := os.UserHomeDir()
-		dbPath = filepath.Join(home, ".claude", "memory.db")
-	}
+	home, _ := os.UserHomeDir()
+	dbPath := paths.ResolveDBPath(home)
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {

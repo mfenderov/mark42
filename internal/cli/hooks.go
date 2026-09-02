@@ -27,6 +27,22 @@ func mark42Dir(projectDir string) string {
 	return filepath.Join(projectDir, ".claude", "mark42")
 }
 
+func stateDir(projectDir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return mark42Dir(projectDir)
+	}
+	return filepath.Join(home, ".mark42", "state", projectSlug(projectDir))
+}
+
+func currentSessionPath(projectDir string) string {
+	return filepath.Join(stateDir(projectDir), "current-session")
+}
+
+func legacyCurrentSessionPath(projectDir string) string {
+	return filepath.Join(mark42Dir(projectDir), "current-session")
+}
+
 func readStdinJSON(v any) error {
 	return json.NewDecoder(os.Stdin).Decode(v)
 }
@@ -77,7 +93,10 @@ func clearFlag(path string) {
 }
 
 func readCurrentSession(projectDir string) string {
-	data, err := os.ReadFile(filepath.Join(mark42Dir(projectDir), "current-session"))
+	if data, err := os.ReadFile(currentSessionPath(projectDir)); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	data, err := os.ReadFile(legacyCurrentSessionPath(projectDir))
 	if err != nil {
 		return ""
 	}

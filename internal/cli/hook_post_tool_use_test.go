@@ -328,6 +328,7 @@ func TestPostToolUseHook(t *testing.T) {
 func setupProjectDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
 	os.MkdirAll(mark42Dir(dir), 0o755)
 	return dir
 }

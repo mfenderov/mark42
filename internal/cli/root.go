@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
+	"github.com/mfenderov/mark42/internal/paths"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -80,7 +81,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	defaultDB := filepath.Join(os.Getenv("HOME"), ".claude", "memory.db")
+	home, _ := os.UserHomeDir()
+	defaultDB := paths.ResolveDBPath(home)
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", defaultDB, "path to database file")
 
 	rootCmd.AddCommand(entityCmd)

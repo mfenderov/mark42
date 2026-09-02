@@ -32,6 +32,53 @@ func TestMark42Dir(t *testing.T) {
 	}
 }
 
+func TestStateDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	got := stateDir("/tmp/myproject")
+	want := filepath.Join(home, ".mark42", "state", projectSlug("/tmp/myproject"))
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestReadCurrentSession(t *testing.T) {
+	t.Run("reads neutral", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		projectDir := filepath.Join(t.TempDir(), "proj")
+		os.MkdirAll(stateDir(projectDir), 0o755)
+		os.WriteFile(currentSessionPath(projectDir), []byte("neutral-session\n"), 0o644)
+
+		if got := readCurrentSession(projectDir); got != "neutral-session" {
+			t.Errorf("got %q, want neutral-session", got)
+		}
+	})
+
+	t.Run("falls back to legacy", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		projectDir := filepath.Join(t.TempDir(), "proj")
+		os.MkdirAll(mark42Dir(projectDir), 0o755)
+		os.WriteFile(legacyCurrentSessionPath(projectDir), []byte("legacy-session\n"), 0o644)
+
+		if got := readCurrentSession(projectDir); got != "legacy-session" {
+			t.Errorf("got %q, want legacy-session", got)
+		}
+	})
+
+	t.Run("empty when neither exists", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		projectDir := filepath.Join(t.TempDir(), "proj")
+
+		if got := readCurrentSession(projectDir); got != "" {
+			t.Errorf("got %q, want empty", got)
+		}
+	})
+}
+
 func TestReadLines(t *testing.T) {
 	t.Run("reads file lines", func(t *testing.T) {
 		dir := t.TempDir()

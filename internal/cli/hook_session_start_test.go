@@ -90,9 +90,11 @@ func TestHookSessionStart(t *testing.T) {
 	})
 
 	t.Run("creates current-session file when store is not nil", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
 		dir := t.TempDir()
 		projectDir := filepath.Join(dir, "testproject")
-		os.MkdirAll(mark42Dir(projectDir), 0o755)
+		os.MkdirAll(projectDir, 0o755)
 		dbPath := filepath.Join(dir, "test.db")
 		store, err := storage.NewStore(dbPath)
 		if err != nil {
@@ -104,7 +106,7 @@ func TestHookSessionStart(t *testing.T) {
 		var buf captureBuffer
 		runSessionStartHook(projectDir, store, withOutput(&buf))
 
-		data, err := os.ReadFile(filepath.Join(mark42Dir(projectDir), "current-session"))
+		data, err := os.ReadFile(currentSessionPath(projectDir))
 		if err != nil {
 			t.Fatalf("current-session file not created: %v", err)
 		}
@@ -114,13 +116,16 @@ func TestHookSessionStart(t *testing.T) {
 	})
 
 	t.Run("no current-session file when store is nil", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
 		dir := t.TempDir()
-		os.MkdirAll(mark42Dir(dir), 0o755)
+		projectDir := filepath.Join(dir, "testproject")
+		os.MkdirAll(projectDir, 0o755)
 
 		var buf captureBuffer
-		runSessionStartHook(dir, nil, withOutput(&buf))
+		runSessionStartHook(projectDir, nil, withOutput(&buf))
 
-		if _, err := os.Stat(filepath.Join(mark42Dir(dir), "current-session")); !os.IsNotExist(err) {
+		if _, err := os.Stat(currentSessionPath(projectDir)); !os.IsNotExist(err) {
 			t.Error("current-session should not be created when store is nil")
 		}
 	})

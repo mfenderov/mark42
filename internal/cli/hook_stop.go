@@ -66,8 +66,10 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	projectName := filepath.Base(projectDir)
 
 	// Read current-session file written by SessionStart
-	currentSessionFile := filepath.Join(m42, "current-session")
-	sessionNameBytes, _ := os.ReadFile(currentSessionFile)
+	sessionNameBytes, _ := os.ReadFile(currentSessionPath(projectDir))
+	if len(sessionNameBytes) == 0 {
+		sessionNameBytes, _ = os.ReadFile(legacyCurrentSessionPath(projectDir))
+	}
 	sessionName := strings.TrimSpace(string(sessionNameBytes))
 
 	// Read dirty files
@@ -89,7 +91,8 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	completeSession(projectName, sessionName, summary, cfg.store)
 
 	// Remove current-session file — session lifecycle is complete
-	_ = os.Remove(currentSessionFile)
+	_ = os.Remove(currentSessionPath(projectDir))
+	_ = os.Remove(legacyCurrentSessionPath(projectDir))
 
 	// Clear dirty-files buffer
 	clearFile(filepath.Join(m42, "dirty-files"))

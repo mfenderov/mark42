@@ -93,8 +93,9 @@ func runSessionStartHook(projectDir string, store *storage.Store, opts ...hookOp
 	// Create pending session and record its name for PostToolUse and Stop hooks
 	session, err := store.CreateSession(projectName)
 	if err == nil {
+		_ = os.MkdirAll(stateDir(projectDir), 0o755)
 		_ = os.WriteFile(
-			filepath.Join(mark42Dir(projectDir), "current-session"),
+			currentSessionPath(projectDir),
 			[]byte(session.Name),
 			0o644,
 		)
