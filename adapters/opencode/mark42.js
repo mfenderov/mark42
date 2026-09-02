@@ -96,18 +96,27 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
 
     const child = spawn("mark42", ["session", "capture", projectName], {
       env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
-      stdio: ["pipe", "ignore", "ignore"],
+      stdio: ["pipe", "ignore", "pipe"],
     });
     child.on("error", (err) =>
       logError(`capture spawn failed: ${err.message}`),
     );
     child.stdin.on("error", () => {});
+
+    let stderr = "";
+    child.stderr?.on("data", (d) => { stderr += String(d); if (stderr.length > 2000) stderr = stderr.slice(-2000); });
+
     child.stdin.write(payload);
     child.stdin.end();
 
-    child.on("close", () => {
+    child.on("close", (code) => {
+      if (code !== 0) {
+        logError(`capture exited ${code}: ${stderr.trim().slice(0, 500)}`);
+        return;
+      }
       const sessionName = readCurrentSession();
       if (sessionName) spawnDistill(sessionName);
+      else logError("capture succeeded but no current-session in state");
     });
   }
 
@@ -137,13 +146,13 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
       }
     },
 
-    "tool.execute.after": async (input, output) => {
+    "tool.execute.before": async (input, output) => {
       try {
         const tool = input?.tool ?? "";
-        const args = input?.args ?? {};
+        const args = output?.args ?? input?.args ?? {};
         enqueue(mapTool(tool, args));
       } catch (err) {
-        logError(`tool.execute.after error: ${err?.message ?? err}`);
+        logError(`tool.execute.before error: ${err?.message ?? err}`);
       }
     },
   };
