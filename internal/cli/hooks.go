@@ -1,12 +1,11 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/mfenderov/mark42/internal/adapter/claude"
 )
 
 var hookCmd = &cobra.Command{
@@ -17,93 +16,85 @@ var hookCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(hookCmd)
+	claude.StoreFactory = getStore
 }
 
 func getProjectDir() string {
 	return os.Getenv("CLAUDE_PROJECT_DIR")
 }
 
-func mark42Dir(projectDir string) string {
-	return filepath.Join(projectDir, ".claude", "mark42")
-}
+var hookSessionStartCmd = &cobra.Command{
+	Use:   "session-start",
+	Short: "SessionStart hook: inject context",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir := getProjectDir()
+		if projectDir == "" {
+			return nil
+		}
 
-func stateDir(projectDir string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return mark42Dir(projectDir)
-	}
-	return filepath.Join(home, ".mark42", "state", projectSlug(projectDir))
-}
+		store, err := getStore()
+		if err != nil {
+			return nil
+		}
+		defer store.Close()
+		_ = store.Migrate()
 
-func currentSessionPath(projectDir string) string {
-	return filepath.Join(stateDir(projectDir), "current-session")
-}
-
-func legacyCurrentSessionPath(projectDir string) string {
-	return filepath.Join(mark42Dir(projectDir), "current-session")
-}
-
-func readStdinJSON(v any) error {
-	return json.NewDecoder(os.Stdin).Decode(v)
-}
-
-func readLines(path string) []string {
-	data, err := os.ReadFile(path)
-	if err != nil {
+		claude.SessionStart(projectDir, store)
 		return nil
-	}
-	var lines []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			lines = append(lines, line)
+	},
+}
+
+var hookPostToolUseCmd = &cobra.Command{
+	Use:   "post-tool-use",
+	Short: "PostToolUse hook: track file modifications",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir := getProjectDir()
+		if projectDir == "" {
+			return nil
 		}
-	}
-	return lines
-}
 
-func readJSONLines[T any](path string) []T {
-	lines := readLines(path)
-	var results []T
-	for _, line := range lines {
-		var v T
-		if err := json.Unmarshal([]byte(line), &v); err == nil {
-			results = append(results, v)
+		input, err := claude.ParsePostToolUseInput(os.Stdin)
+		if err != nil {
+			return nil
 		}
-	}
-	return results
+
+		claude.PostToolUse(projectDir, input)
+		return nil
+	},
 }
 
-func clearFile(path string) {
-	_ = os.WriteFile(path, []byte(""), 0o644)
+var hookStopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop hook: trigger memory sync",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir := getProjectDir()
+		if projectDir == "" {
+			return nil
+		}
+
+		input, _ := claude.ParseStopInput(os.Stdin)
+
+		claude.Stop(projectDir, claude.WithStopInput(&input))
+		return nil
+	},
 }
 
-// touchFlag creates a flag file. Returns true if created, false if it already exists.
-func touchFlag(path string) bool {
-	if _, err := os.Stat(path); err == nil {
-		return false
-	}
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, []byte(""), 0o644)
-	return true
+var hookPreCompactCmd = &cobra.Command{
+	Use:   "pre-compact",
+	Short: "PreCompact hook: report tracked files",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir := getProjectDir()
+		if projectDir == "" {
+			return nil
+		}
+		claude.PreCompact(projectDir)
+		return nil
+	},
 }
 
-func clearFlag(path string) {
-	_ = os.Remove(path)
-}
-
-func readCurrentSession(projectDir string) string {
-	if data, err := os.ReadFile(currentSessionPath(projectDir)); err == nil {
-		return strings.TrimSpace(string(data))
-	}
-	data, err := os.ReadFile(legacyCurrentSessionPath(projectDir))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-func writeCurrentSession(projectDir, sessionName string) {
-	_ = os.MkdirAll(stateDir(projectDir), 0o755)
-	_ = os.WriteFile(currentSessionPath(projectDir), []byte(sessionName), 0o644)
+func init() {
+	hookCmd.AddCommand(hookSessionStartCmd)
+	hookCmd.AddCommand(hookPostToolUseCmd)
+	hookCmd.AddCommand(hookStopCmd)
+	hookCmd.AddCommand(hookPreCompactCmd)
 }

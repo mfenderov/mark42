@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mfenderov/mark42/internal/state"
 )
 
 func TestSessionCapture_WritesCurrentSession(t *testing.T) {
@@ -37,7 +39,7 @@ func TestSessionCapture_WritesCurrentSession(t *testing.T) {
 		t.Fatalf("capture failed: %v", err)
 	}
 
-	data, err := os.ReadFile(currentSessionPath(projectDir))
+	data, err := os.ReadFile(state.CurrentSessionPath(projectDir))
 	if err != nil {
 		t.Fatalf("current-session file not created: %v", err)
 	}

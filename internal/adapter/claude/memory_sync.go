@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"crypto/sha256"
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -19,10 +20,6 @@ type ccMemory struct {
 	Type        string
 	Body        string
 	FileName    string
-}
-
-func projectSlug(projectDir string) string {
-	return strings.ReplaceAll(projectDir, "/", "-")
 }
 
 func parseCCMemoryFile(path string) (*ccMemory, error) {
@@ -115,7 +112,7 @@ func ccMemoryDir(projectDir string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".claude", "projects", projectSlug(projectDir), "memory")
+	return filepath.Join(home, ".claude", "projects", state.ProjectSlug(projectDir), "memory")
 }
 
 func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumPath string) {

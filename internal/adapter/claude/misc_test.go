@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"encoding/json"
@@ -14,8 +14,8 @@ func TestHookPreCompact(t *testing.T) {
 		os.WriteFile(filepath.Join(mark42Dir(dir), "dirty-files"),
 			[]byte("a.go\nb.go\nc.go\n"), 0o644)
 
-		var buf captureBuffer
-		runPreCompactHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		PreCompact(dir, WithOutput(&buf))
 
 		got := buf.String()
 		if got == "" {
@@ -39,8 +39,8 @@ func TestHookPreCompact(t *testing.T) {
 	t.Run("zero files produces zero count in message", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		var buf captureBuffer
-		runPreCompactHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		PreCompact(dir, WithOutput(&buf))
 
 		var output map[string]any
 		json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &output)

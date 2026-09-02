@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"os"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -17,7 +18,7 @@ func TestHookSessionStart(t *testing.T) {
 		flagPath := filepath.Join(m42, "stop-prompted")
 		os.WriteFile(flagPath, []byte(""), 0o644)
 
-		runSessionStartHook(dir, nil)
+		SessionStart(dir, nil)
 
 		if _, err := os.Stat(flagPath); !os.IsNotExist(err) {
 			t.Error("stop flag should be cleared")
@@ -39,8 +40,8 @@ func TestHookSessionStart(t *testing.T) {
 		session, _ := store.CreateSession("testproject")
 		store.CompleteSession(session.Name, "Did some testing work")
 
-		var buf captureBuffer
-		runSessionStartHook(projectDir, store, withOutput(&buf))
+		var buf CaptureBuffer
+		SessionStart(projectDir, store, WithOutput(&buf))
 
 		got := buf.String()
 		if got == "" {
@@ -67,8 +68,8 @@ func TestHookSessionStart(t *testing.T) {
 		// Entity content contains the project name so FTS query ("myproject") finds it
 		store.CreateEntity("myproject Conventions", "convention", []string{"myproject uses gofmt"})
 
-		var buf captureBuffer
-		runSessionStartHook(projectDir, store, withOutput(&buf))
+		var buf CaptureBuffer
+		SessionStart(projectDir, store, WithOutput(&buf))
 
 		got := buf.String()
 		if got == "" {
@@ -81,8 +82,8 @@ func TestHookSessionStart(t *testing.T) {
 
 	t.Run("no output when store is nil", func(t *testing.T) {
 		dir := t.TempDir()
-		var buf captureBuffer
-		runSessionStartHook(dir, nil, withOutput(&buf))
+		var buf CaptureBuffer
+		SessionStart(dir, nil, WithOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("expected no output, got: %s", buf.String())
@@ -103,10 +104,10 @@ func TestHookSessionStart(t *testing.T) {
 		defer store.Close()
 		store.Migrate()
 
-		var buf captureBuffer
-		runSessionStartHook(projectDir, store, withOutput(&buf))
+		var buf CaptureBuffer
+		SessionStart(projectDir, store, WithOutput(&buf))
 
-		data, err := os.ReadFile(currentSessionPath(projectDir))
+		data, err := os.ReadFile(state.CurrentSessionPath(projectDir))
 		if err != nil {
 			t.Fatalf("current-session file not created: %v", err)
 		}
@@ -122,10 +123,10 @@ func TestHookSessionStart(t *testing.T) {
 		projectDir := filepath.Join(dir, "testproject")
 		os.MkdirAll(projectDir, 0o755)
 
-		var buf captureBuffer
-		runSessionStartHook(projectDir, nil, withOutput(&buf))
+		var buf CaptureBuffer
+		SessionStart(projectDir, nil, WithOutput(&buf))
 
-		if _, err := os.Stat(currentSessionPath(projectDir)); !os.IsNotExist(err) {
+		if _, err := os.Stat(state.CurrentSessionPath(projectDir)); !os.IsNotExist(err) {
 			t.Error("current-session should not be created when store is nil")
 		}
 	})

@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"bufio"
@@ -8,50 +8,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
-
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
-type stopInput struct {
-	TranscriptPath       string `json:"transcript_path"`
-	LastAssistantMessage string `json:"last_assistant_message"`
-	StopHookActive       bool   `json:"stop_hook_active"`
-}
-
-func withStopInput(input *stopInput) hookOption {
-	return func(cfg *hookConfig) {
-		cfg.stopInput = input
-	}
-}
-
-var hookStopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "Stop hook: trigger memory sync",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir := getProjectDir()
-		if projectDir == "" {
-			return nil
-		}
-
-		var input stopInput
-		_ = readStdinJSON(&input)
-
-		runStopHook(projectDir, withStopInput(&input))
-		return nil
-	},
-}
-
-func init() {
-	hookCmd.AddCommand(hookStopCmd)
-}
-
-func runStopHook(projectDir string, opts ...hookOption) {
+// Stop runs the Stop hook: complete the session and sync CC memory files.
+func Stop(projectDir string, opts ...Option) {
 	if projectDir == "" {
 		return
 	}
 
-	cfg := &hookConfig{}
+	cfg := &Config{}
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -66,7 +33,7 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	projectName := filepath.Base(projectDir)
 
 	// Read current-session file written by SessionStart
-	sessionNameBytes, _ := os.ReadFile(currentSessionPath(projectDir))
+	sessionNameBytes, _ := os.ReadFile(state.CurrentSessionPath(projectDir))
 	if len(sessionNameBytes) == 0 {
 		sessionNameBytes, _ = os.ReadFile(legacyCurrentSessionPath(projectDir))
 	}
@@ -91,7 +58,7 @@ func runStopHook(projectDir string, opts ...hookOption) {
 	completeSession(projectName, sessionName, summary, cfg.store)
 
 	// Remove current-session file — session lifecycle is complete
-	_ = os.Remove(currentSessionPath(projectDir))
+	_ = os.Remove(state.CurrentSessionPath(projectDir))
 	_ = os.Remove(legacyCurrentSessionPath(projectDir))
 
 	// Clear dirty-files buffer
@@ -99,9 +66,9 @@ func runStopHook(projectDir string, opts ...hookOption) {
 
 	// Sync CC auto-memory files into mark42 (silent, non-blocking)
 	if memDir := ccMemoryDir(projectDir); memDir != "" {
-		if syncStore, err := getStore(); err == nil {
+		if syncStore, err := StoreFactory(); err == nil {
 			defer syncStore.Close()
-			syncCCMemory(projectSlug(projectDir), memDir, syncStore, filepath.Join(m42, "memory-checksums.json"))
+			syncCCMemory(state.ProjectSlug(projectDir), memDir, syncStore, filepath.Join(m42, "memory-checksums.json"))
 		} else {
 			logger.Warn("failed to open store for cc memory sync", "err", err)
 		}
@@ -115,7 +82,7 @@ func completeSession(projectName, sessionName, summary string, storeOverride *st
 	store := storeOverride
 	if store == nil {
 		var err error
-		store, err = getStore()
+		store, err = StoreFactory()
 		if err != nil {
 			return
 		}

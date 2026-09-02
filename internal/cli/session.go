@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mfenderov/mark42/internal/distill"
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -58,7 +59,7 @@ Input format:
 		}
 
 		if projectDir := getProjectDir(); projectDir != "" {
-			writeCurrentSession(projectDir, session.Name)
+			state.WriteCurrentSession(projectDir, session.Name)
 		}
 
 		for _, evt := range input.Events {

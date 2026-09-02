@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"encoding/json"
@@ -7,73 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
-type hookInput struct {
-	ToolName  string         `json:"tool_name"`
-	ToolInput map[string]any `json:"tool_input"`
-}
-
-type pluginConfig struct {
-	TriggerMode string `json:"triggerMode"`
-}
-
-var hookPostToolUseCmd = &cobra.Command{
-	Use:   "post-tool-use",
-	Short: "PostToolUse hook: track file modifications",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir := getProjectDir()
-		if projectDir == "" {
-			return nil
-		}
-
-		var input hookInput
-		if err := readStdinJSON(&input); err != nil {
-			return nil
-		}
-
-		runPostToolUseHook(projectDir, input)
-		return nil
-	},
-}
-
-func getOrUseStore(cfg *hookConfig) (*storage.Store, bool) {
-	if cfg.store != nil {
-		return cfg.store, false
-	}
-	s, err := getStore()
-	if err != nil {
-		return nil, false
-	}
-	return s, true
-}
-
-func init() {
-	hookCmd.AddCommand(hookPostToolUseCmd)
-}
-
-func loadPluginConfig(projectDir string) pluginConfig {
-	data, err := os.ReadFile(filepath.Join(mark42Dir(projectDir), "config.json"))
-	if err != nil {
-		return pluginConfig{TriggerMode: "default"}
-	}
-	var cfg pluginConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return pluginConfig{TriggerMode: "default"}
-	}
-	if cfg.TriggerMode == "" {
-		cfg.TriggerMode = "default"
-	}
-	return cfg
-}
-
-func runPostToolUseHook(projectDir string, input hookInput, opts ...hookOption) {
+// PostToolUse runs the PostToolUse hook: track file modifications + session events.
+func PostToolUse(projectDir string, input HookInput, opts ...Option) {
 	cfg := loadPluginConfig(projectDir)
 
-	hookCfg := &hookConfig{}
+	hookCfg := &Config{}
 	for _, o := range opts {
 		o(hookCfg)
 	}
@@ -172,6 +113,21 @@ func runPostToolUseHook(projectDir string, input hookInput, opts ...hookOption) 
 	}
 
 	// CRITICAL: zero stdout output
+}
+
+func loadPluginConfig(projectDir string) PluginConfig {
+	data, err := os.ReadFile(filepath.Join(mark42Dir(projectDir), "config.json"))
+	if err != nil {
+		return PluginConfig{TriggerMode: "default"}
+	}
+	var cfg PluginConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return PluginConfig{TriggerMode: "default"}
+	}
+	if cfg.TriggerMode == "" {
+		cfg.TriggerMode = "default"
+	}
+	return cfg
 }
 
 func shouldTrack(filePath, projectDir string) bool {
