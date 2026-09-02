@@ -982,6 +982,81 @@ func TestHandler_SearchNodes(t *testing.T) {
 
 // --- open_nodes tests ---
 
+func TestHandler_SearchNodes_BudgetsObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	obs := make([]string, 10)
+	for i := range obs {
+		obs[i] = fmt.Sprintf("budgettest observation number %d with some content", i)
+	}
+	store.CreateEntity("BudgetEntity", "test", obs)
+
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "budgettest"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &entities); err != nil {
+		t.Fatalf("failed to parse search results: %v", err)
+	}
+
+	for _, e := range entities {
+		if e["name"] != "BudgetEntity" {
+			continue
+		}
+		obsArr, ok := e["observations"].([]any)
+		if !ok {
+			t.Fatalf("observations not an array: %T", e["observations"])
+		}
+		if len(obsArr) > 3 {
+			t.Errorf("expected at most 3 observations, got %d", len(obsArr))
+		}
+		for _, o := range obsArr {
+			s, _ := o.(string)
+			if len(s) > 240 {
+				t.Errorf("observation exceeds 240 chars: %d", len(s))
+			}
+		}
+	}
+}
+
+func TestHandler_SearchNodes_TruncatesLongObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	longObs := strings.Repeat("x", 500)
+	store.CreateEntity("TruncEntity", "test", []string{longObs})
+
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "TruncEntity"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &entities); err != nil {
+		t.Fatalf("failed to parse search results: %v", err)
+	}
+
+	for _, e := range entities {
+		if e["name"] != "TruncEntity" {
+			continue
+		}
+		obsArr, _ := e["observations"].([]any)
+		if len(obsArr) != 1 {
+			t.Fatalf("expected 1 observation, got %d", len(obsArr))
+		}
+		s, _ := obsArr[0].(string)
+		if len([]rune(s)) > 241 {
+			t.Errorf("truncated observation too long: %d runes", len([]rune(s)))
+		}
+		if !strings.HasSuffix(s, "…") {
+			t.Errorf("truncated observation should end with ellipsis")
+		}
+	}
+}
+
 func TestHandler_OpenNodes(t *testing.T) {
 	tests := []struct {
 		name         string

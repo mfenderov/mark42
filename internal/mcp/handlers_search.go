@@ -9,6 +9,11 @@ import (
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
+const (
+	maxObservationsPerEntity = 3
+	maxObservationLength     = 240
+)
+
 func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 	var input SearchNodesInput
 	if err := json.Unmarshal(args, &input); err != nil {
@@ -36,10 +41,14 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 	// Convert to entity list for output
 	entities := make([]map[string]any, len(results))
 	for i, r := range results {
+		obs, err := h.store.TopObservations(r.ID, maxObservationsPerEntity)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load observations: %w", err)
+		}
 		entities[i] = map[string]any{
 			"name":         r.Name,
 			"entityType":   r.Type,
-			"observations": r.Observations,
+			"observations": truncateObservations(obs),
 		}
 		if err := h.store.UpdateLastAccessed(r.Name); err != nil {
 			logger.Warn("failed to update last accessed", "entity", r.Name, "error", err)
@@ -56,6 +65,22 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 	}, nil
 }
 
+func truncateObservations(obs []string) []string {
+	out := make([]string, len(obs))
+	for i, o := range obs {
+		out[i] = truncateObservation(o)
+	}
+	return out
+}
+
+func truncateObservation(s string) string {
+	r := []rune(s)
+	if len(r) <= maxObservationLength {
+		return s
+	}
+	return string(r[:maxObservationLength]) + "…"
+}
+
 // formatHybridResults converts FusedResults to MCP output format.
 func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallResult, error) {
 	// Group results by entity to match expected output format
@@ -69,8 +94,9 @@ func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallR
 	for _, r := range results {
 		key := r.EntityName
 		if existing, ok := entityMap[key]; ok {
-			// Add observation to existing entity
-			existing.Observations = append(existing.Observations, r.Content)
+			if len(existing.Observations) < maxObservationsPerEntity {
+				existing.Observations = append(existing.Observations, truncateObservation(r.Content))
+			}
 			if r.FusionScore > existing.Score {
 				existing.Score = r.FusionScore
 			}
@@ -83,7 +109,7 @@ func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallR
 			}{
 				Name:         r.EntityName,
 				Type:         r.EntityType,
-				Observations: []string{r.Content},
+				Observations: []string{truncateObservation(r.Content)},
 				Score:        r.FusionScore,
 			}
 		}

@@ -138,6 +138,18 @@ func (s *Store) loadObservations(entityID int64) ([]string, error) {
 	return observations, err
 }
 
+// TopObservations returns the most important observations for an entity, capped at limit.
+func (s *Store) TopObservations(entityID int64, limit int) ([]string, error) {
+	var observations []string
+	err := s.db.Select(&observations, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND valid_until IS NULL AND COALESCE(fact_type, 'dynamic') != 'session_event'
+		ORDER BY importance DESC, COALESCE(last_accessed, created_at) DESC, id DESC
+		LIMIT ?
+	`, entityID, limit)
+	return observations, err
+}
+
 // prepareFTSQuery escapes special characters and formats for FTS5.
 func prepareFTSQuery(query string) string {
 	// For simple queries, just wrap each word with quotes for exact matching
