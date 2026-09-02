@@ -133,7 +133,7 @@ func (s *Store) ReadGraph() (*Graph, error) {
 func (s *Store) loadObservations(entityID int64) ([]string, error) {
 	var observations []string
 	err := s.db.Select(&observations,
-		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL ORDER BY created_at",
+		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL AND COALESCE(fact_type, 'dynamic') != 'session_event' ORDER BY created_at",
 		entityID)
 	return observations, err
 }

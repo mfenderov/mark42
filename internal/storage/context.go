@@ -49,7 +49,6 @@ var validFactTypes = map[string]bool{
 	"static":          true,
 	"dynamic":         true,
 	"session_turn":    true,
-	"session_event":   true,
 	"session_summary": true,
 }
 
@@ -90,6 +89,7 @@ func (s *Store) getContextFlat(cfg ContextConfig, projectName string) ([]Context
 		FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance >= ?
+		AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
 		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY ` + factTypeOrder + `, o.importance DESC
 	`
@@ -162,6 +162,7 @@ func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.importance >= ?
 		AND e.name IN (` + inClause + `)
+		AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
 		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 	`
 

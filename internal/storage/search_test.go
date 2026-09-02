@@ -1,7 +1,10 @@
 package storage_test
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestSearch_ByObservationContent(t *testing.T) {
@@ -143,6 +146,31 @@ func TestSearch_IncludesObservations(t *testing.T) {
 	// Results should include observations
 	if len(results[0].Observations) != 2 {
 		t.Errorf("expected 2 observations in result, got %d", len(results[0].Observations))
+	}
+}
+
+func TestSearch_ExcludesSessionEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("SessEntity", "test", []string{"searchable static content"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.Search("searchable")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	for _, obs := range results[0].Observations {
+		if strings.Contains(obs, "toolName") {
+			t.Error("session_event observation should be excluded from search results")
+		}
 	}
 }
 
