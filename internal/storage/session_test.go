@@ -261,3 +261,154 @@ func TestGetRecentSessionSummaries(t *testing.T) {
 		t.Error("expected to find session summaries in results")
 	}
 }
+
+func TestGetSessionEvents(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	session, err := store.CreateSession("test-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Edit", FilePath: "/a.go"})
+	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Bash", Command: "go test ./..."})
+	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Edit", FilePath: "/b.go"})
+
+	events, err := store.GetSessionEvents(session.Name)
+	if err != nil {
+		t.Fatalf("GetSessionEvents failed: %v", err)
+	}
+
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+	if events[0].ToolName != "Edit" || events[0].FilePath != "/a.go" {
+		t.Errorf("unexpected first event: %+v", events[0])
+	}
+	if events[1].Command != "go test ./..." {
+		t.Errorf("unexpected second event command: %q", events[1].Command)
+	}
+}
+
+func TestGetSessionEvents_ExcludesSummary(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	session, err := store.CreateSession("test-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Bash", Command: "go test"})
+	store.CompleteSession(session.Name, "Did some work")
+
+	events, err := store.GetSessionEvents(session.Name)
+	if err != nil {
+		t.Fatalf("GetSessionEvents failed: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (summary excluded), got %d", len(events))
+	}
+}
+
+func TestGetSessionEvents_NotFound(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	_, err := store.GetSessionEvents("nonexistent-session")
+	if err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestUpdateSessionSummary(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	session, err := store.CreateSession("test-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	store.CompleteSession(session.Name, "Original summary")
+
+	if err := store.UpdateSessionSummary(session.Name, "Replaced summary"); err != nil {
+		t.Fatalf("UpdateSessionSummary failed: %v", err)
+	}
+
+	s, err := store.GetSession(session.Name)
+	if err != nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	if s.Summary != "Replaced summary" {
+		t.Errorf("expected summary 'Replaced summary', got %q", s.Summary)
+	}
+
+	summaries, err := store.GetObservationsByFactType(FactTypeSessionSummary)
+	if err != nil {
+		t.Fatalf("GetObservationsByFactType failed: %v", err)
+	}
+	count := 0
+	for _, obs := range summaries {
+		if obs.EntityName == session.Name {
+			count++
+			if obs.Content != "Replaced summary" {
+				t.Errorf("unexpected summary content: %q", obs.Content)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 session_summary observation, got %d", count)
+	}
+}
+
+func TestUpdateSessionSummary_NotFound(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	if err := store.UpdateSessionSummary("nonexistent-session", "x"); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteSessionEvents(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	session, err := store.CreateSession("test-project")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Edit", FilePath: "/a.go"})
+	store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Bash", Command: "go test"})
+	store.CompleteSession(session.Name, "Did some work")
+
+	if err := store.DeleteSessionEvents(session.Name); err != nil {
+		t.Fatalf("DeleteSessionEvents failed: %v", err)
+	}
+
+	events, err := store.GetSessionEvents(session.Name)
+	if err != nil {
+		t.Fatalf("GetSessionEvents failed: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected 0 events after delete, got %d", len(events))
+	}
+
+	// Summary must survive
+	s, err := store.GetSession(session.Name)
+	if err != nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	if s.Summary != "Did some work" {
+		t.Errorf("expected summary to survive delete, got %q", s.Summary)
+	}
+}
+
+func TestDeleteSessionEvents_NotFound(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	if err := store.DeleteSessionEvents("nonexistent-session"); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}

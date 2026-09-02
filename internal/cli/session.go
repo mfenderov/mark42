@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mfenderov/mark42/internal/distill"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -189,6 +190,36 @@ var sessionRecallCmd = &cobra.Command{
 	},
 }
 
+var distillCmd = &cobra.Command{
+	Use:   "distill <session-name>",
+	Short: "Distill a session's raw events into a summary",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		sessionName := args[0]
+
+		if err := distill.Run(store, sessionName, distill.StructuralSummarizer{}); err != nil {
+			if err == storage.ErrNotFound {
+				logger.Error("Session not found", "name", sessionName)
+				os.Exit(1)
+			}
+			return err
+		}
+
+		output(successStyle.Render("✓") + " Distilled: " + entityStyle.Render(sessionName))
+		return nil
+	},
+}
+
 func init() {
 	sessionListCmd.Flags().String("project", "", "filter by project name")
 	sessionListCmd.Flags().Int("limit", 20, "maximum number of sessions")
@@ -201,4 +232,5 @@ func init() {
 	sessionCmd.AddCommand(sessionGetCmd)
 	sessionCmd.AddCommand(sessionRecallCmd)
 	rootCmd.AddCommand(sessionCmd)
+	rootCmd.AddCommand(distillCmd)
 }
