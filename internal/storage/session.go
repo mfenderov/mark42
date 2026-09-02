@@ -345,3 +345,19 @@ func (s *Store) DeleteSessionEvents(sessionName string) error {
 	}
 	return nil
 }
+
+func (s *Store) GetSessionEventObservations(entityName string) ([]string, error) {
+	entity, err := s.GetEntity(entityName)
+	if err != nil {
+		return nil, err
+	}
+
+	var contents []string
+	if err := s.db.Select(&contents, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND fact_type = ? AND valid_until IS NULL
+	`, entity.ID, string(FactTypeSessionEvent)); err != nil {
+		return nil, err
+	}
+	return contents, nil
+}

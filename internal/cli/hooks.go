@@ -102,3 +102,8 @@ func readCurrentSession(projectDir string) string {
 	}
 	return strings.TrimSpace(string(data))
 }
+
+func writeCurrentSession(projectDir, sessionName string) {
+	_ = os.MkdirAll(stateDir(projectDir), 0o755)
+	_ = os.WriteFile(currentSessionPath(projectDir), []byte(sessionName), 0o644)
+}

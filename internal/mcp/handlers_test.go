@@ -1154,6 +1154,33 @@ func TestHandler_OpenNodes(t *testing.T) {
 
 // --- get_context tests ---
 
+func TestHandler_OpenNodes_ExcludesSessionEvents(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("SessEntity", "test", []string{"static observation"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	result, err := handler.CallTool("open_nodes", json.RawMessage(`{"names":["SessEntity"]}`))
+	if err != nil {
+		t.Fatalf("open_nodes failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+
+	text := result.Content[0].Text
+	if strings.Contains(text, "toolName") {
+		t.Error("session_event should be excluded from open_nodes result")
+	}
+	if !strings.Contains(text, "static observation") {
+		t.Error("static observation should be present in open_nodes result")
+	}
+}
+
 func TestHandler_GetContext(t *testing.T) {
 	tests := []struct {
 		name        string

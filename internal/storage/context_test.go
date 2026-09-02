@@ -252,6 +252,39 @@ func TestStore_GetRecentContext(t *testing.T) {
 	}
 }
 
+func TestStore_GetRecentContext_ExcludesSessionEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("SessEntity", "test", []string{"recent static content"})
+	store.UpdateLastAccessed("SessEntity")
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.GetRecentContext(24, "", 2000)
+	if err != nil {
+		t.Fatalf("GetRecentContext failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("session_event should not appear in recent context")
+		}
+		if r.Content == "recent static content" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should still be present in recent context")
+	}
+}
+
 func TestStore_GetRecentContext_ProjectBoost(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()

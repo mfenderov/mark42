@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -54,6 +55,10 @@ Input format:
 		session, err := store.CreateSession(args[0])
 		if err != nil {
 			return err
+		}
+
+		if projectDir := getProjectDir(); projectDir != "" {
+			writeCurrentSession(projectDir, session.Name)
 		}
 
 		for _, evt := range input.Events {
@@ -208,9 +213,13 @@ var distillCmd = &cobra.Command{
 		sessionName := args[0]
 
 		if err := distill.Run(store, sessionName, distill.StructuralSummarizer{}); err != nil {
-			if err == storage.ErrNotFound {
+			if errors.Is(err, storage.ErrNotFound) {
 				logger.Error("Session not found", "name", sessionName)
 				os.Exit(1)
+			}
+			if errors.Is(err, distill.ErrNothingToDistill) {
+				output(dimStyle.Render("Nothing to distill:") + " " + entityStyle.Render(sessionName))
+				return nil
 			}
 			return err
 		}

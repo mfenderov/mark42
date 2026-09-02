@@ -73,6 +73,24 @@ func truncateObservations(obs []string) []string {
 	return out
 }
 
+func (h *Handler) filterSessionEvents(entityName string, observations []string) []string {
+	events, err := h.store.GetSessionEventObservations(entityName)
+	if err != nil || len(events) == 0 {
+		return observations
+	}
+	eventSet := make(map[string]bool, len(events))
+	for _, c := range events {
+		eventSet[c] = true
+	}
+	filtered := make([]string, 0, len(observations))
+	for _, o := range observations {
+		if !eventSet[o] {
+			filtered = append(filtered, o)
+		}
+	}
+	return filtered
+}
+
 func truncateObservation(s string) string {
 	r := []rune(s)
 	if len(r) <= maxObservationLength {
@@ -153,7 +171,7 @@ func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
 		entities = append(entities, map[string]any{
 			"name":         entity.Name,
 			"entityType":   entity.Type,
-			"observations": entity.Observations,
+			"observations": h.filterSessionEvents(name, entity.Observations),
 		})
 		if err := h.store.UpdateLastAccessed(name); err != nil {
 			logger.Warn("failed to update last accessed", "entity", name, "error", err)

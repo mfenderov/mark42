@@ -21,9 +21,9 @@ func newTestStore(t *testing.T) *storage.Store {
 	return store
 }
 
-func captureSession(t *testing.T, store *storage.Store, project string, events []storage.SessionEvent) string {
+func captureSession(t *testing.T, store *storage.Store, events []storage.SessionEvent) string {
 	t.Helper()
-	session, err := store.CreateSession(project)
+	session, err := store.CreateSession("test-project")
 	if err != nil {
 		t.Fatalf("CreateSession failed: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestRun(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
 
-	sessionName := captureSession(t, store, "test-project", []storage.SessionEvent{
+	sessionName := captureSession(t, store, []storage.SessionEvent{
 		{ToolName: "Edit", FilePath: "/a.go"},
 		{ToolName: "Bash", Command: "go test ./..."},
 		{ToolName: "Write", FilePath: "/b.go"},
@@ -158,6 +158,36 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestRun_Idempotent(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	sessionName := captureSession(t, store, []storage.SessionEvent{
+		{ToolName: "Edit", FilePath: "/a.go"},
+	})
+
+	if err := Run(store, sessionName, StructuralSummarizer{}); err != nil {
+		t.Fatalf("first Run failed: %v", err)
+	}
+	s1, err := store.GetSession(sessionName)
+	if err != nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	summary1 := s1.Summary
+
+	if err := Run(store, sessionName, StructuralSummarizer{}); err != ErrNothingToDistill {
+		t.Fatalf("expected ErrNothingToDistill on second run, got %v", err)
+	}
+
+	s2, err := store.GetSession(sessionName)
+	if err != nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	if s2.Summary != summary1 {
+		t.Errorf("summary changed on second run: %q -> %q", summary1, s2.Summary)
+	}
+}
+
 func TestRun_NotFound(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
@@ -171,7 +201,7 @@ func TestRun_ConsumesEvents(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
 
-	sessionName := captureSession(t, store, "test-project", []storage.SessionEvent{
+	sessionName := captureSession(t, store, []storage.SessionEvent{
 		{ToolName: "Edit", FilePath: "/a.go"},
 		{ToolName: "Bash", Command: "go test ./..."},
 	})
@@ -201,7 +231,7 @@ func TestRun_SwappableSummarizer(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
 
-	sessionName := captureSession(t, store, "test-project", []storage.SessionEvent{
+	sessionName := captureSession(t, store, []storage.SessionEvent{
 		{ToolName: "Edit", FilePath: "/a.go"},
 	})
 

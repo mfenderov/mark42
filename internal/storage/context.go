@@ -239,6 +239,7 @@ func (s *Store) GetRecentContext(hours int, projectName string, tokenBudget int)
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1
 		AND COALESCE(o.last_accessed, o.created_at) > datetime('now', ? || ' hours')
+		AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
 		AND (o.valid_until IS NULL OR e.entity_type = 'session')
 		ORDER BY COALESCE(o.last_accessed, o.created_at) DESC
 	`

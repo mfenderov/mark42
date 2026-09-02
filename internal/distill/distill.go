@@ -1,12 +1,15 @@
 package distill
 
 import (
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/mfenderov/mark42/internal/storage"
 )
+
+var ErrNothingToDistill = errors.New("nothing to distill")
 
 type Summarizer interface {
 	Summarize(extract Extract) string
@@ -103,6 +106,9 @@ func Run(store *storage.Store, sessionName string, s Summarizer) error {
 	events, err := store.GetSessionEvents(sessionName)
 	if err != nil {
 		return err
+	}
+	if len(events) == 0 {
+		return ErrNothingToDistill
 	}
 	extract := ExtractFromEvents(events)
 	summary := s.Summarize(extract)

@@ -3,6 +3,7 @@ package storage
 import (
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -153,6 +154,63 @@ func TestVectorSearch(t *testing.T) {
 	// First result should be "prefers typescript" (most similar)
 	if results[0].Content != "prefers typescript" {
 		t.Errorf("expected 'prefers typescript' first, got %q", results[0].Content)
+	}
+}
+
+func TestVectorSearch_ExcludesSessionEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_vector_exclude.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	entity, err := store.CreateEntity("SessEntity", "test", []string{"static content"})
+	if err != nil {
+		t.Fatalf("failed to create entity: %v", err)
+	}
+	staticID, err := store.getObservationID(entity.ID, "static content")
+	if err != nil {
+		t.Fatalf("failed to get static observation ID: %v", err)
+	}
+	if err := store.StoreEmbedding(staticID, []float64{0.9, 0.1, 0.0}, "test-model"); err != nil {
+		t.Fatalf("failed to store static embedding: %v", err)
+	}
+
+	eventContent := `{"toolName":"Edit","filePath":"/a.go"}`
+	if err := store.AddObservationWithType("SessEntity", eventContent, FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+	eventID, err := store.getObservationID(entity.ID, eventContent)
+	if err != nil {
+		t.Fatalf("failed to get event observation ID: %v", err)
+	}
+	if err := store.StoreEmbedding(eventID, []float64{0.9, 0.1, 0.0}, "test-model"); err != nil {
+		t.Fatalf("failed to store event embedding: %v", err)
+	}
+
+	results, err := store.VectorSearch([]float64{0.9, 0.1, 0.0}, 10)
+	if err != nil {
+		t.Fatalf("VectorSearch failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("session_event should be excluded from vector search")
+		}
+		if r.Content == "static content" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should be present in vector search")
 	}
 }
 
