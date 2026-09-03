@@ -1,10 +1,10 @@
 # mark42
 
-A local, privacy-first RAG memory system for Claude Code, built on SQLite with Go.
+A local, privacy-first memory layer for AI coding harnesses, built on SQLite with Go.
 
 ## Why This Exists
 
-Claude Code sessions are ephemeral. Valuable context—patterns learned, decisions made, codebase knowledge—disappears when a session ends.
+AI coding sessions are ephemeral. Whether you're working in Claude Code, pi, or opencode, valuable context—patterns learned, decisions made, codebase knowledge—disappears when a session ends.
 
 | Solution | Issue |
 |----------|-------|
@@ -17,7 +17,7 @@ Claude Code sessions are ephemeral. Valuable context—patterns learned, decisio
 - **Vector search** (Ollama embeddings) for semantic retrieval
 - **Hybrid ranking** (RRF fusion) combining both approaches
 - **Session capture & recall** for cross-session continuity
-- **MCP interface** for seamless Claude Code integration
+- **MCP interface + harness adapters** for Claude Code, pi, and opencode
 
 ## Installation
 
@@ -42,12 +42,16 @@ claude mcp remove mark42 --scope user
 claude plugin install mark42@mark42
 ```
 
+### Other harnesses
+
+mark42 is harness-agnostic. See [`adapters/`](adapters/README.md) for setup: opencode (JS plugin, capture + recall) and pi (MCP recall, capture deferred).
+
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       Claude Code                           │
-│                    mcp__mark42__* tools                      │
+│          AI Harness (Claude Code / pi / opencode)           │
+│          mcp__mark42__* tools / mark42 CLI hooks            │
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC 2.0 (stdio)
                            ▼
@@ -81,7 +85,7 @@ claude plugin install mark42@mark42
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## MCP Tools (16 total)
+## MCP Tools (18 total)
 
 | Tool | Description |
 |------|-------------|
@@ -101,6 +105,8 @@ claude plugin install mark42@mark42
 | `consolidate_memories` | Deduplicate similar observations |
 | `capture_session` | Capture session summary + tool-use events |
 | `recall_sessions` | Recall recent session summaries for continuity |
+| `invalidate_observation` | Mark an observation as no longer valid (temporal) |
+| `get_entity_history` | Full observation history, including superseded |
 
 ## CLI
 
@@ -126,15 +132,17 @@ mark42 decay archive           # Archive old, low-importance memories
 mark42 context --project my-project  # Preview context injection output
 ```
 
-## Plugin Hooks
+## Harness Integration
 
-mark42 includes Claude Code plugin hooks for automatic memory management:
+**Claude Code** — plugin hooks for automatic memory management:
 
 | Hook | Trigger | Action |
 |------|---------|--------|
 | `mark42 hook session-start` | Session begins | Injects session recall + knowledge graph context |
 | `mark42 hook post-tool-use` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
 | `mark42 hook stop` | Session ends | Triggers `capture_session` + memory sync |
+
+**opencode** — JS plugin adapter (`adapters/opencode/`), capture + recall. **pi** — MCP recall adapter (`adapters/pi/`), capture deferred.
 
 ## Comparison
 
@@ -156,7 +164,8 @@ mark42 includes Claude Code plugin hooks for automatic memory management:
 - **Phase 2** ✅ Semantic Search — Hybrid search (FTS5 + vector), Ollama embeddings, fact types, entity versioning
 - **Phase 3** ✅ Intelligence — Auto-embed on write, recency-boosted context injection, consolidation
 - **Phase 4** ✅ Session Capture & Recall — Cross-session continuity, capture/recall tools, hook integration
-- **Phase 5** 🔮 Analytics & Advanced Decay — Automatic importance decay, memory analytics
+- **Phase 5** ✅ Cross-Harness & Lifecycle — Harness adapters (Claude Code, pi, opencode), neutral config paths (`~/.mark42`), distill pipeline, importance scoring, decay/archive commands, per-project workdirs
+- **Phase 6** 🔮 Analytics — Memory analytics (decay curves, access patterns)
 
 ## License
 
