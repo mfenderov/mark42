@@ -262,3 +262,51 @@ func TestHasEmbedding(t *testing.T) {
 		t.Error("expected embedding to exist")
 	}
 }
+
+func TestBatchStoreEmbeddings(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_batch_embed.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	entity, err := store.CreateEntity("batch", "test", []string{"obs one", "obs two"})
+	if err != nil {
+		t.Fatalf("failed to create entity: %v", err)
+	}
+
+	id1, err := store.getObservationID(entity.ID, "obs one")
+	if err != nil {
+		t.Fatalf("get obs1: %v", err)
+	}
+	id2, err := store.getObservationID(entity.ID, "obs two")
+	if err != nil {
+		t.Fatalf("get obs2: %v", err)
+	}
+
+	obs := []ObservationWithID{{ID: id1}, {ID: id2}}
+	embeddings := [][]float64{{0.1, 0.2}, {0.3, 0.4}}
+
+	if err := store.BatchStoreEmbeddings(obs, embeddings, "test-model"); err != nil {
+		t.Fatalf("BatchStoreEmbeddings: %v", err)
+	}
+
+	_, withEmbeddings, err := store.EmbeddingStats()
+	if err != nil {
+		t.Fatalf("EmbeddingStats: %v", err)
+	}
+	if withEmbeddings != 2 {
+		t.Errorf("withEmbeddings = %d, want 2", withEmbeddings)
+	}
+
+	if err := store.BatchStoreEmbeddings(obs, embeddings[:1], "test-model"); err == nil {
+		t.Error("expected error on count mismatch, got nil")
+	}
+}

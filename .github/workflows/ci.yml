@@ -38,6 +38,9 @@ jobs:
 
       - run: go test -v -race ./...
 
+      - name: CRAP gate
+        run: make crap
+
   build:
     needs: [lint, test]
     runs-on: ubuntu-latest
