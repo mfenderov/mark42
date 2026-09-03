@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -438,5 +439,29 @@ func TestDeleteSessionEvents_NotFound(t *testing.T) {
 
 	if err := store.DeleteSessionEvents("nonexistent-session"); err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetSessionEventObservations(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	session, err := store.CreateSession("proj")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if err := store.CaptureSessionEvent(session.Name, SessionEvent{ToolName: "Edit", FilePath: "a.go"}); err != nil {
+		t.Fatalf("CaptureSessionEvent failed: %v", err)
+	}
+
+	contents, err := store.GetSessionEventObservations(session.Name)
+	if err != nil {
+		t.Fatalf("GetSessionEventObservations failed: %v", err)
+	}
+	if len(contents) != 1 {
+		t.Fatalf("expected 1 event observation, got %d", len(contents))
+	}
+	if !strings.Contains(contents[0], "Edit") || !strings.Contains(contents[0], "a.go") {
+		t.Errorf("unexpected event content: %q", contents[0])
 	}
 }

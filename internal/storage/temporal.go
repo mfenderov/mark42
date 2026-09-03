@@ -104,12 +104,15 @@ func (s *Store) detectAndExpireSuperseded(entityName string, newContents []strin
 		return nil, err
 	}
 
+	return s.expireSimilar(candidates, newEmbeddings, protected, threshold)
+}
+
+// expireSimilar expires candidates similar to any new embedding, skipping
+// protected (just-written) contents. Returns the expired contents.
+func (s *Store) expireSimilar(candidates []supersedeCandidate, newEmbeddings [][]float64, protected map[string]bool, threshold float64) ([]string, error) {
 	var expired []string
 	for _, c := range candidates {
-		if protected[c.content] {
-			continue
-		}
-		if !exceedsThreshold(newEmbeddings, decodeEmbedding(c.blob), threshold) {
+		if protected[c.content] || !exceedsThreshold(newEmbeddings, decodeEmbedding(c.blob), threshold) {
 			continue
 		}
 		if _, err := s.db.Exec(
@@ -120,7 +123,6 @@ func (s *Store) detectAndExpireSuperseded(entityName string, newContents []strin
 		}
 		expired = append(expired, c.content)
 	}
-
 	return expired, nil
 }
 

@@ -534,3 +534,19 @@ func TestEstimateTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatSessionRecall(t *testing.T) {
+	if got := storage.FormatSessionRecall(nil); got != "" {
+		t.Errorf("empty results should format as empty string, got %q", got)
+	}
+
+	got := storage.FormatSessionRecall([]storage.ContextResult{
+		{EntityName: "proj-2026-01-01", Content: "built auth module"},
+	})
+	if !strings.Contains(got, "=== Recent Sessions ===") {
+		t.Errorf("missing header: %q", got)
+	}
+	if !strings.Contains(got, "[proj-2026-01-01] built auth module") {
+		t.Errorf("missing session line: %q", got)
+	}
+}

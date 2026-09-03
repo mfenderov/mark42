@@ -8,6 +8,26 @@ import (
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
+// recallSection returns the formatted recent-sessions recall, or "" when none.
+func recallSection(store *storage.Store, projectName string) string {
+	results, err := store.GetRecentSessionSummaries(projectName, 72, 500)
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(storage.FormatSessionRecall(results))
+}
+
+// graphContextSection returns the formatted knowledge-graph context, or "" when none.
+func graphContextSection(store *storage.Store, projectName string) string {
+	ctxCfg := storage.DefaultContextConfig()
+	ctxCfg.TokenBudget = 1500
+	results, err := store.GetContextForInjection(ctxCfg, projectName, projectName, nil)
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(storage.FormatContextResults(results))
+}
+
 // SessionStart runs the SessionStart hook: inject recall + knowledge graph context.
 func SessionStart(projectDir string, store *storage.Store, opts ...Option) {
 	cfg := &Config{}
@@ -30,25 +50,11 @@ func SessionStart(projectDir string, store *storage.Store, opts ...Option) {
 	}
 
 	var parts []string
-
-	// Session recall
-	results, err := store.GetRecentSessionSummaries(projectName, 72, 500)
-	if err == nil && len(results) > 0 {
-		formatted := storage.FormatSessionRecall(results)
-		if formatted != "" {
-			parts = append(parts, strings.TrimSpace(formatted))
-		}
+	if s := recallSection(store, projectName); s != "" {
+		parts = append(parts, s)
 	}
-
-	// Knowledge graph context
-	ctxCfg := storage.DefaultContextConfig()
-	ctxCfg.TokenBudget = 1500
-	ctxResults, err := store.GetContextForInjection(ctxCfg, projectName, projectName, nil)
-	if err == nil && len(ctxResults) > 0 {
-		formatted := storage.FormatContextResults(ctxResults)
-		if formatted != "" {
-			parts = append(parts, strings.TrimSpace(formatted))
-		}
+	if s := graphContextSection(store, projectName); s != "" {
+		parts = append(parts, s)
 	}
 
 	if len(parts) == 0 {

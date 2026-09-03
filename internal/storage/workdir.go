@@ -116,13 +116,7 @@ func (s *Store) CreateEntityWithContainer(name, entityType string, observations 
 	}
 	defer tx.Rollback()
 
-	// Check if entity already exists
-	var existingID int64
-	err = tx.QueryRow("SELECT id FROM entities WHERE name = ?", name).Scan(&existingID)
-	if err == nil {
-		return nil, ErrEntityExists
-	}
-	if err != sql.ErrNoRows {
+	if err := ensureEntityAbsent(tx, name); err != nil {
 		return nil, err
 	}
 
@@ -229,22 +223,31 @@ func (s *Store) GetContextWithContainerTag(cfg ContextConfig, containerTag strin
 		ORDER BY o.importance DESC
 	`
 
-	type resultWithTag struct {
-		EntityName   string         `db:"entity_name"`
-		EntityType   string         `db:"entity_type"`
-		Content      string         `db:"content"`
-		FactType     string         `db:"fact_type"`
-		Importance   float64        `db:"importance"`
-		ContainerTag sql.NullString `db:"container_tag"`
-	}
-
 	var rawResults []resultWithTag
 	err := s.db.Select(&rawResults, query, cfg.MinImportance)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert and apply boosts
+	results := applyContainerBoosts(rawResults, containerTag, cfg)
+	sortByFinalScore(results)
+
+	return applyTokenBudget(results, cfg.TokenBudget), nil
+}
+
+// resultWithTag is a context query row with the entity's container tag.
+type resultWithTag struct {
+	EntityName   string         `db:"entity_name"`
+	EntityType   string         `db:"entity_type"`
+	Content      string         `db:"content"`
+	FactType     string         `db:"fact_type"`
+	Importance   float64        `db:"importance"`
+	ContainerTag sql.NullString `db:"container_tag"`
+}
+
+// applyContainerBoosts converts raw rows to ContextResults, applying the
+// container-tag boost for matching entities and the static-fact boost.
+func applyContainerBoosts(rawResults []resultWithTag, containerTag string, cfg ContextConfig) []ContextResult {
 	results := make([]ContextResult, len(rawResults))
 	for i, r := range rawResults {
 		results[i] = ContextResult{
@@ -256,41 +259,15 @@ func (s *Store) GetContextWithContainerTag(cfg ContextConfig, containerTag strin
 			FinalScore: r.Importance,
 		}
 
-		// Apply container tag boost
 		if containerTag != "" && r.ContainerTag.Valid && r.ContainerTag.String == containerTag {
 			results[i].FinalScore *= cfg.ProjectBoost
 		}
 
-		// Apply static fact boost
 		if r.FactType == "static" {
 			results[i].FinalScore *= 1.2
 		}
 	}
-
-	// Sort by final score (descending)
-	slices.SortFunc(results, func(a, b ContextResult) int {
-		if b.FinalScore > a.FinalScore {
-			return 1
-		}
-		if b.FinalScore < a.FinalScore {
-			return -1
-		}
-		return 0
-	})
-
-	// Apply token budget
-	tokenCount := 0
-	var selected []ContextResult
-	for _, r := range results {
-		entryTokens := (len(r.EntityName) + len(r.Content) + 20) / 4
-		if tokenCount+entryTokens > cfg.TokenBudget {
-			break
-		}
-		tokenCount += entryTokens
-		selected = append(selected, r)
-	}
-
-	return selected, nil
+	return results
 }
 
 // DefaultContextConfig returns the default context configuration.

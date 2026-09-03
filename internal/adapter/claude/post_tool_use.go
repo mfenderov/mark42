@@ -193,21 +193,30 @@ func extractFilesFromBash(command, projectDir string) []string {
 		return nil
 	}
 
-	var files []string
-	switch cmd := tokens[0]; {
-	case cmd == "rm":
-		files = fileArgs(tokens[1:])
-	case cmd == "git" && len(tokens) > 1 && tokens[1] == "rm":
-		files = fileArgs(tokens[2:])
-	case cmd == "mv" && len(tokens) >= 3:
-		files = firstFileArg(tokens[1:])
-	case cmd == "git" && len(tokens) > 2 && tokens[1] == "mv":
-		files = firstFileArg(tokens[2:])
-	case cmd == "unlink" && len(tokens) > 1 && !isShellSyntax(tokens[1]):
-		files = tokens[1:2]
-	}
+	return resolvePaths(filesFromTokens(tokens), projectDir)
+}
 
-	return resolvePaths(files, projectDir)
+// filesFromTokens extracts file operands from a tokenized destructive command.
+func filesFromTokens(tokens []string) []string {
+	verb, args := normalizeDestructiveCmd(tokens)
+	switch {
+	case verb == "rm":
+		return fileArgs(args)
+	case verb == "mv" && len(args) >= 2:
+		return firstFileArg(args)
+	case verb == "unlink" && len(args) > 0 && !isShellSyntax(args[0]):
+		return args[:1]
+	}
+	return nil
+}
+
+// normalizeDestructiveCmd rewrites "git rm"/"git mv" to their plain
+// equivalents, returning the verb and its arguments.
+func normalizeDestructiveCmd(tokens []string) (string, []string) {
+	if tokens[0] == "git" && len(tokens) > 1 && (tokens[1] == "rm" || tokens[1] == "mv") {
+		return tokens[1], tokens[2:]
+	}
+	return tokens[0], tokens[1:]
 }
 
 var readOnlyPrefixes = []string{
@@ -269,31 +278,40 @@ func shellTokenize(s string) []string {
 		return nil
 	}
 
-	var tokens []string
-	var current strings.Builder
-	inSingle := false
-	inDouble := false
-
+	t := &shellTokenizer{}
 	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		switch {
-		case ch == '\'' && !inDouble:
-			inSingle = !inSingle
-		case ch == '"' && !inSingle:
-			inDouble = !inDouble
-		case ch == ' ' && !inSingle && !inDouble:
-			if current.Len() > 0 {
-				tokens = append(tokens, current.String())
-				current.Reset()
-			}
-		default:
-			current.WriteByte(ch)
-		}
+		t.step(s[i])
 	}
-	if current.Len() > 0 {
-		tokens = append(tokens, current.String())
+	t.flush()
+	return t.tokens
+}
+
+// shellTokenizer splits a command line on unquoted spaces, tracking quote state.
+type shellTokenizer struct {
+	tokens   []string
+	current  strings.Builder
+	inSingle bool
+	inDouble bool
+}
+
+func (t *shellTokenizer) step(ch byte) {
+	switch {
+	case ch == '\'' && !t.inDouble:
+		t.inSingle = !t.inSingle
+	case ch == '"' && !t.inSingle:
+		t.inDouble = !t.inDouble
+	case ch == ' ' && !t.inSingle && !t.inDouble:
+		t.flush()
+	default:
+		t.current.WriteByte(ch)
 	}
-	return tokens
+}
+
+func (t *shellTokenizer) flush() {
+	if t.current.Len() > 0 {
+		t.tokens = append(t.tokens, t.current.String())
+		t.current.Reset()
+	}
 }
 
 var shellOperators = map[string]bool{

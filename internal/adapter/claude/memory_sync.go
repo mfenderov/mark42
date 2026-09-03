@@ -45,35 +45,48 @@ func parseCCMemoryBytes(data []byte, fileName string) (*ccMemory, error) {
 			closingIdx = i
 			break
 		}
-		key, value, ok := strings.Cut(lines[i], ":")
-		if !ok {
-			continue
-		}
-		switch strings.TrimSpace(key) {
-		case "name":
-			mem.Name = strings.TrimSpace(value)
-		case "description":
-			mem.Description = strings.TrimSpace(value)
-		case "type":
-			mem.Type = strings.TrimSpace(value)
-		}
+		mem.parseFrontmatterLine(lines[i])
 	}
 
 	if closingIdx == -1 {
 		return nil, fmt.Errorf("no closing frontmatter delimiter in %s", fileName)
 	}
 
-	if strings.TrimSpace(mem.Name) == "" {
-		return nil, fmt.Errorf("missing required 'name' frontmatter in %s", fileName)
-	}
-	if strings.TrimSpace(mem.Type) == "" {
-		return nil, fmt.Errorf("missing required 'type' frontmatter in %s", fileName)
+	if err := mem.validate(fileName); err != nil {
+		return nil, err
 	}
 
 	bodyLines := lines[closingIdx+1:]
 	mem.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
 
 	return mem, nil
+}
+
+// parseFrontmatterLine assigns one frontmatter key/value line to the memory.
+func (m *ccMemory) parseFrontmatterLine(line string) {
+	key, value, ok := strings.Cut(line, ":")
+	if !ok {
+		return
+	}
+	switch strings.TrimSpace(key) {
+	case "name":
+		m.Name = strings.TrimSpace(value)
+	case "description":
+		m.Description = strings.TrimSpace(value)
+	case "type":
+		m.Type = strings.TrimSpace(value)
+	}
+}
+
+// validate checks the required frontmatter fields.
+func (m *ccMemory) validate(fileName string) error {
+	if strings.TrimSpace(m.Name) == "" {
+		return fmt.Errorf("missing required 'name' frontmatter in %s", fileName)
+	}
+	if strings.TrimSpace(m.Type) == "" {
+		return fmt.Errorf("missing required 'type' frontmatter in %s", fileName)
+	}
+	return nil
 }
 
 func loadChecksums(path string) map[string]string {
@@ -129,10 +142,9 @@ func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumP
 
 	// Ensure project entity exists once before processing files
 	projectEntityName := "project:" + projectName
-	_, projErr := store.CreateEntity(projectEntityName, "project", nil)
-	if projErr != nil && !errors.Is(projErr, storage.ErrEntityExists) {
+	if err := ensureProjectEntity(store, projectEntityName); err != nil {
 		logger.Warn("failed to create project entity, aborting cc memory sync",
-			"entity", projectEntityName, "err", projErr)
+			"entity", projectEntityName, "err", err)
 		return
 	}
 
@@ -183,6 +195,15 @@ func syncMemoryFile(store *storage.Store, projectName, projectEntityName, memory
 	return true
 }
 
+// ensureProjectEntity creates the project entity, tolerating an existing one.
+func ensureProjectEntity(store *storage.Store, projectEntityName string) error {
+	_, err := store.CreateEntity(projectEntityName, "project", nil)
+	if err == nil || errors.Is(err, storage.ErrEntityExists) {
+		return nil
+	}
+	return err
+}
+
 // upsertMemoryEntity creates/updates the memory entity with its observations
 // and project relation. Relation failures are logged but non-fatal.
 func upsertMemoryEntity(store *storage.Store, entityName, projectEntityName string, mem *ccMemory) error {
@@ -191,6 +212,19 @@ func upsertMemoryEntity(store *storage.Store, entityName, projectEntityName stri
 		return err
 	}
 
+	if err := addMemoryObservations(store, entityName, mem); err != nil {
+		return err
+	}
+
+	if err := store.CreateRelation(entityName, projectEntityName, "belongs_to"); err != nil {
+		logger.Warn("failed to create belongs_to relation", "from", entityName, "to", projectEntityName, "err", err)
+	}
+	return nil
+}
+
+// addMemoryObservations attaches the memory's description (static) and body
+// (dynamic) observations to the entity.
+func addMemoryObservations(store *storage.Store, entityName string, mem *ccMemory) error {
 	if mem.Description != "" {
 		if err := store.AddObservationWithType(entityName, mem.Description, storage.FactTypeStatic); err != nil {
 			logger.Warn("failed to add description observation", "entity", entityName, "err", err)
@@ -203,10 +237,6 @@ func upsertMemoryEntity(store *storage.Store, entityName, projectEntityName stri
 			logger.Warn("failed to add body observation", "entity", entityName, "err", err)
 			return err
 		}
-	}
-
-	if err := store.CreateRelation(entityName, projectEntityName, "belongs_to"); err != nil {
-		logger.Warn("failed to create belongs_to relation", "from", entityName, "to", projectEntityName, "err", err)
 	}
 	return nil
 }

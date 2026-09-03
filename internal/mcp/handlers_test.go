@@ -2025,3 +2025,54 @@ func TestHandler_CreateEntities_SupersedeKeepsNewContent(t *testing.T) {
 		}
 	}
 }
+
+func TestHandler_CaptureSession(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	result, err := handler.CallTool("capture_session", json.RawMessage(`{"projectName":"testproj","summary":"built auth module","events":[{"toolName":"Edit","filePath":"auth.go"}]}`))
+	if err != nil {
+		t.Fatalf("capture_session: %v", err)
+	}
+	text := result.Content[0].Text
+	if !strings.Contains(text, "Session captured") || !strings.Contains(text, "1 events") {
+		t.Errorf("unexpected result: %s", text)
+	}
+
+	sessions, err := store.ListSessions("testproj", "", 0)
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	if sessions[0].Status != "completed" {
+		t.Errorf("expected completed session, got %q", sessions[0].Status)
+	}
+}
+
+func TestHandler_RecallSessions(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	// Empty recall
+	result, err := handler.CallTool("recall_sessions", json.RawMessage(`{"projectName":"nonexistent"}`))
+	if err != nil {
+		t.Fatalf("recall_sessions: %v", err)
+	}
+	if !strings.Contains(result.Content[0].Text, "No recent sessions found") {
+		t.Errorf("expected empty recall message, got: %s", result.Content[0].Text)
+	}
+
+	// Recall after capture
+	if _, err := handler.CallTool("capture_session", json.RawMessage(`{"projectName":"testproj","summary":"built auth module"}`)); err != nil {
+		t.Fatalf("capture_session: %v", err)
+	}
+	result, err = handler.CallTool("recall_sessions", json.RawMessage(`{"projectName":"testproj"}`))
+	if err != nil {
+		t.Fatalf("recall_sessions: %v", err)
+	}
+	if !strings.Contains(result.Content[0].Text, "built auth module") {
+		t.Errorf("expected recalled summary, got: %s", result.Content[0].Text)
+	}
+}

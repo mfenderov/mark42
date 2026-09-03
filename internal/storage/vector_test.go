@@ -310,3 +310,44 @@ func TestBatchStoreEmbeddings(t *testing.T) {
 		t.Error("expected error on count mismatch, got nil")
 	}
 }
+
+func TestGetObservationsWithoutEmbeddings(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(filepath.Join(tmpDir, "test_noembed.db"))
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	if _, err := store.CreateEntity("embed-check", "test", []string{"needs embedding", "already embedded"}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+
+	obs, err := store.GetObservationsWithoutEmbeddings()
+	if err != nil {
+		t.Fatalf("GetObservationsWithoutEmbeddings: %v", err)
+	}
+	if len(obs) != 2 {
+		t.Fatalf("expected 2 observations without embeddings, got %d", len(obs))
+	}
+
+	target := store.GetObservationWithID("embed-check", "already embedded")
+	if target == nil {
+		t.Fatal("observation not found")
+	}
+	if err := store.StoreEmbedding(target.ID, []float64{0.1, 0.2}, "test"); err != nil {
+		t.Fatalf("StoreEmbedding: %v", err)
+	}
+
+	obs, err = store.GetObservationsWithoutEmbeddings()
+	if err != nil {
+		t.Fatalf("GetObservationsWithoutEmbeddings: %v", err)
+	}
+	if len(obs) != 1 || obs[0].Content != "needs embedding" {
+		t.Errorf("expected only 'needs embedding', got %v", obs)
+	}
+}

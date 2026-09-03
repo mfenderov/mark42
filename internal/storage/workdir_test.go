@@ -2,7 +2,10 @@ package storage_test
 
 import (
 	"context"
+	"errors"
 	"testing"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestStore_SetContainerTag(t *testing.T) {
@@ -218,5 +221,17 @@ func TestStore_CreateEntityWithContainerTag(t *testing.T) {
 
 	if tag != "my-project" {
 		t.Errorf("expected tag 'my-project', got %q", tag)
+	}
+}
+
+func TestCreateEntityWithContainer_Duplicate(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if _, err := store.CreateEntityWithContainer("dup", "type", nil, "tag"); err != nil {
+		t.Fatalf("first create failed: %v", err)
+	}
+	if _, err := store.CreateEntityWithContainer("dup", "type", nil, "tag"); !errors.Is(err, storage.ErrEntityExists) {
+		t.Errorf("expected ErrEntityExists, got %v", err)
 	}
 }

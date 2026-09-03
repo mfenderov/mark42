@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // ImportanceConfig holds configuration for importance scoring.
@@ -129,34 +131,11 @@ type ObservationImportance struct {
 // Returns the number of observations updated.
 func (s *Store) RecalculateImportance() (int, error) {
 	cfg := DefaultImportanceConfig()
-
-	var maxRelations int
-	if err := s.db.Get(&maxRelations, `
-		SELECT COALESCE(MAX(rel_count), 0)
-		FROM (
-			SELECT COUNT(*) as rel_count
-			FROM relations
-			GROUP BY from_entity_id
-		)
-	`); err != nil {
-		maxRelations = 1
-	}
-	if maxRelations == 0 {
-		maxRelations = 1
-	}
+	maxRelations := s.maxRelationCount()
 
 	// Load all observation rows into memory first, then apply updates in a single transaction.
 	// This avoids holding an open read cursor while writing — SQLite cursor+tx interplay.
-	type obsRow struct {
-		ID             int64   `db:"id"`
-		BaseImportance float64 `db:"importance"`
-		FactType       string  `db:"fact_type"`
-		DaysSince      float64 `db:"days_since"`
-		RelationCount  int     `db:"relation_count"`
-		AccessCount    int     `db:"access_count"`
-	}
-
-	var rows []obsRow
+	var rows []obsImportanceRow
 	if err := s.db.Select(&rows, `
 		SELECT o.id, o.importance, o.fact_type,
 		       COALESCE(julianday('now') - julianday(COALESCE(o.last_accessed, o.created_at)), 0) as days_since,
@@ -176,6 +155,46 @@ func (s *Store) RecalculateImportance() (int, error) {
 	}
 	defer tx.Rollback()
 
+	updated, err := applyImportanceUpdates(tx, rows, maxRelations, cfg)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing importance transaction: %w", err)
+	}
+
+	return updated, nil
+}
+
+// obsImportanceRow is one observation's input row for importance recalculation.
+type obsImportanceRow struct {
+	ID             int64   `db:"id"`
+	BaseImportance float64 `db:"importance"`
+	FactType       string  `db:"fact_type"`
+	DaysSince      float64 `db:"days_since"`
+	RelationCount  int     `db:"relation_count"`
+	AccessCount    int     `db:"access_count"`
+}
+
+// maxRelationCount returns the maximum number of relations on any entity (at least 1).
+func (s *Store) maxRelationCount() int {
+	var maxRelations int
+	if err := s.db.Get(&maxRelations, `
+		SELECT COALESCE(MAX(rel_count), 0)
+		FROM (
+			SELECT COUNT(*) as rel_count
+			FROM relations
+			GROUP BY from_entity_id
+		)
+	`); err != nil || maxRelations == 0 {
+		return 1
+	}
+	return maxRelations
+}
+
+// applyImportanceUpdates recalculates and persists importance for each row.
+func applyImportanceUpdates(tx *sqlx.Tx, rows []obsImportanceRow, maxRelations int, cfg ImportanceConfig) (int, error) {
 	updated := 0
 	for _, row := range rows {
 		baseScore := row.BaseImportance
@@ -202,11 +221,6 @@ func (s *Store) RecalculateImportance() (int, error) {
 			updated++
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("committing importance transaction: %w", err)
-	}
-
 	return updated, nil
 }
 

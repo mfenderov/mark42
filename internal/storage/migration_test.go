@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -235,5 +238,43 @@ func TestMigrateTo(t *testing.T) {
 	}
 	if version != ExpectedMigrationCount {
 		t.Errorf("after up: version = %d, want %d", version, ExpectedMigrationCount)
+	}
+}
+
+func TestRunMigrationFunc(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	// Successful migration commits
+	err := RunMigrationFunc(store.db.DB, func(_ context.Context, tx *sql.Tx) error {
+		_, err := tx.Exec("CREATE TABLE IF NOT EXISTS run_migration_probe (id INTEGER)")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("RunMigrationFunc failed: %v", err)
+	}
+	var n int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='run_migration_probe'").Scan(&n); err != nil {
+		t.Fatalf("probe query failed: %v", err)
+	}
+	if n != 1 {
+		t.Error("expected probe table to exist after commit")
+	}
+
+	// Failing migration rolls back
+	err = RunMigrationFunc(store.db.DB, func(_ context.Context, tx *sql.Tx) error {
+		if _, err := tx.Exec("CREATE TABLE rolled_back_probe (id INTEGER)"); err != nil {
+			return err
+		}
+		return errors.New("boom")
+	})
+	if err == nil {
+		t.Fatal("expected error from failing migration func")
+	}
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='rolled_back_probe'").Scan(&n); err != nil {
+		t.Fatalf("probe query failed: %v", err)
+	}
+	if n != 0 {
+		t.Error("expected rolled-back table to be absent")
 	}
 }
