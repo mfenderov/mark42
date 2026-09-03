@@ -147,6 +147,8 @@ See `docs/ARCHITECTURE.md` for:
 - `mark42 stats` - Show database statistics
 - `mark42 version` - Display version info
 - `mark42 migrate --from <json> --to <db>` - Migrate from JSON Memory MCP
+- `mark42 analytics [--json] [--top N]` - Memory analytics dashboard (overview, decay curve, hotspots, activity)
+- `mark42 analytics tune [--apply]` - Usage-driven importance/decay tuning recommendations
 
 **Default database**: `~/.mark42/memory.db` (legacy `~/.claude/memory.db` auto-detected; override with `--db <path>`)
 <!-- END AUTO-MANAGED -->
@@ -238,8 +240,10 @@ Claude Code plugin components:
 | `recall_sessions` | ✅ GetRecentSessionSummaries | ✅ DONE | Cross-session recall |
 | `invalidate_observation` | ✅ InvalidateObservation | ✅ DONE | Temporal validity |
 | `get_entity_history` | ✅ GetObservationHistory | ✅ DONE | Full observation history |
+| `get_memory_analytics` | ✅ GetMemoryAnalytics | ✅ DONE | Overview, decay curve, hotspots, activity |
+| `get_tuning_recommendation` | ✅ RecommendTuning | ✅ DONE | Usage-driven decay/importance suggestions |
 
-**All 18 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 20 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
@@ -289,9 +293,11 @@ Claude Code plugin components:
 - ✅ `mark42 distill` — structural session distillation pipeline
 - ✅ Importance scoring, decay/archive commands, per-project workdirs
 
-**Phase 6**: Analytics (Future)
-- Memory analytics (decay curves, most-accessed entities)
-- Automatic importance decay tuning
+**Phase 6 (Complete)**: Analytics ✅
+- ✅ Persisted importance/decay config (settings table, migration 011)
+- ✅ `mark42 analytics` dashboard — overview, decay curve, access hotspots, fact-type breakdown, activity
+- ✅ `mark42 analytics tune [--apply]` — usage-driven decay/importance recommendations with rationale
+- ✅ `get_memory_analytics` and `get_tuning_recommendation` read-only MCP tools
 
 ## Go Conventions
 
