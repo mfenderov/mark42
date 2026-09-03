@@ -54,3 +54,29 @@ jobs:
       - run: go build -o mark42 ./cmd/memory
 
       - run: go build -o mark42-server ./cmd/server
+
+  release:
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Auto bump version and tag
+        uses: cocogitto/cocogitto-action@v3
+        with:
+          release: true
+          git-user: 'github-actions[bot]'
+          git-user-email: 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Push version commit and tag
+        run: |
+          git push origin main
+          git push origin "$(git describe --tags --abbrev=0)"
