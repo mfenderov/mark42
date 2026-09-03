@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -107,6 +108,44 @@ func TestHybridSearch_FTSOnly(t *testing.T) {
 
 	if results[0].Content != "prefers typescript" {
 		t.Errorf("expected 'prefers typescript', got %q", results[0].Content)
+	}
+}
+
+func TestFtsSearch_ExcludesSessionEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_fts_exclude.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	store.CreateEntity("SessEntity", "test", []string{"searchable static content"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"searchable.go"}`, FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.ftsSearch("searchable", 10)
+	if err != nil {
+		t.Fatalf("ftsSearch failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("session_event should be excluded from FTS search")
+		}
+		if r.Content == "searchable static content" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should be present in FTS results")
 	}
 }
 

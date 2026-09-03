@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"os"
@@ -134,11 +134,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("tracks Edit file", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Edit",
 			ToolInput: map[string]any{"file_path": filepath.Join(dir, "src", "main.go")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 1 {
@@ -152,11 +152,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("tracks Write file", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Write",
 			ToolInput: map[string]any{"file_path": filepath.Join(dir, "new.go")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 1 {
@@ -167,11 +167,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("excludes .claude dir files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Edit",
 			ToolInput: map[string]any{"file_path": filepath.Join(dir, ".claude", "config.json")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 0 {
@@ -182,11 +182,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("excludes CLAUDE.md", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Edit",
 			ToolInput: map[string]any{"file_path": filepath.Join(dir, "CLAUDE.md")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 0 {
@@ -198,12 +198,12 @@ func TestPostToolUseHook(t *testing.T) {
 		dir := setupProjectDir(t)
 		filePath := filepath.Join(dir, "src", "main.go")
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Edit",
 			ToolInput: map[string]any{"file_path": filePath},
 		}
-		runPostToolUseHook(dir, input)
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 1 {
@@ -217,11 +217,11 @@ func TestPostToolUseHook(t *testing.T) {
 		os.WriteFile(filepath.Join(configDir, "config.json"),
 			[]byte(`{"triggerMode":"gitmode"}`), 0o644)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Edit",
 			ToolInput: map[string]any{"file_path": filepath.Join(dir, "a.go")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(configDir, "dirty-files"))
 		if len(dirty) != 0 {
@@ -232,11 +232,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("read-only Bash: no dirty files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Bash",
 			ToolInput: map[string]any{"command": "go test ./..."},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 0 {
@@ -247,11 +247,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("excluded Edit: no dirty files", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Edit",
 			ToolInput: map[string]any{"file_path": filepath.Join(dir, ".claude", "config.json")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 0 {
@@ -262,11 +262,11 @@ func TestPostToolUseHook(t *testing.T) {
 	t.Run("Bash rm extracts file", func(t *testing.T) {
 		dir := setupProjectDir(t)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Bash",
 			ToolInput: map[string]any{"command": "rm " + filepath.Join(dir, "old.go")},
 		}
-		runPostToolUseHook(dir, input)
+		PostToolUse(dir, input)
 
 		dirty := readLines(filepath.Join(mark42Dir(dir), "dirty-files"))
 		if len(dirty) != 1 {
@@ -287,11 +287,11 @@ func TestPostToolUseHook(t *testing.T) {
 		session, _ := store.CreateSession(filepath.Base(dir))
 		os.WriteFile(filepath.Join(mark42Dir(dir), "current-session"), []byte(session.Name), 0o644)
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Read",
 			ToolInput: map[string]any{},
 		}
-		runPostToolUseHook(dir, input, withStore(store))
+		PostToolUse(dir, input, WithStore(store))
 
 		got, err := store.GetSession(session.Name)
 		if err != nil {
@@ -312,11 +312,11 @@ func TestPostToolUseHook(t *testing.T) {
 		defer store.Close()
 		store.Migrate()
 
-		input := hookInput{
+		input := HookInput{
 			ToolName:  "Read",
 			ToolInput: map[string]any{},
 		}
-		runPostToolUseHook(dir, input, withStore(store))
+		PostToolUse(dir, input, WithStore(store))
 
 		sessions, _ := store.ListSessions("", "", 10)
 		if len(sessions) != 0 {
@@ -328,6 +328,7 @@ func TestPostToolUseHook(t *testing.T) {
 func setupProjectDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
 	os.MkdirAll(mark42Dir(dir), 0o755)
 	return dir
 }

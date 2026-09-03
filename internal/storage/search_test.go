@@ -1,7 +1,11 @@
 package storage_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 func TestSearch_ByObservationContent(t *testing.T) {
@@ -143,6 +147,68 @@ func TestSearch_IncludesObservations(t *testing.T) {
 	// Results should include observations
 	if len(results[0].Observations) != 2 {
 		t.Errorf("expected 2 observations in result, got %d", len(results[0].Observations))
+	}
+}
+
+func TestSearch_ExcludesSessionEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("SessEntity", "test", []string{"searchable static content"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.Search("searchable")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	for _, obs := range results[0].Observations {
+		if strings.Contains(obs, "toolName") {
+			t.Error("session_event observation should be excluded from search results")
+		}
+	}
+}
+
+func TestTopObservations(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TopEntity", "test", nil)
+	for i := 0; i < 5; i++ {
+		content := fmt.Sprintf("obs-%d", i)
+		if err := store.AddObservation("TopEntity", content); err != nil {
+			t.Fatalf("AddObservation failed: %v", err)
+		}
+		if err := store.SetObservationImportance("TopEntity", content, float64(i)); err != nil {
+			t.Fatalf("SetObservationImportance failed: %v", err)
+		}
+	}
+
+	entity, err := store.GetEntity("TopEntity")
+	if err != nil {
+		t.Fatalf("GetEntity failed: %v", err)
+	}
+
+	obs, err := store.TopObservations(entity.ID, 3)
+	if err != nil {
+		t.Fatalf("TopObservations failed: %v", err)
+	}
+
+	if len(obs) != 3 {
+		t.Fatalf("expected 3 observations, got %d", len(obs))
+	}
+
+	want := []string{"obs-4", "obs-3", "obs-2"}
+	for i, w := range want {
+		if obs[i] != w {
+			t.Errorf("obs[%d] = %q, want %q", i, obs[i], w)
+		}
 	}
 }
 

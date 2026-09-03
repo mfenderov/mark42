@@ -170,6 +170,70 @@ func TestMigrate_PersistsAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestMigrate_IgnoresStraySQLInCWD(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "not_a_migration.sql"), []byte("-- not a migration\n"), 0o644); err != nil {
+		t.Fatalf("failed to write decoy sql: %v", err)
+	}
+	t.Chdir(dir)
+
+	dbPath := filepath.Join(dir, "test_stray_sql.db")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed with stray sql in CWD: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
+}
+
+func TestMigrateTo(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_migrateto.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	// No-op: already at latest
+	if err := store.MigrateTo(ExpectedMigrationCount); err != nil {
+		t.Fatalf("MigrateTo(current) failed: %v", err)
+	}
+
+	// Down to a specific version
+	const target int64 = 5
+	if err := store.MigrateTo(target); err != nil {
+		t.Fatalf("MigrateTo(%d) down failed: %v", target, err)
+	}
+	version, err := store.GetSchemaVersion()
+	if err != nil {
+		t.Fatalf("GetSchemaVersion: %v", err)
+	}
+	if version != target {
+		t.Errorf("after down: version = %d, want %d", version, target)
+	}
+
+	// Back up to latest
+	if err := store.MigrateTo(ExpectedMigrationCount); err != nil {
+		t.Fatalf("MigrateTo(latest) up failed: %v", err)
+	}
+	version, err = store.GetSchemaVersion()
+	if err != nil {
+		t.Fatalf("GetSchemaVersion: %v", err)
+	}
+	if version != ExpectedMigrationCount {
+		t.Errorf("after up: version = %d, want %d", version, ExpectedMigrationCount)
+	}
 }

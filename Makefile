@@ -1,4 +1,4 @@
-.PHONY: build build-server build-all test run lint clean install install-plugin
+.PHONY: build build-server build-all test test-coverage crap run lint clean install install-plugin
 
 BINARY=mark42
 SERVER=mark42-server
@@ -24,6 +24,16 @@ test:
 test-coverage:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
+
+# CRAP quality gate: complexity² × (1-coverage)³ + complexity. Max 30 ("crappy"
+# threshold); ratchet towards 10 as coverage improves. Migrations/cmd excluded
+# (tested indirectly / entry-point glue).
+crap:
+	go test -coverprofile=coverage.out ./...
+	go tool gocrap -coverprofile coverage.out \
+		-exclude '*_test.go' -exclude 'internal/storage/migrations/*' \
+		-exclude 'cmd/*' -exclude 'cmd/*/*' \
+		-max 30 ./...
 
 ## Run
 

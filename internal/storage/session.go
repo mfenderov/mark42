@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -201,10 +202,17 @@ func (s *Store) ListSessions(project, status string, limit int) ([]*Session, err
 			Status:    meta.Status,
 			StartedAt: entity.CreatedAt,
 		})
+	}
 
-		if len(sessions) >= limit {
-			break
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].StartedAt.Equal(sessions[j].StartedAt) {
+			return sessions[i].Name > sessions[j].Name
 		}
+		return sessions[i].StartedAt.After(sessions[j].StartedAt)
+	})
+
+	if limit > 0 && len(sessions) > limit {
+		sessions = sessions[:limit]
 	}
 
 	return sessions, nil
@@ -267,4 +275,97 @@ func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int
 	}
 
 	return selected, nil
+}
+
+func (s *Store) GetSessionEvents(sessionName string) ([]SessionEvent, error) {
+	entity, err := s.GetEntity(sessionName)
+	if err != nil {
+		return nil, err
+	}
+	if entity.Type != "session" {
+		return nil, ErrNotFound
+	}
+
+	var contents []string
+	if err := s.db.Select(&contents, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND fact_type = ? AND valid_until IS NULL
+		ORDER BY created_at`, entity.ID, string(FactTypeSessionEvent)); err != nil {
+		return nil, err
+	}
+
+	events := make([]SessionEvent, 0, len(contents))
+	for _, c := range contents {
+		var evt SessionEvent
+		if err := json.Unmarshal([]byte(c), &evt); err == nil && evt.ToolName != "" {
+			events = append(events, evt)
+		}
+	}
+	return events, nil
+}
+
+func (s *Store) UpdateSessionSummary(sessionName, summary string) error {
+	entity, err := s.GetEntity(sessionName)
+	if err != nil {
+		return err
+	}
+	if entity.Type != "session" {
+		return ErrNotFound
+	}
+
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
+		"DELETE FROM observations WHERE entity_id = ? AND fact_type = ?",
+		entity.ID, string(FactTypeSessionSummary),
+	); err != nil {
+		return fmt.Errorf("deleting existing summary: %w", err)
+	}
+
+	if _, err := tx.Exec(
+		"INSERT INTO observations (entity_id, content, fact_type) VALUES (?, ?, ?)",
+		entity.ID, summary, string(FactTypeSessionSummary),
+	); err != nil {
+		return fmt.Errorf("storing session summary: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (s *Store) DeleteSessionEvents(sessionName string) error {
+	entity, err := s.GetEntity(sessionName)
+	if err != nil {
+		return err
+	}
+	if entity.Type != "session" {
+		return ErrNotFound
+	}
+
+	if _, err := s.db.Exec(
+		"DELETE FROM observations WHERE entity_id = ? AND fact_type = ?",
+		entity.ID, string(FactTypeSessionEvent),
+	); err != nil {
+		return fmt.Errorf("deleting session events: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetSessionEventObservations(entityName string) ([]string, error) {
+	entity, err := s.GetEntity(entityName)
+	if err != nil {
+		return nil, err
+	}
+
+	var contents []string
+	if err := s.db.Select(&contents, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND fact_type = ? AND valid_until IS NULL
+	`, entity.ID, string(FactTypeSessionEvent)); err != nil {
+		return nil, err
+	}
+	return contents, nil
 }

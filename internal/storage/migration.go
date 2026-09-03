@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/pressly/goose/v3"
 
@@ -18,6 +19,16 @@ func init() {
 	_ = goose.SetDialect("sqlite3")
 }
 
+// gooseDir returns an empty dir so goose's dir-based SQL collection finds nothing.
+// All migrations are Go migrations registered in code, never .sql files.
+func gooseDir() (string, func()) {
+	dir, err := os.MkdirTemp("", "mark42-goose-*")
+	if err != nil {
+		return ".", func() {}
+	}
+	return dir, func() { os.RemoveAll(dir) }
+}
+
 // Migrate runs all pending migrations using goose.
 func (s *Store) Migrate() error {
 	// Get the underlying *sql.DB for goose
@@ -27,7 +38,9 @@ func (s *Store) Migrate() error {
 	goose.SetLogger(goose.NopLogger())
 
 	// Run migrations
-	if err := goose.Up(db, "."); err != nil {
+	dir, cleanup := gooseDir()
+	defer cleanup()
+	if err := goose.Up(db, dir); err != nil {
 		return fmt.Errorf("goose migration failed: %w", err)
 	}
 
@@ -40,7 +53,9 @@ func (s *Store) MigrateWithLogging() error {
 
 	goose.SetLogger(log.Default())
 
-	if err := goose.Up(db, "."); err != nil {
+	dir, cleanup := gooseDir()
+	defer cleanup()
+	if err := goose.Up(db, dir); err != nil {
 		return fmt.Errorf("goose migration failed: %w", err)
 	}
 
@@ -61,7 +76,9 @@ func (s *Store) GetSchemaVersion() (int64, error) {
 func (s *Store) MigrateDown() error {
 	db := s.db.DB
 
-	if err := goose.Down(db, "."); err != nil {
+	dir, cleanup := gooseDir()
+	defer cleanup()
+	if err := goose.Down(db, dir); err != nil {
 		return fmt.Errorf("goose rollback failed: %w", err)
 	}
 
@@ -78,11 +95,15 @@ func (s *Store) MigrateTo(version int64) error {
 	}
 
 	if version > current {
-		if err := goose.UpTo(db, ".", version); err != nil {
+		dir, cleanup := gooseDir()
+		defer cleanup()
+		if err := goose.UpTo(db, dir, version); err != nil {
 			return fmt.Errorf("goose migrate up failed: %w", err)
 		}
 	} else if version < current {
-		if err := goose.DownTo(db, ".", version); err != nil {
+		dir, cleanup := gooseDir()
+		defer cleanup()
+		if err := goose.DownTo(db, dir, version); err != nil {
 			return fmt.Errorf("goose migrate down failed: %w", err)
 		}
 	}
@@ -93,7 +114,9 @@ func (s *Store) MigrateTo(version int64) error {
 // MigrateStatus returns the status of all migrations.
 func (s *Store) MigrateStatus() error {
 	db := s.db.DB
-	return goose.Status(db, ".")
+	dir, cleanup := gooseDir()
+	defer cleanup()
+	return goose.Status(db, dir)
 }
 
 // RunMigrationFunc runs a custom migration function (for testing).

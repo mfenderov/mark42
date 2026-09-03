@@ -2,11 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/mfenderov/mark42/internal/distill"
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -53,6 +56,10 @@ Input format:
 		session, err := store.CreateSession(args[0])
 		if err != nil {
 			return err
+		}
+
+		if projectDir := getProjectDir(); projectDir != "" {
+			state.WriteCurrentSession(projectDir, session.Name)
 		}
 
 		for _, evt := range input.Events {
@@ -189,6 +196,46 @@ var sessionRecallCmd = &cobra.Command{
 	},
 }
 
+var distillCmd = &cobra.Command{
+	Use:   "distill <session-name>",
+	Short: "Distill a session's raw events into a summary",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		sessionName := args[0]
+
+		if err := distill.Run(store, sessionName, distill.StructuralSummarizer{}); err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				logger.Error("Session not found", "name", sessionName)
+				os.Exit(1)
+			}
+			if errors.Is(err, distill.ErrNothingToDistill) {
+				output(dimStyle.Render("Nothing to distill:") + " " + entityStyle.Render(sessionName))
+				return nil
+			}
+			return err
+		}
+
+		consolidated, err := store.ConsolidateObservations(sessionName)
+		if err != nil {
+			return err
+		}
+
+		output(successStyle.Render("✓") + " Distilled: " + entityStyle.Render(sessionName))
+		output("  " + dimStyle.Render("Consolidate:") + " " + consolidated)
+		return nil
+	},
+}
+
 func init() {
 	sessionListCmd.Flags().String("project", "", "filter by project name")
 	sessionListCmd.Flags().Int("limit", 20, "maximum number of sessions")
@@ -201,4 +248,5 @@ func init() {
 	sessionCmd.AddCommand(sessionGetCmd)
 	sessionCmd.AddCommand(sessionRecallCmd)
 	rootCmd.AddCommand(sessionCmd)
+	rootCmd.AddCommand(distillCmd)
 }

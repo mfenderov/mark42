@@ -982,6 +982,81 @@ func TestHandler_SearchNodes(t *testing.T) {
 
 // --- open_nodes tests ---
 
+func TestHandler_SearchNodes_BudgetsObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	obs := make([]string, 10)
+	for i := range obs {
+		obs[i] = fmt.Sprintf("budgettest observation number %d with some content", i)
+	}
+	store.CreateEntity("BudgetEntity", "test", obs)
+
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "budgettest"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &entities); err != nil {
+		t.Fatalf("failed to parse search results: %v", err)
+	}
+
+	for _, e := range entities {
+		if e["name"] != "BudgetEntity" {
+			continue
+		}
+		obsArr, ok := e["observations"].([]any)
+		if !ok {
+			t.Fatalf("observations not an array: %T", e["observations"])
+		}
+		if len(obsArr) > 3 {
+			t.Errorf("expected at most 3 observations, got %d", len(obsArr))
+		}
+		for _, o := range obsArr {
+			s, _ := o.(string)
+			if len(s) > 240 {
+				t.Errorf("observation exceeds 240 chars: %d", len(s))
+			}
+		}
+	}
+}
+
+func TestHandler_SearchNodes_TruncatesLongObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	longObs := strings.Repeat("x", 500)
+	store.CreateEntity("TruncEntity", "test", []string{longObs})
+
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "TruncEntity"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &entities); err != nil {
+		t.Fatalf("failed to parse search results: %v", err)
+	}
+
+	for _, e := range entities {
+		if e["name"] != "TruncEntity" {
+			continue
+		}
+		obsArr, _ := e["observations"].([]any)
+		if len(obsArr) != 1 {
+			t.Fatalf("expected 1 observation, got %d", len(obsArr))
+		}
+		s, _ := obsArr[0].(string)
+		if len([]rune(s)) > 241 {
+			t.Errorf("truncated observation too long: %d runes", len([]rune(s)))
+		}
+		if !strings.HasSuffix(s, "…") {
+			t.Errorf("truncated observation should end with ellipsis")
+		}
+	}
+}
+
 func TestHandler_OpenNodes(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -1078,6 +1153,33 @@ func TestHandler_OpenNodes(t *testing.T) {
 }
 
 // --- get_context tests ---
+
+func TestHandler_OpenNodes_ExcludesSessionEvents(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("SessEntity", "test", []string{"static observation"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	result, err := handler.CallTool("open_nodes", json.RawMessage(`{"names":["SessEntity"]}`))
+	if err != nil {
+		t.Fatalf("open_nodes failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+
+	text := result.Content[0].Text
+	if strings.Contains(text, "toolName") {
+		t.Error("session_event should be excluded from open_nodes result")
+	}
+	if !strings.Contains(text, "static observation") {
+		t.Error("static observation should be present in open_nodes result")
+	}
+}
 
 func TestHandler_GetContext(t *testing.T) {
 	tests := []struct {
@@ -1843,5 +1945,58 @@ func TestHandler_ConsolidateMemories_SemanticMode_CustomThreshold(t *testing.T) 
 	entity, _ := store.GetEntity("Pets")
 	if len(entity.Observations) != 2 {
 		t.Errorf("expected 2 observations unchanged, got %d: %v", len(entity.Observations), entity.Observations)
+	}
+}
+
+func TestHandler_SearchNodes_HybridFormat(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	handler.WithEmbedder(&fakeEmbedder{})
+
+	longObs := strings.Repeat("verbose detail ", 20) // 300 chars > maxObservationLength
+	if _, err := store.CreateEntity("GoPatterns", "pattern", []string{"table-driven testing patterns", longObs}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+
+	// Store distinct embeddings directly: identical fake vectors would trigger
+	// auto-supersede (cosine = 1.0 marks observations as no longer valid).
+	storedObs, err := store.GetObservationsWithoutEmbeddings()
+	if err != nil {
+		t.Fatalf("GetObservationsWithoutEmbeddings: %v", err)
+	}
+	if len(storedObs) != 2 {
+		t.Fatalf("expected 2 observations, got %d", len(storedObs))
+	}
+	if err := store.BatchStoreEmbeddings(storedObs, [][]float64{{1, 0, 0}, {0.9, 0.1, 0}}, "test-model"); err != nil {
+		t.Fatalf("BatchStoreEmbeddings: %v", err)
+	}
+
+	// Query with no keyword overlap: only the vector path can match,
+	// proving the hybrid formatter (formatHybridResults) was used.
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query":"zzznomatch"}`))
+	if err != nil {
+		t.Fatalf("search_nodes: %v", err)
+	}
+
+	text := result.Content[0].Text
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(text), &entities); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, text)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 grouped entity, got %d: %s", len(entities), text)
+	}
+	if entities[0]["name"] != "GoPatterns" || entities[0]["entityType"] != "pattern" {
+		t.Errorf("unexpected entity: %v", entities[0])
+	}
+	obs, ok := entities[0]["observations"].([]any)
+	if !ok || len(obs) == 0 {
+		t.Fatalf("observations missing: %s", text)
+	}
+	if len(obs) > 3 {
+		t.Errorf("observations = %d, want <= 3 (maxObservationsPerEntity)", len(obs))
+	}
+	if !strings.Contains(text, "…") {
+		t.Error("expected long observation to be truncated with …")
 	}
 }

@@ -252,6 +252,39 @@ func TestStore_GetRecentContext(t *testing.T) {
 	}
 }
 
+func TestStore_GetRecentContext_ExcludesSessionEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("SessEntity", "test", []string{"recent static content"})
+	store.UpdateLastAccessed("SessEntity")
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.GetRecentContext(24, "", 2000)
+	if err != nil {
+		t.Fatalf("GetRecentContext failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("session_event should not appear in recent context")
+		}
+		if r.Content == "recent static content" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should still be present in recent context")
+	}
+}
+
 func TestStore_GetRecentContext_ProjectBoost(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
@@ -287,6 +320,45 @@ func TestStore_GetRecentContext_ProjectBoost(t *testing.T) {
 	}
 }
 
+func TestGetContextForInjection_ExcludesSessionEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	store.CreateEntity("SessEntity", "test", []string{"Static observation"})
+	store.SetObservationImportance("SessEntity", "Static observation", 0.9)
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	cfg := storage.DefaultContextConfig()
+	cfg.MinImportance = 0.3
+
+	results, err := store.GetContextForInjection(cfg, "", "", nil)
+	if err != nil {
+		t.Fatalf("GetContextForInjection failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if r.FactType == "session_event" {
+			t.Error("session_event should not appear in context injection")
+		}
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("raw session event should not appear in context injection")
+		}
+		if r.Content == "Static observation" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should still be present in context")
+	}
+}
+
 func TestGetContextForInjection_RejectsInvalidFactType(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
@@ -310,12 +382,25 @@ func TestGetContextForInjection_AcceptsAllValidFactTypes(t *testing.T) {
 
 	cfg := storage.DefaultContextConfig()
 	cfg.FactTypePriority = []string{
-		"static", "dynamic", "session_turn", "session_event", "session_summary",
+		"static", "dynamic", "session_turn", "session_summary",
 	}
 
 	_, err := store.GetContextForInjection(cfg, "", "", nil)
 	if err != nil {
 		t.Errorf("all known fact types should be accepted, got error: %v", err)
+	}
+}
+
+func TestGetContextForInjection_RejectsSessionEventFactType(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	cfg := storage.DefaultContextConfig()
+	cfg.FactTypePriority = []string{"session_event"}
+
+	_, err := store.GetContextForInjection(cfg, "", "", nil)
+	if err == nil {
+		t.Error("session_event should no longer be a valid context fact type, got nil error")
 	}
 }
 

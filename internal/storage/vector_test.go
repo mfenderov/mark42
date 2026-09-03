@@ -3,6 +3,7 @@ package storage
 import (
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -156,6 +157,63 @@ func TestVectorSearch(t *testing.T) {
 	}
 }
 
+func TestVectorSearch_ExcludesSessionEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_vector_exclude.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	entity, err := store.CreateEntity("SessEntity", "test", []string{"static content"})
+	if err != nil {
+		t.Fatalf("failed to create entity: %v", err)
+	}
+	staticID, err := store.getObservationID(entity.ID, "static content")
+	if err != nil {
+		t.Fatalf("failed to get static observation ID: %v", err)
+	}
+	if err := store.StoreEmbedding(staticID, []float64{0.9, 0.1, 0.0}, "test-model"); err != nil {
+		t.Fatalf("failed to store static embedding: %v", err)
+	}
+
+	eventContent := `{"toolName":"Edit","filePath":"/a.go"}`
+	if err := store.AddObservationWithType("SessEntity", eventContent, FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+	eventID, err := store.getObservationID(entity.ID, eventContent)
+	if err != nil {
+		t.Fatalf("failed to get event observation ID: %v", err)
+	}
+	if err := store.StoreEmbedding(eventID, []float64{0.9, 0.1, 0.0}, "test-model"); err != nil {
+		t.Fatalf("failed to store event embedding: %v", err)
+	}
+
+	results, err := store.VectorSearch([]float64{0.9, 0.1, 0.0}, 10)
+	if err != nil {
+		t.Fatalf("VectorSearch failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("session_event should be excluded from vector search")
+		}
+		if r.Content == "static content" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should be present in vector search")
+	}
+}
+
 func TestHasEmbedding(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_has_embedding.db")
@@ -202,5 +260,53 @@ func TestHasEmbedding(t *testing.T) {
 	}
 	if !has {
 		t.Error("expected embedding to exist")
+	}
+}
+
+func TestBatchStoreEmbeddings(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_batch_embed.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	entity, err := store.CreateEntity("batch", "test", []string{"obs one", "obs two"})
+	if err != nil {
+		t.Fatalf("failed to create entity: %v", err)
+	}
+
+	id1, err := store.getObservationID(entity.ID, "obs one")
+	if err != nil {
+		t.Fatalf("get obs1: %v", err)
+	}
+	id2, err := store.getObservationID(entity.ID, "obs two")
+	if err != nil {
+		t.Fatalf("get obs2: %v", err)
+	}
+
+	obs := []ObservationWithID{{ID: id1}, {ID: id2}}
+	embeddings := [][]float64{{0.1, 0.2}, {0.3, 0.4}}
+
+	if err := store.BatchStoreEmbeddings(obs, embeddings, "test-model"); err != nil {
+		t.Fatalf("BatchStoreEmbeddings: %v", err)
+	}
+
+	_, withEmbeddings, err := store.EmbeddingStats()
+	if err != nil {
+		t.Fatalf("EmbeddingStats: %v", err)
+	}
+	if withEmbeddings != 2 {
+		t.Errorf("withEmbeddings = %d, want 2", withEmbeddings)
+	}
+
+	if err := store.BatchStoreEmbeddings(obs, embeddings[:1], "test-model"); err == nil {
+		t.Error("expected error on count mismatch, got nil")
 	}
 }

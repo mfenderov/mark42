@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"os"
@@ -6,29 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
-
-func TestProjectSlug(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"standard path", "/Users/mark/dev/private/deutsch", "-Users-mark-dev-private-deutsch"},
-		{"root slash", "/", "-"},
-		{"trailing slash", "/Users/mark/dev/", "-Users-mark-dev-"},
-		{"single segment", "/project", "-project"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := projectSlug(tt.input)
-			if got != tt.want {
-				t.Errorf("projectSlug(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestParseCCMemoryFile(t *testing.T) {
 	t.Run("parses valid frontmatter and body", func(t *testing.T) {
@@ -362,16 +342,18 @@ func TestStopHookTriggersCCMemorySync(t *testing.T) {
 		tmpHome := t.TempDir()
 		t.Setenv("HOME", tmpHome)
 
-		// Point dbPath at a temp DB so the test never touches ~/.claude/memory.db
-		origDB := dbPath
-		dbPath = filepath.Join(tmpHome, "test.db")
-		t.Cleanup(func() { dbPath = origDB })
+		// Point StoreFactory at a temp DB so the test never touches ~/.claude/memory.db
+		origFactory := StoreFactory
+		StoreFactory = func() (*storage.Store, error) {
+			return storage.NewStore(filepath.Join(tmpHome, "test.db"))
+		}
+		t.Cleanup(func() { StoreFactory = origFactory })
 
 		dir := t.TempDir()
 		m42 := mark42Dir(dir)
 		os.MkdirAll(m42, 0o755)
 
-		slug := projectSlug(dir)
+		slug := state.ProjectSlug(dir)
 		memDir := filepath.Join(tmpHome, ".claude", "projects", slug, "memory")
 		os.MkdirAll(memDir, 0o755)
 
@@ -380,8 +362,8 @@ func TestStopHookTriggersCCMemorySync(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		checksumPath := filepath.Join(m42, "memory-checksums.json")
 		if _, err := os.Stat(checksumPath); os.IsNotExist(err) {

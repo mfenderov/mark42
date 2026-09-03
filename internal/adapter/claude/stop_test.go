@@ -1,4 +1,4 @@
-package cli
+package claude
 
 import (
 	"os"
@@ -157,8 +157,8 @@ func TestStopHookWritesDigest(t *testing.T) {
 		line := `{"type":"user","message":{"role":"user","content":"Hello world"}}` + "\n"
 		os.WriteFile(transcriptPath, []byte(line), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf), withStopInput(&stopInput{
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf), WithStopInput(&StopInput{
 			TranscriptPath: transcriptPath,
 		}))
 
@@ -176,8 +176,8 @@ func TestStopHookWritesDigest(t *testing.T) {
 		dir := setupProjectDir(t)
 		m42 := mark42Dir(dir)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		digestPath := filepath.Join(m42, "session-digest.md")
 		_, err := os.Stat(digestPath)
@@ -240,8 +240,8 @@ func TestHookStop(t *testing.T) {
 		os.WriteFile(filepath.Join(m42, "dirty-files"),
 			[]byte("src/main.go\nsrc/lib.go\n"), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("stop hook should produce no output (silent approve), got: %s", buf.String())
@@ -260,8 +260,8 @@ func TestHookStop(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("stop hook should produce no output (silent approve), got: %s", buf.String())
@@ -274,8 +274,8 @@ func TestHookStop(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte(""), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("truly empty session should produce no output, got: %s", buf.String())
@@ -287,8 +287,8 @@ func TestHookStop(t *testing.T) {
 		m42 := mark42Dir(dir)
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("a.go\n"), 0o644)
 
-		var buf1 captureBuffer
-		runStopHook(dir, withOutput(&buf1))
+		var buf1 CaptureBuffer
+		Stop(dir, WithOutput(&buf1))
 
 		// First call should have cleared dirty-files (proves it ran)
 		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
@@ -299,8 +299,8 @@ func TestHookStop(t *testing.T) {
 		// Write new dirty files for second call
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("b.go\n"), 0o644)
 
-		var buf2 captureBuffer
-		runStopHook(dir, withOutput(&buf2))
+		var buf2 CaptureBuffer
+		Stop(dir, WithOutput(&buf2))
 
 		// Second call should NOT have cleared dirty-files (flag guard blocked it)
 		dirty2, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
@@ -315,8 +315,8 @@ func TestHookStop(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("a.go\n"), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		dirty, _ := os.ReadFile(filepath.Join(m42, "dirty-files"))
 		if strings.TrimSpace(string(dirty)) != "" {
@@ -325,8 +325,8 @@ func TestHookStop(t *testing.T) {
 	})
 
 	t.Run("no output without project dir", func(t *testing.T) {
-		var buf captureBuffer
-		runStopHook("", withOutput(&buf))
+		var buf CaptureBuffer
+		Stop("", WithOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("expected empty output, got: %s", buf.String())
@@ -339,8 +339,8 @@ func TestHookStop(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("a.go\n"), 0o644)
 
-		var buf captureBuffer
-		runStopHook(dir, withOutput(&buf))
+		var buf CaptureBuffer
+		Stop(dir, WithOutput(&buf))
 
 		if buf.String() != "" {
 			t.Errorf("stop hook should produce no output, got: %s", buf.String())
@@ -357,7 +357,7 @@ func TestHookStop(t *testing.T) {
 		os.WriteFile(filepath.Join(m42, "current-session"), []byte(session.Name), 0o644)
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("main.go\n"), 0o644)
 
-		runStopHook(dir, withStore(store))
+		Stop(dir, WithStore(store))
 
 		got, err := store.GetSession(session.Name)
 		if err != nil {
@@ -383,7 +383,7 @@ func TestHookStop(t *testing.T) {
 
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("main.go\n"), 0o644)
 
-		runStopHook(dir, withStore(store))
+		Stop(dir, WithStore(store))
 
 		sessions, _ := store.ListSessions(filepath.Base(dir), "completed", 10)
 		if len(sessions) != 1 {
@@ -401,7 +401,7 @@ func TestHookStop(t *testing.T) {
 		os.WriteFile(filepath.Join(m42, "current-session"), []byte("session-stale-name-does-not-exist"), 0o644)
 		os.WriteFile(filepath.Join(m42, "dirty-files"), []byte("main.go\n"), 0o644)
 
-		runStopHook(dir, withStore(store))
+		Stop(dir, WithStore(store))
 
 		sessions, _ := store.ListSessions(filepath.Base(dir), "completed", 10)
 		if len(sessions) != 1 {

@@ -443,6 +443,10 @@ github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/matttproud/golang_protobuf_extensions v1.0.1 h1:4hp9jkHxhMHkqkrB3Ix0jegS5sx/RkqARlsWZ6pIwiU=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
+github.com/mfenderov/gocrap v0.4.1 h1:GnZLQRNNgn/Yp5twDlhPS9lgG/RYMS3Ba0ef3oyCz+I=
+github.com/mfenderov/gocrap v0.4.1/go.mod h1:0QA+q0mE6RUKc6qhtVaK4EEeJjknf89J9pHhbzmgc3Y=
+github.com/mfenderov/gocrap v0.4.2 h1:pC4zmCjctjbOq6JeD+9hwq6EoUvNnOa2MZQfLVnZAXg=
+github.com/mfenderov/gocrap v0.4.2/go.mod h1:0QA+q0mE6RUKc6qhtVaK4EEeJjknf89J9pHhbzmgc3Y=
 github.com/mfridman/interpolate v0.0.2 h1:pnuTK7MQIxxFz1Gr+rjSIx9u7qVjf5VOoM/u6BbAxPY=
 github.com/mfridman/interpolate v0.0.2/go.mod h1:p+7uk6oE07mpE/Ik1b8EckO0O4ZXiGAfshKBWLUM9Xg=
 github.com/mgechev/revive v1.13.0 h1:yFbEVliCVKRXY8UgwEO7EOYNopvjb1BFbmYqm9hZjBM=

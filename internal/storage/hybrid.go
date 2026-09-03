@@ -70,6 +70,7 @@ func (s *Store) ftsSearch(query string, limit int) ([]RankedItem, error) {
 			JOIN observations o ON o.id = f.rowid
 			WHERE observations_fts MATCH ?
 			AND o.valid_until IS NULL
+			AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
 		),
 		entity_matches AS (
 			SELECT e.id as entity_id, e.name as content, bm25(entities_fts) as score
