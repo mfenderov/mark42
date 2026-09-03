@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mfenderov/mark42/internal/storage"
 	"github.com/spf13/cobra"
+
+	"github.com/mfenderov/mark42/internal/storage"
 )
 
 // captureOutput captures stdout/stderr during command execution.

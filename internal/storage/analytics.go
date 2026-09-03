@@ -424,13 +424,13 @@ func (s *Store) relationDensity() (float64, error) {
 	return float64(relations) / float64(entities), nil
 }
 
-// clamp restricts v to the closed interval [min, max].
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
+// clamp restricts v to the closed interval [lo, hi].
+func clamp(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
 	}
-	if v > max {
-		return max
+	if v > hi {
+		return hi
 	}
 	return v
 }
