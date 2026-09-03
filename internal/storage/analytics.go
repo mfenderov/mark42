@@ -285,7 +285,11 @@ func (s *Store) RecommendTuning() (*TuningRecommendation, error) {
 	suggested := current
 	var rationale []string
 
-	if median, ok := s.medianIntervalDays(); ok {
+	median, ok, err := s.medianIntervalDays()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute median interval: %w", err)
+	}
+	if ok {
 		suggested.DecayConstant = clamp(median*3, 7, 90)
 		rationale = append(rationale, fmt.Sprintf(
 			"decay constant set to %.0f days (~3x median re-access interval of %.1f days)",
@@ -295,7 +299,17 @@ func (s *Store) RecommendTuning() (*TuningRecommendation, error) {
 		rationale = append(rationale, "insufficient access data: keeping current decay constant")
 	}
 
-	suggested, rationale = applyWeightRules(current, suggested, rationale, s.accessRate(), s.relationDensity())
+	accessRate, err := s.accessRate()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute access rate: %w", err)
+	}
+
+	relationDensity, err := s.relationDensity()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute relation density: %w", err)
+	}
+
+	suggested, rationale = applyWeightRules(current, suggested, rationale, accessRate, relationDensity)
 	suggested.RecencyWeight = clamp(suggested.RecencyWeight, 0.05, 0.8)
 	suggested.FrequencyWeight = clamp(suggested.FrequencyWeight, 0.05, 0.8)
 	suggested.CentralityWeight = clamp(suggested.CentralityWeight, 0.05, 0.8)
@@ -338,8 +352,9 @@ func configDrift(current, suggested ImportanceConfig) bool {
 
 // medianIntervalDays returns the median re-access interval, in days, over
 // valid observations (on latest entities) that have been accessed at
-// least once. Returns ok=false when no such observation exists.
-func (s *Store) medianIntervalDays() (float64, bool) {
+// least once. Returns ok=false when no such observation exists (not an
+// error). Returns error only on database/schema failures.
+func (s *Store) medianIntervalDays() (float64, bool, error) {
 	var intervals []float64
 	err := s.db.Select(&intervals, `
 		SELECT (julianday(o.last_accessed) - julianday(o.created_at)) / o.access_count AS interval_days
@@ -347,30 +362,36 @@ func (s *Store) medianIntervalDays() (float64, bool) {
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.valid_until IS NULL AND o.access_count > 0
 	`)
-	if err != nil || len(intervals) == 0 {
-		return 0, false
+	if err != nil {
+		return 0, false, err
+	}
+	if len(intervals) == 0 {
+		return 0, false, nil
 	}
 
 	sort.Float64s(intervals)
 	n := len(intervals)
 	if n%2 == 1 {
-		return intervals[n/2], true
+		return intervals[n/2], true, nil
 	}
-	return (intervals[n/2-1] + intervals[n/2]) / 2, true
+	return (intervals[n/2-1] + intervals[n/2]) / 2, true, nil
 }
 
 // accessRate returns the fraction of valid observations (on latest
 // entities) that have been accessed at least once. Returns 1.0 when there
 // are no observations, so the sparse-frequency rule does not fire on an
-// empty database.
-func (s *Store) accessRate() float64 {
+// empty database. Returns error only on database/schema failures.
+func (s *Store) accessRate() (float64, error) {
 	var total int
 	if err := s.db.Get(&total, `
 		SELECT COUNT(*) FROM observations o
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.valid_until IS NULL
-	`); err != nil || total == 0 {
-		return 1.0
+	`); err != nil {
+		return 0, err
+	}
+	if total == 0 {
+		return 1.0, nil
 	}
 
 	var accessed int
@@ -379,25 +400,28 @@ func (s *Store) accessRate() float64 {
 		JOIN entities e ON e.id = o.entity_id
 		WHERE e.is_latest = 1 AND o.valid_until IS NULL AND o.access_count > 0
 	`); err != nil {
-		return 1.0
+		return 0, err
 	}
-	return float64(accessed) / float64(total)
+	return float64(accessed) / float64(total), nil
 }
 
 // relationDensity returns the ratio of relations to latest entities.
 // Returns 1.0 when there are no entities, so the sparse-graph rule does
-// not fire on an empty database.
-func (s *Store) relationDensity() float64 {
+// not fire on an empty database. Returns error only on database/schema failures.
+func (s *Store) relationDensity() (float64, error) {
 	var entities int
-	if err := s.db.Get(&entities, `SELECT COUNT(*) FROM entities WHERE is_latest = 1`); err != nil || entities == 0 {
-		return 1.0
+	if err := s.db.Get(&entities, `SELECT COUNT(*) FROM entities WHERE is_latest = 1`); err != nil {
+		return 0, err
+	}
+	if entities == 0 {
+		return 1.0, nil
 	}
 
 	var relations int
 	if err := s.db.Get(&relations, `SELECT COUNT(*) FROM relations`); err != nil {
-		return 1.0
+		return 0, err
 	}
-	return float64(relations) / float64(entities)
+	return float64(relations) / float64(entities), nil
 }
 
 // clamp restricts v to the closed interval [min, max].

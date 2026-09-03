@@ -125,3 +125,17 @@ func TestRecommendTuning_InsufficientData(t *testing.T) {
 		t.Error("expected drift=false on empty DB")
 	}
 }
+
+func TestRecommendTuning_PropagatesDBError(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	// Close the store to cause subsequent queries to fail
+	store.Close()
+
+	rec, err := store.RecommendTuning()
+	if err == nil {
+		t.Fatal("expected error when DB is closed, got nil")
+	}
+	if rec != nil {
+		t.Errorf("expected nil recommendation when DB error occurs, got %+v", rec)
+	}
+}
