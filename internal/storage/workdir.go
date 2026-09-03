@@ -116,13 +116,7 @@ func (s *Store) CreateEntityWithContainer(name, entityType string, observations 
 	}
 	defer tx.Rollback()
 
-	// Check if entity already exists
-	var existingID int64
-	err = tx.QueryRow("SELECT id FROM entities WHERE name = ?", name).Scan(&existingID)
-	if err == nil {
-		return nil, ErrEntityExists
-	}
-	if err != sql.ErrNoRows {
+	if err := ensureEntityAbsent(tx, name); err != nil {
 		return nil, err
 	}
 

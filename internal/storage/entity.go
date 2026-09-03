@@ -25,6 +25,20 @@ type Entity struct {
 // ErrEntityExists is returned when attempting to create an entity that already exists.
 var ErrEntityExists = errors.New("entity already exists")
 
+// ensureEntityAbsent returns ErrEntityExists when an entity with this name
+// already exists (no UNIQUE constraint, must check manually).
+func ensureEntityAbsent(tx *sql.Tx, name string) error {
+	var existingID int64
+	err := tx.QueryRow("SELECT id FROM entities WHERE name = ?", name).Scan(&existingID)
+	if err == nil {
+		return ErrEntityExists
+	}
+	if err != sql.ErrNoRows {
+		return err
+	}
+	return nil
+}
+
 // resolveEntityVersion determines the supersedes ID and new version for an
 // entity write: (0, 1) for new entities; for existing ones it unmarks the
 // current latest and returns (currentID, currentVersion+1).
@@ -61,13 +75,7 @@ func (s *Store) CreateEntity(name, entityType string, observations []string) (*E
 	}
 	defer tx.Rollback()
 
-	// Check if entity already exists (no UNIQUE constraint, must check manually)
-	var existingID int64
-	err = tx.QueryRow("SELECT id FROM entities WHERE name = ?", name).Scan(&existingID)
-	if err == nil {
-		return nil, ErrEntityExists
-	}
-	if err != sql.ErrNoRows {
+	if err := ensureEntityAbsent(tx, name); err != nil {
 		return nil, err
 	}
 
