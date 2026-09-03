@@ -60,6 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write # npm trusted publishing (provenance)
     concurrency:
       group: release
       cancel-in-progress: false
@@ -68,6 +69,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Record latest tag
+        id: before
+        run: echo "tag=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
 
       - name: Auto bump version and tag
         uses: cocogitto/cocogitto-action@v3
@@ -80,7 +85,45 @@ jobs:
           git-user: 'github-actions[bot]'
           git-user-email: 'github-actions[bot]@users.noreply.github.com'
 
+      # NOTE: pushes made with GITHUB_TOKEN do not trigger new workflow
+      # runs, so the tag-triggered release.yml never fires for bot pushes.
+      # GoReleaser + npm therefore run inline here; release.yml remains
+      # as the manual-tag path (disjoint: manual tags skip this job).
       - name: Push version commit and tag
+        id: push
         run: |
-          git push origin main
-          git push origin "$(git describe --tags --abbrev=0)"
+          BEFORE="${{ steps.before.outputs.tag }}"
+          AFTER="$(git describe --tags --abbrev=0)"
+          if [ "$AFTER" = "$BEFORE" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "No new version — nothing to release."
+          else
+            git push origin main
+            git push origin "$AFTER"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v6
+        if: steps.push.outputs.released == 'true'
+        with:
+          go-version-file: go.mod
+
+      - name: Run GoReleaser
+        if: steps.push.outputs.released == 'true'
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        if: steps.push.outputs.released == 'true'
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        if: steps.push.outputs.released == 'true'
+        run: npm publish --access public --provenance
+        working-directory: npm
