@@ -127,6 +127,76 @@ func printDriftBadge(rec *storage.TuningRecommendation) {
 	}
 }
 
+// --- Analytics tune command ---
+
+var analyticsTuneCmd = &cobra.Command{
+	Use:   "tune",
+	Short: "Show usage-driven tuning recommendations for importance config",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStore()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		if err := store.Migrate(); err != nil {
+			return err
+		}
+
+		rec, err := store.RecommendTuning()
+		if err != nil {
+			return err
+		}
+
+		printTuningRecommendation(rec)
+
+		apply, _ := cmd.Flags().GetBool("apply")
+		if apply {
+			if err := store.SetImportanceConfig(rec.Suggested); err != nil {
+				return err
+			}
+			output("Applied. New config saved.")
+			return nil
+		}
+
+		output("No changes applied. Re-run with --apply to persist.")
+		return nil
+	},
+}
+
+// printTuningRecommendation prints the current vs. suggested importance
+// config for each parameter that changed, paired with its rationale.
+func printTuningRecommendation(rec *storage.TuningRecommendation) {
+	output(titleStyle.Render("Tuning Recommendation"))
+	if rec.Current.DecayConstant != rec.Suggested.DecayConstant {
+		output(fmt.Sprintf("  DecayConstant    %.0f → %.0f   (%s)",
+			rec.Current.DecayConstant, rec.Suggested.DecayConstant, findRationale(rec.Rationale, "decay constant")))
+	}
+	if rec.Current.FrequencyWeight != rec.Suggested.FrequencyWeight {
+		output(fmt.Sprintf("  FrequencyWeight  %.1f → %.1f (%s)",
+			rec.Current.FrequencyWeight, rec.Suggested.FrequencyWeight, findRationale(rec.Rationale, "frequency")))
+	}
+	if rec.Current.CentralityWeight != rec.Suggested.CentralityWeight {
+		output(fmt.Sprintf("  CentralityWeight %.1f → %.1f (%s)",
+			rec.Current.CentralityWeight, rec.Suggested.CentralityWeight, findRationale(rec.Rationale, "centrality")))
+	}
+	if rec.Current.RecencyWeight != rec.Suggested.RecencyWeight {
+		output(fmt.Sprintf("  RecencyWeight    %.1f → %.1f",
+			rec.Current.RecencyWeight, rec.Suggested.RecencyWeight))
+	}
+}
+
+// findRationale returns the first entry in rationale that mentions
+// keyword, or "" when none matches.
+func findRationale(rationale []string, keyword string) string {
+	for _, r := range rationale {
+		if strings.Contains(r, keyword) {
+			return r
+		}
+	}
+	return ""
+}
+
 // truncate shortens s to at most n runes, appending "..." when truncated.
 func truncate(s string, n int) string {
 	if len(s) <= n {
@@ -138,6 +208,8 @@ func truncate(s string, n int) string {
 func init() {
 	analyticsCmd.Flags().Bool("json", false, "output as JSON")
 	analyticsCmd.Flags().Int("top", 10, "number of top-accessed memories to show")
+	analyticsTuneCmd.Flags().Bool("apply", false, "persist the suggested config")
 
+	analyticsCmd.AddCommand(analyticsTuneCmd)
 	rootCmd.AddCommand(analyticsCmd)
 }
