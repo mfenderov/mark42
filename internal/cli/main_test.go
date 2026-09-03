@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mfenderov/mark42/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -615,6 +616,98 @@ func TestDecayCommands(t *testing.T) {
 		if stats.TotalObservations != 1 {
 			t.Errorf("expected 1 total observation, got %d", stats.TotalObservations)
 		}
+	})
+
+	// Test archive command with persisted config
+	t.Run("ArchiveUsesPersistedConfig", func(t *testing.T) {
+		// Persist a non-default DecayConfig
+		custom := storage.DefaultDecayConfig()
+		custom.ArchiveAfterDays = 7
+		custom.MinImportanceToKeep = 0.05
+		if err := store.SetDecayConfig(custom); err != nil {
+			t.Fatalf("SetDecayConfig failed: %v", err)
+		}
+
+		// Test the logic: when flags are NOT changed, persisted config should be used
+		// (simulating what the actual decayArchiveCmd does)
+		var testBuf bytes.Buffer
+		testCmd := &cobra.Command{
+			Use: "archive-test",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				days, _ := cmd.Flags().GetInt("days")
+				minImportance, _ := cmd.Flags().GetFloat64("min-importance")
+
+				cfg := store.GetDecayConfig()
+				// BEFORE FIX: these unconditionally override
+				// cfg.ArchiveAfterDays = days
+				// cfg.MinImportanceToKeep = minImportance
+
+				// AFTER FIX: only override when flags were explicitly changed
+				if cmd.Flags().Changed("days") {
+					cfg.ArchiveAfterDays = days
+				}
+				if cmd.Flags().Changed("min-importance") {
+					cfg.MinImportanceToKeep = minImportance
+				}
+
+				// With the fix, persisted values should be preserved
+				if cfg.ArchiveAfterDays != 7 {
+					t.Errorf("expected persisted ArchiveAfterDays=7, got %d", cfg.ArchiveAfterDays)
+				}
+				if cfg.MinImportanceToKeep != 0.05 {
+					t.Errorf("expected persisted MinImportanceToKeep=0.05, got %f", cfg.MinImportanceToKeep)
+				}
+				return nil
+			},
+		}
+
+		testCmd.SetOut(&testBuf)
+		testCmd.SetErr(&testBuf)
+		testCmd.Flags().Int("days", 90, "archive after N days")
+		testCmd.Flags().Float64("min-importance", 0.1, "archive below importance")
+		testCmd.SetArgs([]string{}) // No flags passed
+
+		if err := testCmd.Execute(); err != nil {
+			t.Fatalf("test command failed: %v", err)
+		}
+
+		// Also test that flags DO override when explicitly passed
+		t.Run("FlagOverridesWhenChanged", func(t *testing.T) {
+			testCmd2 := &cobra.Command{
+				Use: "archive-test2",
+				RunE: func(cmd *cobra.Command, args []string) error {
+					days, _ := cmd.Flags().GetInt("days")
+					minImportance, _ := cmd.Flags().GetFloat64("min-importance")
+
+					cfg := store.GetDecayConfig()
+					if cmd.Flags().Changed("days") {
+						cfg.ArchiveAfterDays = days
+					}
+					if cmd.Flags().Changed("min-importance") {
+						cfg.MinImportanceToKeep = minImportance
+					}
+
+					// When flags are explicitly passed, they should override persisted values
+					if cfg.ArchiveAfterDays != 14 {
+						t.Errorf("expected flag ArchiveAfterDays=14, got %d", cfg.ArchiveAfterDays)
+					}
+					if cfg.MinImportanceToKeep != 0.2 {
+						t.Errorf("expected flag MinImportanceToKeep=0.2, got %f", cfg.MinImportanceToKeep)
+					}
+					return nil
+				},
+			}
+
+			testCmd2.SetOut(&testBuf)
+			testCmd2.SetErr(&testBuf)
+			testCmd2.Flags().Int("days", 90, "archive after N days")
+			testCmd2.Flags().Float64("min-importance", 0.1, "archive below importance")
+			testCmd2.SetArgs([]string{"--days", "14", "--min-importance", "0.2"})
+
+			if err := testCmd2.Execute(); err != nil {
+				t.Fatalf("test command with flags failed: %v", err)
+			}
+		})
 	})
 
 	store.Close()

@@ -98,8 +98,12 @@ var decayArchiveCmd = &cobra.Command{
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 		cfg := store.GetDecayConfig()
-		cfg.ArchiveAfterDays = days
-		cfg.MinImportanceToKeep = minImportance
+		if cmd.Flags().Changed("days") {
+			cfg.ArchiveAfterDays = days
+		}
+		if cmd.Flags().Changed("min-importance") {
+			cfg.MinImportanceToKeep = minImportance
+		}
 
 		if dryRun {
 			// Show what would be archived
