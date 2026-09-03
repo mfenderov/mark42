@@ -618,9 +618,23 @@ func TestDecayCommands(t *testing.T) {
 		}
 	})
 
-	// Test archive command with persisted config
+	// Test archive command with persisted config (uses REAL decayArchiveCmd)
 	t.Run("ArchiveUsesPersistedConfig", func(t *testing.T) {
-		// Persist a non-default DecayConfig
+		// Create test entity with observation backdated 30 days with low importance
+		if _, err := store.CreateEntity("OldMemory", "dynamic", []string{"observation to archive"}); err != nil {
+			t.Fatalf("CreateEntity failed: %v", err)
+		}
+		// Backdate the observation to 30 days ago
+		if _, err := store.DB().Exec(`UPDATE observations SET created_at = datetime('now', '-30 days'), last_accessed = datetime('now', '-30 days') WHERE content = 'observation to archive'`); err != nil {
+			t.Fatalf("backdate observation failed: %v", err)
+		}
+		// Set low importance that will trigger archival with persisted config
+		if _, err := store.DB().Exec(`UPDATE observations SET importance = 0.02 WHERE content = 'observation to archive'`); err != nil {
+			t.Fatalf("set importance failed: %v", err)
+		}
+
+		// Persist a non-default DecayConfig: archive after 7 days with importance < 0.05
+		// Our 30-day-old observation with importance=0.02 will be archived
 		custom := storage.DefaultDecayConfig()
 		custom.ArchiveAfterDays = 7
 		custom.MinImportanceToKeep = 0.05
@@ -628,86 +642,67 @@ func TestDecayCommands(t *testing.T) {
 			t.Fatalf("SetDecayConfig failed: %v", err)
 		}
 
-		// Test the logic: when flags are NOT changed, persisted config should be used
-		// (simulating what the actual decayArchiveCmd does)
-		var testBuf bytes.Buffer
-		testCmd := &cobra.Command{
-			Use: "archive-test",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				days, _ := cmd.Flags().GetInt("days")
-				minImportance, _ := cmd.Flags().GetFloat64("min-importance")
+		// Test WITHOUT flags: should use persisted config and archive the observation
+		var outBuf bytes.Buffer
+		decayArchiveCmd.SetOut(&outBuf)
+		decayArchiveCmd.SetErr(&outBuf)
+		decayArchiveCmd.SetArgs([]string{}) // No flags
 
-				cfg := store.GetDecayConfig()
-				// BEFORE FIX: these unconditionally override
-				// cfg.ArchiveAfterDays = days
-				// cfg.MinImportanceToKeep = minImportance
-
-				// AFTER FIX: only override when flags were explicitly changed
-				if cmd.Flags().Changed("days") {
-					cfg.ArchiveAfterDays = days
-				}
-				if cmd.Flags().Changed("min-importance") {
-					cfg.MinImportanceToKeep = minImportance
-				}
-
-				// With the fix, persisted values should be preserved
-				if cfg.ArchiveAfterDays != 7 {
-					t.Errorf("expected persisted ArchiveAfterDays=7, got %d", cfg.ArchiveAfterDays)
-				}
-				if cfg.MinImportanceToKeep != 0.05 {
-					t.Errorf("expected persisted MinImportanceToKeep=0.05, got %f", cfg.MinImportanceToKeep)
-				}
-				return nil
-			},
+		if err := decayArchiveCmd.RunE(decayArchiveCmd, []string{}); err != nil {
+			t.Fatalf("decayArchiveCmd without flags failed: %v", err)
 		}
 
-		testCmd.SetOut(&testBuf)
-		testCmd.SetErr(&testBuf)
-		testCmd.Flags().Int("days", 90, "archive after N days")
-		testCmd.Flags().Float64("min-importance", 0.1, "archive below importance")
-		testCmd.SetArgs([]string{}) // No flags passed
-
-		if err := testCmd.Execute(); err != nil {
-			t.Fatalf("test command failed: %v", err)
+		// Verify observation was archived (moved to archived_observations table)
+		var archivedCount int
+		if err := store.DB().Get(&archivedCount, "SELECT COUNT(*) FROM archived_observations WHERE content = 'observation to archive'"); err != nil {
+			t.Fatalf("query archived_observations failed: %v", err)
+		}
+		if archivedCount != 1 {
+			t.Errorf("expected 1 archived observation with persisted config, got %d", archivedCount)
 		}
 
-		// Also test that flags DO override when explicitly passed
-		t.Run("FlagOverridesWhenChanged", func(t *testing.T) {
-			testCmd2 := &cobra.Command{
-				Use: "archive-test2",
-				RunE: func(cmd *cobra.Command, args []string) error {
-					days, _ := cmd.Flags().GetInt("days")
-					minImportance, _ := cmd.Flags().GetFloat64("min-importance")
+		// Clean up for next test
+		if _, err := store.DB().Exec(`DELETE FROM archived_observations WHERE content = 'observation to archive'`); err != nil {
+			t.Fatalf("cleanup archived failed: %v", err)
+		}
 
-					cfg := store.GetDecayConfig()
-					if cmd.Flags().Changed("days") {
-						cfg.ArchiveAfterDays = days
-					}
-					if cmd.Flags().Changed("min-importance") {
-						cfg.MinImportanceToKeep = minImportance
-					}
+		// Test WITH flags: flags should override persisted config
+		// Create another old observation
+		if _, err := store.CreateEntity("OldMemory2", "dynamic", []string{"observation2"}); err != nil {
+			t.Fatalf("CreateEntity for second test failed: %v", err)
+		}
+		if _, err := store.DB().Exec(`UPDATE observations SET created_at = datetime('now', '-5 days'), last_accessed = datetime('now', '-5 days') WHERE content = 'observation2'`); err != nil {
+			t.Fatalf("backdate observation2 failed: %v", err)
+		}
+		if _, err := store.DB().Exec(`UPDATE observations SET importance = 0.02 WHERE content = 'observation2'`); err != nil {
+			t.Fatalf("set importance for observation2 failed: %v", err)
+		}
 
-					// When flags are explicitly passed, they should override persisted values
-					if cfg.ArchiveAfterDays != 14 {
-						t.Errorf("expected flag ArchiveAfterDays=14, got %d", cfg.ArchiveAfterDays)
-					}
-					if cfg.MinImportanceToKeep != 0.2 {
-						t.Errorf("expected flag MinImportanceToKeep=0.2, got %f", cfg.MinImportanceToKeep)
-					}
-					return nil
-				},
-			}
+		// Test flag override: --days 14 should NOT archive (5 days old < 14 days threshold)
+		// We need to carefully reset flag state for the next invocation
+		// Set flags explicitly: this marks them as Changed
+		decayArchiveCmd.Flags().Set("days", "14")
+		decayArchiveCmd.Flags().Set("min-importance", "0.1")
 
-			testCmd2.SetOut(&testBuf)
-			testCmd2.SetErr(&testBuf)
-			testCmd2.Flags().Int("days", 90, "archive after N days")
-			testCmd2.Flags().Float64("min-importance", 0.1, "archive below importance")
-			testCmd2.SetArgs([]string{"--days", "14", "--min-importance", "0.2"})
+		var outBuf2 bytes.Buffer
+		decayArchiveCmd.SetOut(&outBuf2)
+		decayArchiveCmd.SetErr(&outBuf2)
 
-			if err := testCmd2.Execute(); err != nil {
-				t.Fatalf("test command with flags failed: %v", err)
-			}
-		})
+		if err := decayArchiveCmd.RunE(decayArchiveCmd, []string{}); err != nil {
+			t.Fatalf("decayArchiveCmd with flags failed: %v", err)
+		}
+
+		// Verify observation2 was NOT archived (5 days < 14 days threshold)
+		if err := store.DB().Get(&archivedCount, "SELECT COUNT(*) FROM archived_observations WHERE content = 'observation2'"); err != nil {
+			t.Fatalf("query archived_observations for observation2 failed: %v", err)
+		}
+		if archivedCount != 0 {
+			t.Errorf("expected 0 archived observations with flag override (--days 14), got %d", archivedCount)
+		}
+
+		// Reset flags to defaults for next test iteration
+		decayArchiveCmd.Flags().Set("days", "90")
+		decayArchiveCmd.Flags().Set("min-importance", "0.1")
 	})
 
 	store.Close()
