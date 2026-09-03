@@ -137,69 +137,76 @@ func syncCCMemory(projectName, memoryDir string, store *storage.Store, checksumP
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || !isMemoryFile(entry.Name()) {
 			continue
 		}
-		name := entry.Name()
-
-		if strings.EqualFold(name, "MEMORY.md") {
-			continue
+		if syncMemoryFile(store, projectName, projectEntityName, memoryDir, entry.Name(), checksums) {
+			changed = true
 		}
-
-		if !strings.HasSuffix(name, ".md") {
-			continue
-		}
-
-		filePath := filepath.Join(memoryDir, name)
-
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			logger.Warn("failed to read cc memory file", "file", name, "err", err)
-			continue
-		}
-
-		sum := checksumBytes(data)
-		if checksums[name] == sum {
-			continue
-		}
-
-		mem, err := parseCCMemoryBytes(data, name)
-		if err != nil {
-			logger.Warn("failed to parse cc memory file", "file", name, "err", err)
-			continue
-		}
-
-		entityName := "cc-memory/" + projectName + "/" + mem.Name
-
-		_, err = store.CreateOrUpdateEntity(entityName, mem.Type, nil)
-		if err != nil {
-			logger.Warn("failed to upsert entity", "entity", entityName, "err", err)
-			continue
-		}
-
-		if mem.Description != "" {
-			if err := store.AddObservationWithType(entityName, mem.Description, storage.FactTypeStatic); err != nil {
-				logger.Warn("failed to add description observation", "entity", entityName, "err", err)
-				continue
-			}
-		}
-
-		if mem.Body != "" {
-			if err := store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic); err != nil {
-				logger.Warn("failed to add body observation", "entity", entityName, "err", err)
-				continue
-			}
-		}
-
-		if err := store.CreateRelation(entityName, projectEntityName, "belongs_to"); err != nil {
-			logger.Warn("failed to create belongs_to relation", "from", entityName, "to", projectEntityName, "err", err)
-		}
-
-		checksums[name] = sum
-		changed = true
 	}
 
 	if changed {
 		saveChecksums(checksumPath, checksums)
 	}
+}
+
+// isMemoryFile reports whether name is a syncable memory file.
+func isMemoryFile(name string) bool {
+	return !strings.EqualFold(name, "MEMORY.md") && strings.HasSuffix(name, ".md")
+}
+
+// syncMemoryFile syncs one memory file; reports whether its checksum changed.
+func syncMemoryFile(store *storage.Store, projectName, projectEntityName, memoryDir, name string, checksums map[string]string) bool {
+	data, err := os.ReadFile(filepath.Join(memoryDir, name))
+	if err != nil {
+		logger.Warn("failed to read cc memory file", "file", name, "err", err)
+		return false
+	}
+
+	sum := checksumBytes(data)
+	if checksums[name] == sum {
+		return false
+	}
+
+	mem, err := parseCCMemoryBytes(data, name)
+	if err != nil {
+		logger.Warn("failed to parse cc memory file", "file", name, "err", err)
+		return false
+	}
+
+	entityName := "cc-memory/" + projectName + "/" + mem.Name
+	if err := upsertMemoryEntity(store, entityName, projectEntityName, mem); err != nil {
+		return false
+	}
+
+	checksums[name] = sum
+	return true
+}
+
+// upsertMemoryEntity creates/updates the memory entity with its observations
+// and project relation. Relation failures are logged but non-fatal.
+func upsertMemoryEntity(store *storage.Store, entityName, projectEntityName string, mem *ccMemory) error {
+	if _, err := store.CreateOrUpdateEntity(entityName, mem.Type, nil); err != nil {
+		logger.Warn("failed to upsert entity", "entity", entityName, "err", err)
+		return err
+	}
+
+	if mem.Description != "" {
+		if err := store.AddObservationWithType(entityName, mem.Description, storage.FactTypeStatic); err != nil {
+			logger.Warn("failed to add description observation", "entity", entityName, "err", err)
+			return err
+		}
+	}
+
+	if mem.Body != "" {
+		if err := store.AddObservationWithType(entityName, mem.Body, storage.FactTypeDynamic); err != nil {
+			logger.Warn("failed to add body observation", "entity", entityName, "err", err)
+			return err
+		}
+	}
+
+	if err := store.CreateRelation(entityName, projectEntityName, "belongs_to"); err != nil {
+		logger.Warn("failed to create belongs_to relation", "from", entityName, "to", projectEntityName, "err", err)
+	}
+	return nil
 }
