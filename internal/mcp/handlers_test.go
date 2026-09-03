@@ -2000,3 +2000,28 @@ func TestHandler_SearchNodes_HybridFormat(t *testing.T) {
 		t.Error("expected long observation to be truncated with …")
 	}
 }
+
+// Issue #32: identical embeddings must not expire the new batch itself.
+func TestHandler_CreateEntities_SupersedeKeepsNewContent(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	handler.WithEmbedder(&fakeEmbedder{}) // constant vector: worst-case identical embeddings
+
+	_, err := handler.CallTool("create_entities", json.RawMessage(`{"entities":[{"name":"GoPatterns","entityType":"pattern","observations":["use table-driven tests","use table driven tests for cases"]}]}`))
+	if err != nil {
+		t.Fatalf("create_entities: %v", err)
+	}
+
+	history, err := store.GetObservationHistory("GoPatterns")
+	if err != nil {
+		t.Fatalf("GetObservationHistory: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 observations, got %d", len(history))
+	}
+	for _, h := range history {
+		if h.ValidUntil.Valid {
+			t.Errorf("new observation was expired by its own batch: %.40q", h.Content)
+		}
+	}
+}

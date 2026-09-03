@@ -144,13 +144,11 @@ func (h *Handler) autoDetectSuperseded(entityName string, contents []string, fac
 	if isSessionFactType(factType) {
 		return
 	}
-	for _, content := range contents {
-		expired, err := h.store.DetectAndExpireSuperseded(entityName, content, h.embedder, storage.DefaultSupersessionThreshold)
-		if err != nil {
-			logger.Warn("failed to detect superseded observations", "entity", entityName, "error", err)
-		} else if len(expired) > 0 {
-			logger.Info("auto-expired superseded observations", "entity", entityName, "count", len(expired))
-		}
+	expired, err := h.store.DetectAndExpireSupersededBatch(entityName, contents, h.embedder, storage.DefaultSupersessionThreshold)
+	if err != nil {
+		logger.Warn("failed to detect superseded observations", "entity", entityName, "error", err)
+	} else if len(expired) > 0 {
+		logger.Info("auto-expired superseded observations", "entity", entityName, "count", len(expired))
 	}
 }
 
