@@ -73,6 +73,10 @@ jobs:
         uses: cocogitto/cocogitto-action@v3
         with:
           release: true
+          # No `check`: cog check rejects the repo's historical dependabot
+          # merge commits. `bump --auto` itself skips non-conventional
+          # commits safely (verified), so linting would only add red noise.
+          check: false
           git-user: 'github-actions[bot]'
           git-user-email: 'github-actions[bot]@users.noreply.github.com'
 
