@@ -31,28 +31,13 @@ func Stop(projectDir string, opts ...Option) {
 	}
 
 	projectName := filepath.Base(projectDir)
-
-	// Read current-session file written by SessionStart
-	sessionNameBytes, _ := os.ReadFile(state.CurrentSessionPath(projectDir))
-	if len(sessionNameBytes) == 0 {
-		sessionNameBytes, _ = os.ReadFile(legacyCurrentSessionPath(projectDir))
-	}
-	sessionName := strings.TrimSpace(string(sessionNameBytes))
+	sessionName := currentSessionName(projectDir)
 
 	// Read dirty files
 	files := readLines(filepath.Join(m42, "dirty-files"))
 
 	// Build and write session digest from transcript
-	var lastMsg string
-	if cfg.stopInput != nil {
-		lastMsg = cfg.stopInput.LastAssistantMessage
-		if cfg.stopInput.TranscriptPath != "" {
-			digest := buildSessionDigest(cfg.stopInput.TranscriptPath)
-			if digest != "" {
-				_ = os.WriteFile(filepath.Join(m42, "session-digest.md"), []byte(digest), 0o644)
-			}
-		}
-	}
+	lastMsg := writeSessionDigest(m42, cfg.stopInput)
 
 	summary := buildAutoSummary(files, lastMsg)
 	completeSession(projectName, sessionName, summary, cfg.store)
@@ -65,17 +50,49 @@ func Stop(projectDir string, opts ...Option) {
 	clearFile(filepath.Join(m42, "dirty-files"))
 
 	// Sync CC auto-memory files into mark42 (silent, non-blocking)
-	if memDir := ccMemoryDir(projectDir); memDir != "" {
-		if syncStore, err := StoreFactory(); err == nil {
-			defer syncStore.Close()
-			syncCCMemory(state.ProjectSlug(projectDir), memDir, syncStore, filepath.Join(m42, "memory-checksums.json"))
-		} else {
-			logger.Warn("failed to open store for cc memory sync", "err", err)
-		}
-	}
+	syncCCMemoryIfAvailable(projectDir, m42)
 
 	// Stop hook: silent exit 0 = approve stop (no JSON output).
 	// Only output JSON with {"decision":"block"} when blocking.
+}
+
+// currentSessionName reads the current-session file written by SessionStart.
+func currentSessionName(projectDir string) string {
+	sessionNameBytes, _ := os.ReadFile(state.CurrentSessionPath(projectDir))
+	if len(sessionNameBytes) == 0 {
+		sessionNameBytes, _ = os.ReadFile(legacyCurrentSessionPath(projectDir))
+	}
+	return strings.TrimSpace(string(sessionNameBytes))
+}
+
+// writeSessionDigest builds and writes the session digest from the transcript.
+// Returns the last assistant message from the stop input ("" when absent).
+func writeSessionDigest(m42 string, input *StopInput) string {
+	if input == nil {
+		return ""
+	}
+	if input.TranscriptPath != "" {
+		if digest := buildSessionDigest(input.TranscriptPath); digest != "" {
+			_ = os.WriteFile(filepath.Join(m42, "session-digest.md"), []byte(digest), 0o644)
+		}
+	}
+	return input.LastAssistantMessage
+}
+
+// syncCCMemoryIfAvailable syncs CC auto-memory files into mark42 when a memory
+// directory exists. Silent and non-blocking on any failure.
+func syncCCMemoryIfAvailable(projectDir, m42 string) {
+	memDir := ccMemoryDir(projectDir)
+	if memDir == "" {
+		return
+	}
+	syncStore, err := StoreFactory()
+	if err != nil {
+		logger.Warn("failed to open store for cc memory sync", "err", err)
+		return
+	}
+	defer syncStore.Close()
+	syncCCMemory(state.ProjectSlug(projectDir), memDir, syncStore, filepath.Join(m42, "memory-checksums.json"))
 }
 
 func completeSession(projectName, sessionName, summary string, storeOverride *storage.Store) {
@@ -125,34 +142,7 @@ func buildSessionDigest(transcriptPath string) string {
 		if sb.Len() >= maxDigestSize {
 			break
 		}
-
-		line := scanner.Bytes()
-		var msg transcriptMessage
-		if json.Unmarshal(line, &msg) != nil {
-			continue
-		}
-
-		switch msg.Type {
-		case "user":
-			text := extractUserText(msg.Message)
-			if text == "" {
-				continue
-			}
-			text = truncate(text, maxMessageLen)
-			sb.WriteString("### User\n")
-			sb.WriteString(text)
-			sb.WriteString("\n\n")
-
-		case "assistant":
-			text := extractAssistantText(msg.Message)
-			if text == "" {
-				continue
-			}
-			text = truncate(text, maxMessageLen)
-			sb.WriteString("### Assistant\n")
-			sb.WriteString(text)
-			sb.WriteString("\n\n")
-		}
+		appendMessageText(&sb, scanner.Bytes())
 	}
 
 	if err := scanner.Err(); err != nil && sb.Len() == 0 {
@@ -164,6 +154,30 @@ func buildSessionDigest(transcriptPath string) string {
 		result = result[:maxDigestSize]
 	}
 	return result
+}
+
+// appendMessageText formats one transcript line into the digest.
+// Unparseable lines and non-text messages are skipped.
+func appendMessageText(sb *strings.Builder, line []byte) {
+	var msg transcriptMessage
+	if json.Unmarshal(line, &msg) != nil {
+		return
+	}
+
+	var label, text string
+	switch msg.Type {
+	case "user":
+		label, text = "User", extractUserText(msg.Message)
+	case "assistant":
+		label, text = "Assistant", extractAssistantText(msg.Message)
+	}
+	if text == "" {
+		return
+	}
+
+	sb.WriteString("### " + label + "\n")
+	sb.WriteString(truncate(text, maxMessageLen))
+	sb.WriteString("\n\n")
 }
 
 type transcriptMessage struct {
@@ -230,29 +244,9 @@ func buildAutoSummary(files []string, lastMsg string) string {
 	}
 
 	var parts []string
-
-	if len(files) > 0 {
-		names := make([]string, 0, len(files))
-		for _, f := range files {
-			base, _, _ := strings.Cut(f, " [")
-			name := filepath.Base(base)
-			names = append(names, name)
-		}
-		seen := map[string]bool{}
-		unique := names[:0]
-		for _, n := range names {
-			if !seen[n] {
-				seen[n] = true
-				unique = append(unique, n)
-			}
-		}
-		if len(unique) <= 5 {
-			parts = append(parts, fmt.Sprintf("Modified %d files: %s", len(unique), strings.Join(unique, ", ")))
-		} else {
-			parts = append(parts, fmt.Sprintf("Modified %d files: %s, +%d more", len(unique), strings.Join(unique[:5], ", "), len(unique)-5))
-		}
+	if filesPart := summarizeFiles(files); filesPart != "" {
+		parts = append(parts, filesPart)
 	}
-
 	if lastMsg != "" {
 		parts = append(parts, "Session context: "+truncate(lastMsg, maxContextLen))
 	}
@@ -261,4 +255,36 @@ func buildAutoSummary(files []string, lastMsg string) string {
 		return "Session with no tracked changes."
 	}
 	return strings.Join(parts, ". ") + "."
+}
+
+// summarizeFiles builds the "Modified N files: ..." summary part ("" when no files).
+func summarizeFiles(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		base, _, _ := strings.Cut(f, " [")
+		names = append(names, filepath.Base(base))
+	}
+	unique := dedupePreserveOrder(names)
+
+	if len(unique) <= 5 {
+		return fmt.Sprintf("Modified %d files: %s", len(unique), strings.Join(unique, ", "))
+	}
+	return fmt.Sprintf("Modified %d files: %s, +%d more", len(unique), strings.Join(unique[:5], ", "), len(unique)-5)
+}
+
+// dedupePreserveOrder removes duplicates while keeping first-seen order.
+func dedupePreserveOrder(names []string) []string {
+	seen := map[string]bool{}
+	unique := names[:0]
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			unique = append(unique, n)
+		}
+	}
+	return unique
 }

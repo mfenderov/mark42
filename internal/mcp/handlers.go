@@ -325,46 +325,32 @@ func (h *Handler) Tools() []Tool {
 	}
 }
 
+// toolDispatch maps tool names to handler methods (method expressions).
+var toolDispatch = map[string]func(*Handler, json.RawMessage) (*ToolCallResult, error){
+	"create_entities":           (*Handler).createEntities,
+	"create_or_update_entities": (*Handler).createOrUpdateEntities,
+	"create_relations":          (*Handler).createRelations,
+	"add_observations":          (*Handler).addObservations,
+	"delete_entities":           (*Handler).deleteEntities,
+	"delete_observations":       (*Handler).deleteObservations,
+	"delete_relations":          (*Handler).deleteRelations,
+	"read_graph":                func(h *Handler, _ json.RawMessage) (*ToolCallResult, error) { return h.readGraph() },
+	"search_nodes":              (*Handler).searchNodes,
+	"open_nodes":                (*Handler).openNodes,
+	"get_context":               (*Handler).getContext,
+	"get_recent_context":        (*Handler).getRecentContext,
+	"summarize_entity":          (*Handler).summarizeEntity,
+	"consolidate_memories":      (*Handler).consolidateMemories,
+	"capture_session":           (*Handler).captureSession,
+	"recall_sessions":           (*Handler).recallSessions,
+	"invalidate_observation":    (*Handler).invalidateObservation,
+	"get_entity_history":        (*Handler).getEntityHistory,
+}
+
 // CallTool executes the named tool with the given arguments.
 func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, error) {
-	switch name {
-	case "create_entities":
-		return h.createEntities(args)
-	case "create_or_update_entities":
-		return h.createOrUpdateEntities(args)
-	case "create_relations":
-		return h.createRelations(args)
-	case "add_observations":
-		return h.addObservations(args)
-	case "delete_entities":
-		return h.deleteEntities(args)
-	case "delete_observations":
-		return h.deleteObservations(args)
-	case "delete_relations":
-		return h.deleteRelations(args)
-	case "read_graph":
-		return h.readGraph()
-	case "search_nodes":
-		return h.searchNodes(args)
-	case "open_nodes":
-		return h.openNodes(args)
-	case "get_context":
-		return h.getContext(args)
-	case "get_recent_context":
-		return h.getRecentContext(args)
-	case "summarize_entity":
-		return h.summarizeEntity(args)
-	case "consolidate_memories":
-		return h.consolidateMemories(args)
-	case "capture_session":
-		return h.captureSession(args)
-	case "recall_sessions":
-		return h.recallSessions(args)
-	case "invalidate_observation":
-		return h.invalidateObservation(args)
-	case "get_entity_history":
-		return h.getEntityHistory(args)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", name)
+	if fn, ok := toolDispatch[name]; ok {
+		return fn(h, args)
 	}
+	return nil, fmt.Errorf("unknown tool: %s", name)
 }

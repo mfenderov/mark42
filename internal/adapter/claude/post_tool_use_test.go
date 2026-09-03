@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mfenderov/mark42/internal/state"
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
@@ -331,4 +332,51 @@ func setupProjectDir(t *testing.T) string {
 	t.Setenv("HOME", dir)
 	os.MkdirAll(mark42Dir(dir), 0o755)
 	return dir
+}
+
+func TestPostToolUse_RecordsSessionEvent(t *testing.T) {
+	dir := setupProjectDir(t)
+
+	// Create a session in the pinned store and mark it current
+	store, err := StoreFactory()
+	if err != nil {
+		t.Fatalf("StoreFactory: %v", err)
+	}
+	session, err := store.CreateSession("testproj")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	store.Close()
+	state.WriteCurrentSession(dir, session.Name)
+
+	// Bash command path
+	PostToolUse(dir, HookInput{ToolName: "Bash", ToolInput: map[string]any{"command": "rm old.go"}})
+	// Edit path with trackable file
+	PostToolUse(dir, HookInput{ToolName: "Edit", ToolInput: map[string]any{"file_path": filepath.Join(dir, "main.go")}})
+
+	store, err = StoreFactory()
+	if err != nil {
+		t.Fatalf("StoreFactory: %v", err)
+	}
+	defer store.Close()
+
+	events, err := store.GetSessionEvents(session.Name)
+	if err != nil {
+		t.Fatalf("GetSessionEvents: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 session events, got %d: %v", len(events), events)
+	}
+	var sawCommand, sawFile bool
+	for _, e := range events {
+		if e.Command == "rm old.go" {
+			sawCommand = true
+		}
+		if strings.HasSuffix(e.FilePath, "main.go") {
+			sawFile = true
+		}
+	}
+	if !sawCommand || !sawFile {
+		t.Errorf("expected command and file events, got %+v", events)
+	}
 }

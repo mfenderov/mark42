@@ -25,6 +25,33 @@ type Entity struct {
 // ErrEntityExists is returned when attempting to create an entity that already exists.
 var ErrEntityExists = errors.New("entity already exists")
 
+// resolveEntityVersion determines the supersedes ID and new version for an
+// entity write: (0, 1) for new entities; for existing ones it unmarks the
+// current latest and returns (currentID, currentVersion+1).
+func resolveEntityVersion(tx *sql.Tx, name string) (int64, int, error) {
+	var existingID int64
+	var existingVersion int
+	err := tx.QueryRow(
+		"SELECT id, COALESCE(version, 1) FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)",
+		name,
+	).Scan(&existingID, &existingVersion)
+
+	if err == sql.ErrNoRows {
+		return 0, 1, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if _, err := tx.Exec(
+		"UPDATE entities SET is_latest = 0 WHERE id = ?",
+		existingID,
+	); err != nil {
+		return 0, 0, err
+	}
+	return existingID, existingVersion + 1, nil
+}
+
 // CreateEntity creates a new entity with optional observations.
 // Returns ErrEntityExists if an entity with this name already exists.
 func (s *Store) CreateEntity(name, entityType string, observations []string) (*Entity, error) {
@@ -91,34 +118,11 @@ func (s *Store) CreateOrUpdateEntity(name, entityType string, observations []str
 	}
 	defer tx.Rollback()
 
-	// Check for existing entity
-	var existingID int64
-	var existingVersion int
-	err = tx.QueryRow(
-		"SELECT id, COALESCE(version, 1) FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)",
-		name,
-	).Scan(&existingID, &existingVersion)
-
-	var supersedesID int64
-	var newVersion int
-
-	if err == sql.ErrNoRows {
-		// No existing entity - create first version
-		supersedesID = 0
-		newVersion = 1
-	} else if err != nil {
+	// Resolve version chain: first version for new entities, otherwise mark
+	// the current version as superseded and continue the chain.
+	supersedesID, newVersion, err := resolveEntityVersion(tx, name)
+	if err != nil {
 		return nil, err
-	} else {
-		// Existing entity - mark it as not latest
-		_, err = tx.Exec(
-			"UPDATE entities SET is_latest = 0 WHERE id = ?",
-			existingID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		supersedesID = existingID
-		newVersion = existingVersion + 1
 	}
 
 	// Insert new entity/version

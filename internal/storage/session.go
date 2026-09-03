@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type Session struct {
@@ -81,15 +83,9 @@ func (s *Store) CompleteSession(sessionName, summary string) error {
 	}
 	defer tx.Rollback()
 
-	var entityID int64
-	if err := tx.QueryRow(
-		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
-		sessionName,
-	).Scan(&entityID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("getting session entity: %w", err)
+	entityID, err := sessionEntityID(tx, sessionName)
+	if err != nil {
+		return err
 	}
 
 	if _, err := tx.Exec(
@@ -99,19 +95,9 @@ func (s *Store) CompleteSession(sessionName, summary string) error {
 		return fmt.Errorf("storing session summary: %w", err)
 	}
 
-	var tag string
-	if err := tx.QueryRow(
-		"SELECT COALESCE(container_tag, '') FROM entities WHERE id = ?",
-		entityID,
-	).Scan(&tag); err != nil {
-		return fmt.Errorf("reading session metadata: %w", err)
-	}
-
-	var meta SessionMetadata
-	if tag != "" {
-		if err := json.Unmarshal([]byte(tag), &meta); err != nil {
-			return fmt.Errorf("parsing session metadata: %w", err)
-		}
+	meta, err := readSessionMetadata(tx, entityID)
+	if err != nil {
+		return err
 	}
 	meta.Status = "completed"
 	meta.EndedAt = time.Now().Format(time.RFC3339)
@@ -129,6 +115,57 @@ func (s *Store) CompleteSession(sessionName, summary string) error {
 	}
 
 	return tx.Commit()
+}
+
+// sessionEntityID resolves a session's entity ID, returning ErrNotFound for unknown sessions.
+func sessionEntityID(tx *sqlx.Tx, sessionName string) (int64, error) {
+	var entityID int64
+	err := tx.QueryRow(
+		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
+		sessionName,
+	).Scan(&entityID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("getting session entity: %w", err)
+	}
+	return entityID, nil
+}
+
+// readSessionMetadata reads and parses the session's container-tag metadata.
+func readSessionMetadata(tx *sqlx.Tx, entityID int64) (SessionMetadata, error) {
+	var tag string
+	if err := tx.QueryRow(
+		"SELECT COALESCE(container_tag, '') FROM entities WHERE id = ?",
+		entityID,
+	).Scan(&tag); err != nil {
+		return SessionMetadata{}, fmt.Errorf("reading session metadata: %w", err)
+	}
+
+	var meta SessionMetadata
+	if tag != "" {
+		if err := json.Unmarshal([]byte(tag), &meta); err != nil {
+			return SessionMetadata{}, fmt.Errorf("parsing session metadata: %w", err)
+		}
+	}
+	return meta, nil
+}
+
+// sessionFromEntity converts an entity to a Session, reading project/status
+// from the container-tag metadata.
+func (s *Store) sessionFromEntity(entity *Entity) *Session {
+	tag, _ := s.GetContainerTag(entity.Name)
+	var meta SessionMetadata
+	if tag != "" {
+		_ = json.Unmarshal([]byte(tag), &meta)
+	}
+	return &Session{
+		Name:      entity.Name,
+		Project:   meta.Project,
+		Status:    meta.Status,
+		StartedAt: entity.CreatedAt,
+	}
 }
 
 func (s *Store) GetSession(sessionName string) (*Session, error) {
@@ -183,39 +220,36 @@ func (s *Store) ListSessions(project, status string, limit int) ([]*Session, err
 
 	var sessions []*Session
 	for _, entity := range entities {
-		tag, _ := s.GetContainerTag(entity.Name)
-		var meta SessionMetadata
-		if tag != "" {
-			_ = json.Unmarshal([]byte(tag), &meta)
-		}
-
-		if project != "" && meta.Project != project {
+		session := s.sessionFromEntity(entity)
+		if project != "" && session.Project != project {
 			continue
 		}
-		if status != "" && meta.Status != status {
+		if status != "" && session.Status != status {
 			continue
 		}
-
-		sessions = append(sessions, &Session{
-			Name:      entity.Name,
-			Project:   meta.Project,
-			Status:    meta.Status,
-			StartedAt: entity.CreatedAt,
-		})
+		sessions = append(sessions, session)
 	}
 
+	sortSessions(sessions)
+	return limitSessions(sessions, limit), nil
+}
+
+// sortSessions orders sessions newest-first, breaking ties by name descending.
+func sortSessions(sessions []*Session) {
 	sort.Slice(sessions, func(i, j int) bool {
 		if sessions[i].StartedAt.Equal(sessions[j].StartedAt) {
 			return sessions[i].Name > sessions[j].Name
 		}
 		return sessions[i].StartedAt.After(sessions[j].StartedAt)
 	})
+}
 
+// limitSessions truncates to limit entries (0 or negative = no limit).
+func limitSessions(sessions []*Session, limit int) []*Session {
 	if limit > 0 && len(sessions) > limit {
-		sessions = sessions[:limit]
+		return sessions[:limit]
 	}
-
-	return sessions, nil
+	return sessions
 }
 
 func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int) ([]ContextResult, error) {
@@ -246,35 +280,27 @@ func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int
 		return nil, err
 	}
 
-	// Filter by project if specified
-	if project != "" {
-		var filtered []ContextResult
-		for _, r := range results {
-			tag, _ := s.GetContainerTag(r.EntityName)
-			var meta SessionMetadata
-			if tag != "" {
-				_ = json.Unmarshal([]byte(tag), &meta)
-			}
-			if meta.Project == project {
-				filtered = append(filtered, r)
-			}
-		}
-		results = filtered
-	}
+	return applyTokenBudget(s.filterSessionsByProject(results, project), tokenBudget), nil
+}
 
-	// Apply token budget
-	tokenCount := 0
-	var selected []ContextResult
+// filterSessionsByProject keeps only sessions whose container-tag project
+// matches. Empty project returns results unchanged.
+func (s *Store) filterSessionsByProject(results []ContextResult, project string) []ContextResult {
+	if project == "" {
+		return results
+	}
+	var filtered []ContextResult
 	for _, r := range results {
-		entryTokens := (len(r.EntityName) + len(r.Content) + 20) / 4
-		if tokenCount+entryTokens > tokenBudget {
-			break
+		tag, _ := s.GetContainerTag(r.EntityName)
+		var meta SessionMetadata
+		if tag != "" {
+			_ = json.Unmarshal([]byte(tag), &meta)
 		}
-		tokenCount += entryTokens
-		selected = append(selected, r)
+		if meta.Project == project {
+			filtered = append(filtered, r)
+		}
 	}
-
-	return selected, nil
+	return filtered
 }
 
 func (s *Store) GetSessionEvents(sessionName string) ([]SessionEvent, error) {

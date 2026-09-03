@@ -107,52 +107,12 @@ func (s *Store) getContextFlat(cfg ContextConfig, projectName string) ([]Context
 func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string, embedder Embedder) ([]ContextResult, error) {
 	candidateLimit := cfg.TokenBudget * 3
 
-	// Collect candidate entity names from search
-	entityNames := make(map[string]struct{})
-
-	if embedder != nil {
-		ctx := context.Background()
-		hybridResults, err := s.HybridSearchWithEmbedder(ctx, query, embedder, candidateLimit)
-		if err != nil {
-			storageLogger.Warn("hybrid search failed, falling back to FTS", "query", query, "error", err)
-		} else {
-			for _, r := range hybridResults {
-				entityNames[r.EntityName] = struct{}{}
-			}
-		}
-	}
-
-	// FTS path (also used as fallback when embedder is nil or hybrid returned nothing)
-	// TODO: SearchWithLimit does not filter by is_latest; superseded entity versions can consume
-	// candidate slots. The second SQL (below) enforces is_latest=1, so results stay correct.
-	if len(entityNames) == 0 {
-		ftsResults, err := s.SearchWithLimit(query, candidateLimit)
-		if err == nil {
-			for _, r := range ftsResults {
-				entityNames[r.Name] = struct{}{}
-			}
-		}
-	}
-
+	entityNames := s.collectCandidateNames(query, candidateLimit, embedder)
 	if len(entityNames) == 0 {
 		return []ContextResult{}, nil
 	}
 
-	// Build IN clause for candidate entity names
-	names := make([]string, 0, len(entityNames))
-	for n := range entityNames {
-		names = append(names, n)
-	}
-
-	placeholders := make([]string, len(names))
-	args := make([]any, len(names)+1)
-	args[0] = cfg.MinImportance
-	for i, n := range names {
-		placeholders[i] = "?"
-		args[i+1] = n
-	}
-
-	inClause := strings.Join(placeholders, ", ")
+	inClause, args := buildInClause(entityNames, cfg.MinImportance)
 	sqlQuery := `
 		SELECT e.name as entity_name, e.entity_type, o.content,
 		       COALESCE(o.fact_type, 'dynamic') as fact_type,
@@ -174,13 +134,59 @@ func (s *Store) getContextWithQuery(cfg ContextConfig, projectName, query string
 	// Note: unlike getContextFlat, this path sorts by FinalScore only.
 	// FactTypePriority SQL ordering is not applied; static facts get a 1.2× score boost instead.
 	applyScores(results, projectName, cfg.ProjectBoost)
+	sortByFinalScore(results)
 
-	// Sort by FinalScore descending
+	return applyTokenBudget(results, cfg.TokenBudget), nil
+}
+
+// collectCandidateNames collects candidate entity names from hybrid or FTS search.
+func (s *Store) collectCandidateNames(query string, limit int, embedder Embedder) map[string]struct{} {
+	entityNames := make(map[string]struct{})
+
+	if embedder != nil {
+		hybridResults, err := s.HybridSearchWithEmbedder(context.Background(), query, embedder, limit)
+		if err != nil {
+			storageLogger.Warn("hybrid search failed, falling back to FTS", "query", query, "error", err)
+		} else {
+			for _, r := range hybridResults {
+				entityNames[r.EntityName] = struct{}{}
+			}
+		}
+	}
+
+	// FTS path (also used as fallback when embedder is nil or hybrid returned nothing)
+	// TODO: SearchWithLimit does not filter by is_latest; superseded entity versions can consume
+	// candidate slots. The second SQL (in getContextWithQuery) enforces is_latest=1, so results stay correct.
+	if len(entityNames) == 0 {
+		ftsResults, err := s.SearchWithLimit(query, limit)
+		if err == nil {
+			for _, r := range ftsResults {
+				entityNames[r.Name] = struct{}{}
+			}
+		}
+	}
+
+	return entityNames
+}
+
+// buildInClause builds an IN clause placeholder list and args for entity names,
+// prepending minImportance as the first arg.
+func buildInClause(entityNames map[string]struct{}, minImportance float64) (string, []any) {
+	placeholders := make([]string, 0, len(entityNames))
+	args := make([]any, 0, len(entityNames)+1)
+	args = append(args, minImportance)
+	for n := range entityNames {
+		placeholders = append(placeholders, "?")
+		args = append(args, n)
+	}
+	return strings.Join(placeholders, ", "), args
+}
+
+// sortByFinalScore sorts results by FinalScore descending.
+func sortByFinalScore(results []ContextResult) {
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].FinalScore > results[j].FinalScore
 	})
-
-	return applyTokenBudget(results, cfg.TokenBudget), nil
 }
 
 // applyScores calculates FinalScore for each result in place.
@@ -304,43 +310,27 @@ func FormatContextResults(results []ContextResult) string {
 		}
 	}
 
-	// Output static first (user preferences)
-	if len(staticObs) > 0 {
-		sb.WriteString("[STATIC] Project Conventions:\n")
-		for entity, observations := range staticObs {
-			sb.WriteString("## " + entity + "\n")
-			for _, obs := range observations {
-				sb.WriteString("- " + obs + "\n")
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	// Output dynamic (recent context)
-	if len(dynamicObs) > 0 {
-		sb.WriteString("[DYNAMIC] Recent Context:\n")
-		for entity, observations := range dynamicObs {
-			sb.WriteString("## " + entity + "\n")
-			for _, obs := range observations {
-				sb.WriteString("- " + obs + "\n")
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	// Output session turns (conversation history)
-	if len(sessionObs) > 0 {
-		sb.WriteString("[SESSION] Conversation History:\n")
-		for entity, observations := range sessionObs {
-			sb.WriteString("## " + entity + "\n")
-			for _, obs := range observations {
-				sb.WriteString("- " + obs + "\n")
-			}
-		}
-		sb.WriteString("\n")
-	}
+	// Output static first (user preferences), then dynamic, then session turns
+	writeObsSection(&sb, "[STATIC] Project Conventions", staticObs)
+	writeObsSection(&sb, "[DYNAMIC] Recent Context", dynamicObs)
+	writeObsSection(&sb, "[SESSION] Conversation History", sessionObs)
 
 	return sb.String()
+}
+
+// writeObsSection writes one titled fact-type section, grouped by entity.
+func writeObsSection(sb *strings.Builder, title string, obs map[string][]string) {
+	if len(obs) == 0 {
+		return
+	}
+	sb.WriteString(title + ":\n")
+	for entity, observations := range obs {
+		sb.WriteString("## " + entity + "\n")
+		for _, o := range observations {
+			sb.WriteString("- " + o + "\n")
+		}
+	}
+	sb.WriteString("\n")
 }
 
 // EstimateTokens estimates the number of tokens in the context.

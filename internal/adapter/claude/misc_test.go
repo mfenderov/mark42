@@ -54,3 +54,18 @@ func TestHookPreCompact(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultStoreFactory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	store, err := defaultStoreFactory()
+	if err != nil {
+		t.Fatalf("defaultStoreFactory: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := os.Stat(filepath.Join(home, ".mark42", "memory.db")); err != nil {
+		t.Errorf("expected db created under temp HOME: %v", err)
+	}
+}

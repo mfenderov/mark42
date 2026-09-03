@@ -21,15 +21,8 @@ func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
 	}
 
 	// Try hybrid search (FTS + vector) if embedder is available
-	if h.embedder != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, h.embedder, 20)
-		if err == nil && len(results) > 0 {
-			return h.formatHybridResults(results)
-		}
-		// Fall through to FTS-only on error
+	if result, ok := h.tryHybridSearch(input.Query); ok {
+		return result, nil
 	}
 
 	// Fallback: FTS-only search
@@ -97,6 +90,29 @@ func truncateObservation(s string) string {
 		return s
 	}
 	return string(r[:maxObservationLength]) + "…"
+}
+
+// tryHybridSearch attempts hybrid search when an embedder is configured.
+// Returns (result, true) only when hybrid search produced usable results;
+// otherwise the caller falls back to FTS-only search.
+func (h *Handler) tryHybridSearch(query string) (*ToolCallResult, bool) {
+	if h.embedder == nil {
+		return nil, false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	results, err := h.store.HybridSearchWithEmbedder(ctx, query, h.embedder, 20)
+	if err != nil || len(results) == 0 {
+		return nil, false
+	}
+
+	formatted, err := h.formatHybridResults(results)
+	if err != nil {
+		return nil, false
+	}
+	return formatted, true
 }
 
 // formatHybridResults converts FusedResults to MCP output format.
