@@ -620,6 +620,16 @@ func TestDecayCommands(t *testing.T) {
 
 	// Test archive command with persisted config (uses REAL decayArchiveCmd)
 	t.Run("ArchiveUsesPersistedConfig", func(t *testing.T) {
+		// Reset decayArchiveCmd flag state (values AND Changed flags) after test
+		defer func() {
+			for _, name := range []string{"days", "min-importance"} {
+				f := decayArchiveCmd.Flags().Lookup(name)
+				def := f.DefValue
+				_ = decayArchiveCmd.Flags().Set(name, def)
+				f.Changed = false
+			}
+		}()
+
 		// Create test entity with observation backdated 30 days with low importance
 		if _, err := store.CreateEntity("OldMemory", "dynamic", []string{"observation to archive"}); err != nil {
 			t.Fatalf("CreateEntity failed: %v", err)
