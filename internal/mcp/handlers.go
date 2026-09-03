@@ -322,6 +322,24 @@ func (h *Handler) Tools() []Tool {
 				Required: []string{"entityName"},
 			},
 		},
+		{
+			Name:        "get_memory_analytics",
+			Description: "Get aggregate database-wide statistics: overview counts, decay curve, access hotspots, fact-type breakdown, and recent session activity.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"topN": {Type: "number", Description: "Number of top-accessed observations to include (default: 10)"},
+				},
+			},
+		},
+		{
+			Name:        "get_tuning_recommendation",
+			Description: "Get usage-driven suggestions for the importance/decay config, with rationale for each suggested change.",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
 	}
 }
 
@@ -345,6 +363,8 @@ var toolDispatch = map[string]func(*Handler, json.RawMessage) (*ToolCallResult, 
 	"recall_sessions":           (*Handler).recallSessions,
 	"invalidate_observation":    (*Handler).invalidateObservation,
 	"get_entity_history":        (*Handler).getEntityHistory,
+	"get_memory_analytics":      (*Handler).getMemoryAnalytics,
+	"get_tuning_recommendation": func(h *Handler, _ json.RawMessage) (*ToolCallResult, error) { return h.getTuningRecommendation() },
 }
 
 // CallTool executes the named tool with the given arguments.

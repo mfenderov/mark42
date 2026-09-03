@@ -54,6 +54,8 @@ func TestHandler_Tools(t *testing.T) {
 		"recall_sessions",
 		"invalidate_observation",
 		"get_entity_history",
+		"get_memory_analytics",
+		"get_tuning_recommendation",
 	}
 
 	if len(tools) != len(expectedTools) {
@@ -1724,9 +1726,54 @@ func TestHandler_Tools_Count(t *testing.T) {
 	defer store.Close()
 
 	tools := handler.Tools()
-	// 16 original + 2 new (invalidate_observation, get_entity_history)
-	if len(tools) != 18 {
-		t.Errorf("expected 18 tools, got %d", len(tools))
+	// 18 original + 2 new (get_memory_analytics, get_tuning_recommendation)
+	if len(tools) != 20 {
+		t.Errorf("expected 20 tools, got %d", len(tools))
+	}
+}
+
+// --- get_memory_analytics / get_tuning_recommendation tests ---
+
+func TestHandler_GetMemoryAnalytics(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	if _, err := store.CreateEntity("Alpha", "project", []string{"hello"}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+
+	result, err := handler.CallTool("get_memory_analytics", json.RawMessage(`{"topN": 5}`))
+	if err != nil {
+		t.Fatalf("get_memory_analytics: %v", err)
+	}
+	text := result.Content[0].Text
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		t.Fatalf("result not JSON: %v", err)
+	}
+	if parsed["TotalEntities"].(float64) != 1 {
+		t.Errorf("TotalEntities = %v, want 1", parsed["TotalEntities"])
+	}
+}
+
+func TestHandler_GetTuningRecommendation(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	result, err := handler.CallTool("get_tuning_recommendation", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("get_tuning_recommendation: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &parsed); err != nil {
+		t.Fatalf("result not JSON: %v", err)
+	}
+	if _, ok := parsed["Suggested"]; !ok {
+		t.Error("missing Suggested in recommendation")
 	}
 }
 

@@ -228,3 +228,7 @@ type InvalidateObservationInput struct {
 type GetEntityHistoryInput struct {
 	EntityName string `json:"entityName"`
 }
+
+type GetMemoryAnalyticsInput struct {
+	TopN int `json:"topN,omitempty"`
+}
