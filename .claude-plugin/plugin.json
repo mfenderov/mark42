@@ -1,7 +1,7 @@
 {
   "name": "mark42",
   "description": "Local, privacy-first memory layer for AI coding harnesses. SQLite-backed knowledge graph with FTS5 + vector hybrid search, session capture & recall.",
-  "version": "3.0.0",
+  "version": "3.2.0",
   "author": {
     "name": "mfenderov"
   },
