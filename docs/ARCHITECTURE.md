@@ -2,16 +2,16 @@
 
 ## Overview
 
-mark42 is an MCP (Model Context Protocol) server that provides persistent, searchable memory for Claude Code sessions. It replaces the default JSON-based Memory MCP with a SQLite-backed implementation offering superior search capabilities.
+mark42 is a local memory layer for AI coding harnesses (Claude Code, pi, opencode). An MCP (Model Context Protocol) server and CLI provide persistent, searchable memory backed by SQLite, with hybrid FTS5 + vector search. It originated as a drop-in replacement for the JSON-based Memory MCP and remains API-compatible with it.
 
 ## System Components
 
 ### 1. MCP Server
 
-The server implements the MCP protocol over stdio, handling JSON-RPC requests from Claude Code.
+The server implements the MCP protocol over stdio, handling JSON-RPC requests from the connected harness.
 
 ```
-Claude Code ←──stdio──→ MCP Server ←──SQL──→ SQLite
+Harness (Claude Code / pi / opencode) ←──stdio──→ MCP Server ←──SQL──→ SQLite
 ```
 
 **Responsibilities:**
@@ -276,7 +276,7 @@ mark42/
 ```yaml
 # ~/.mark42/config.yaml (optional)
 database:
-  path: ~/.claude/memory.db
+  path: ~/.mark42/memory.db
 
 search:
   fts_weight: 0.3        # Weight for keyword matches
