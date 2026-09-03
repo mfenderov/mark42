@@ -37,6 +37,12 @@ func TestAnalyticsTuneCommand_DryRun(t *testing.T) {
 	if !strings.Contains(got, "No changes applied. Re-run with --apply to persist.") {
 		t.Errorf("output missing dry-run footer\n%s", got)
 	}
+	if !strings.Contains(got, "FrequencyWeight") {
+		t.Errorf("expected FrequencyWeight recommendation line\n%s", got)
+	}
+	if !strings.Contains(got, "sparse") {
+		t.Errorf("expected sparse-signal rationale\n%s", got)
+	}
 }
 
 func TestAnalyticsTuneCommand_Apply(t *testing.T) {
