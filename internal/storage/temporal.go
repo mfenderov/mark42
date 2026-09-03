@@ -59,15 +59,23 @@ func (s *Store) InvalidateObservation(entityName, content string) error {
 // Returns the list of expired observation contents.
 // Returns nil, nil if embedder is nil or entity is not found.
 func (s *Store) DetectAndExpireSuperseded(entityName, newContent string, embedder Embedder, threshold float64) ([]string, error) {
-	if embedder == nil {
+	return s.detectAndExpireSuperseded(entityName, []string{newContent}, embedder, threshold)
+}
+
+// DetectAndExpireSupersededBatch is like DetectAndExpireSuperseded but for a
+// batch of observations written together: batch members never expire each
+// other (issue #32). An older observation is expired when ANY new content
+// exceeds the similarity threshold.
+func (s *Store) DetectAndExpireSupersededBatch(entityName string, newContents []string, embedder Embedder, threshold float64) ([]string, error) {
+	return s.detectAndExpireSuperseded(entityName, newContents, embedder, threshold)
+}
+
+func (s *Store) detectAndExpireSuperseded(entityName string, newContents []string, embedder Embedder, threshold float64) ([]string, error) {
+	if embedder == nil || len(newContents) == 0 {
 		return nil, nil
 	}
 
-	var entityID int64
-	err := s.db.QueryRow(
-		"SELECT id FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)",
-		entityName,
-	).Scan(&entityID)
+	entityID, err := s.latestEntityID(entityName)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -75,11 +83,65 @@ func (s *Store) DetectAndExpireSuperseded(entityName, newContent string, embedde
 		return nil, err
 	}
 
-	newEmbedding, err := embedder.CreateEmbedding(context.Background(), newContent)
+	// Embed each new content; a failed embedding skips detection for that
+	// content only (matches the previous per-content call semantics).
+	newEmbeddings := make([][]float64, 0, len(newContents))
+	for _, content := range newContents {
+		emb, err := embedder.CreateEmbedding(context.Background(), content)
+		if err != nil {
+			continue
+		}
+		newEmbeddings = append(newEmbeddings, emb)
+	}
+
+	protected := make(map[string]bool, len(newContents))
+	for _, c := range newContents {
+		protected[c] = true
+	}
+
+	candidates, err := s.supersedeCandidates(entityID)
 	if err != nil {
 		return nil, err
 	}
 
+	var expired []string
+	for _, c := range candidates {
+		if protected[c.content] {
+			continue
+		}
+		if !exceedsThreshold(newEmbeddings, decodeEmbedding(c.blob), threshold) {
+			continue
+		}
+		if _, err := s.db.Exec(
+			"UPDATE observations SET valid_until = CURRENT_TIMESTAMP WHERE id = ?",
+			c.id,
+		); err != nil {
+			return nil, err
+		}
+		expired = append(expired, c.content)
+	}
+
+	return expired, nil
+}
+
+// latestEntityID resolves the ID of the latest version of an entity.
+func (s *Store) latestEntityID(entityName string) (int64, error) {
+	var entityID int64
+	err := s.db.QueryRow(
+		"SELECT id FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)",
+		entityName,
+	).Scan(&entityID)
+	return entityID, err
+}
+
+type supersedeCandidate struct {
+	id      int64
+	content string
+	blob    []byte
+}
+
+// supersedeCandidates loads valid observations with embeddings for an entity.
+func (s *Store) supersedeCandidates(entityID int64) ([]supersedeCandidate, error) {
 	rows, err := s.db.Query(`
 		SELECT o.id, o.content, oe.embedding
 		FROM observations o
@@ -91,42 +153,25 @@ func (s *Store) DetectAndExpireSuperseded(entityName, newContent string, embedde
 	}
 	defer rows.Close()
 
-	type candidate struct {
-		id      int64
-		content string
-		blob    []byte
-	}
-	var candidates []candidate
+	var candidates []supersedeCandidate
 	for rows.Next() {
-		var c candidate
+		var c supersedeCandidate
 		if err := rows.Scan(&c.id, &c.content, &c.blob); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, c)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+	return candidates, rows.Err()
+}
 
-	var expired []string
-	for _, c := range candidates {
-		if c.content == newContent {
-			continue
-		}
-		stored := decodeEmbedding(c.blob)
-		sim := CosineSimilarity(newEmbedding, stored)
-		if sim > threshold {
-			if _, err := s.db.Exec(
-				"UPDATE observations SET valid_until = CURRENT_TIMESTAMP WHERE id = ?",
-				c.id,
-			); err != nil {
-				return nil, err
-			}
-			expired = append(expired, c.content)
+// exceedsThreshold reports whether any new embedding is similar enough to the stored one.
+func exceedsThreshold(newEmbeddings [][]float64, stored []float64, threshold float64) bool {
+	for _, emb := range newEmbeddings {
+		if CosineSimilarity(emb, stored) > threshold {
+			return true
 		}
 	}
-
-	return expired, nil
+	return false
 }
 
 // GetObservationHistory returns all observations for an entity, including expired ones.
