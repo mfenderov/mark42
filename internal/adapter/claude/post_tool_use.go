@@ -19,100 +19,130 @@ func PostToolUse(projectDir string, input HookInput, opts ...Option) {
 		o(hookCfg)
 	}
 
-	command := ""
-	isGitCommit := false
-	if input.ToolName == "Bash" {
-		if cmd, ok := input.ToolInput["command"].(string); ok {
-			command = strings.TrimSpace(cmd)
-			isGitCommit = strings.Contains(command, "git commit")
-		}
-	}
-
+	command, isGitCommit := bashCommand(input)
 	if cfg.TriggerMode == "gitmode" && !isGitCommit {
 		return
 	}
 
-	var filesToTrack []string
-
-	switch {
-	case isGitCommit:
-		// Git commit file extraction requires subprocess — skip for now,
-		// just track the event
-	case input.ToolName == "Edit" || input.ToolName == "Write":
-		if fp, ok := input.ToolInput["file_path"].(string); ok && fp != "" {
-			filesToTrack = append(filesToTrack, fp)
-		}
-	case input.ToolName == "Bash":
-		filesToTrack = extractFilesFromBash(command, projectDir)
-	default:
-		if fp, ok := input.ToolInput["file_path"].(string); ok && fp != "" {
-			filesToTrack = append(filesToTrack, fp)
-		}
-	}
-
-	var trackable []string
-	for _, f := range filesToTrack {
-		if shouldTrack(f, projectDir) {
-			trackable = append(trackable, f)
-		}
-	}
+	trackable := filterTrackable(filesFromInput(input, command, isGitCommit, projectDir), projectDir)
 
 	m42 := mark42Dir(projectDir)
 	_ = os.MkdirAll(m42, 0o755)
 
-	// Write session event to SQLite when current-session is present
-	sessionName := readCurrentSession(projectDir)
-	if sessionName != "" {
-		se := storage.SessionEvent{
-			ToolName:  input.ToolName,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-		}
-		if (input.ToolName == "Edit" || input.ToolName == "Write") && len(trackable) > 0 {
-			se.FilePath = trackable[0]
-		} else if input.ToolName == "Bash" && command != "" {
-			cmd := command
-			if len(cmd) > 200 {
-				cmd = cmd[:200]
-			}
-			se.Command = cmd
-		}
-
-		s, owned := getOrUseStore(hookCfg)
-		if s != nil {
-			if owned {
-				defer s.Close()
-			}
-			_ = s.CaptureSessionEvent(sessionName, se)
-		}
-	}
-
-	// Update dirty-files (only when files were modified)
-	if len(trackable) > 0 {
-		dirtyPath := filepath.Join(m42, "dirty-files")
-		existing := make(map[string]string)
-		for _, line := range readLines(dirtyPath) {
-			path := line
-			if before, _, found := strings.Cut(line, " ["); found {
-				path = before
-			}
-			existing[path] = line
-		}
-
-		for _, fp := range trackable {
-			if _, ok := existing[fp]; !ok {
-				existing[fp] = fp
-			}
-		}
-
-		var sb strings.Builder
-		for _, line := range existing {
-			sb.WriteString(line)
-			sb.WriteByte('\n')
-		}
-		_ = os.WriteFile(dirtyPath, []byte(sb.String()), 0o644)
-	}
+	recordSessionEvent(projectDir, input, command, trackable, hookCfg)
+	updateDirtyFiles(m42, trackable)
 
 	// CRITICAL: zero stdout output
+}
+
+// bashCommand extracts the trimmed command and whether it is a git commit.
+func bashCommand(input HookInput) (command string, isGitCommit bool) {
+	if input.ToolName != "Bash" {
+		return "", false
+	}
+	cmd, ok := input.ToolInput["command"].(string)
+	if !ok {
+		return "", false
+	}
+	command = strings.TrimSpace(cmd)
+	return command, strings.Contains(command, "git commit")
+}
+
+// filesFromInput determines which files a tool invocation touched.
+func filesFromInput(input HookInput, command string, isGitCommit bool, projectDir string) []string {
+	switch {
+	case isGitCommit:
+		// Git commit file extraction requires subprocess — skip for now,
+		// just track the event
+		return nil
+	case input.ToolName == "Bash":
+		return extractFilesFromBash(command, projectDir)
+	default:
+		return filePathArg(input)
+	}
+}
+
+func filePathArg(input HookInput) []string {
+	if fp, ok := input.ToolInput["file_path"].(string); ok && fp != "" {
+		return []string{fp}
+	}
+	return nil
+}
+
+func filterTrackable(files []string, projectDir string) []string {
+	var trackable []string
+	for _, f := range files {
+		if shouldTrack(f, projectDir) {
+			trackable = append(trackable, f)
+		}
+	}
+	return trackable
+}
+
+// recordSessionEvent writes the session event to SQLite when a current session exists.
+func recordSessionEvent(projectDir string, input HookInput, command string, trackable []string, hookCfg *Config) {
+	sessionName := readCurrentSession(projectDir)
+	if sessionName == "" {
+		return
+	}
+
+	se := storage.SessionEvent{
+		ToolName:  input.ToolName,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	switch {
+	case (input.ToolName == "Edit" || input.ToolName == "Write") && len(trackable) > 0:
+		se.FilePath = trackable[0]
+	case input.ToolName == "Bash" && command != "":
+		se.Command = truncateCommand(command, 200)
+	}
+
+	s, owned := getOrUseStore(hookCfg)
+	if s == nil {
+		return
+	}
+	if owned {
+		defer s.Close()
+	}
+	_ = s.CaptureSessionEvent(sessionName, se)
+}
+
+// truncateCommand cuts a command to n bytes (plain cut, no ellipsis).
+func truncateCommand(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+// updateDirtyFiles merges newly modified files into the dirty-files list.
+func updateDirtyFiles(m42 string, trackable []string) {
+	if len(trackable) == 0 {
+		return
+	}
+
+	dirtyPath := filepath.Join(m42, "dirty-files")
+	existing := make(map[string]string)
+	for _, line := range readLines(dirtyPath) {
+		path := line
+		if before, _, found := strings.Cut(line, " ["); found {
+			path = before
+		}
+		existing[path] = line
+	}
+
+	for _, fp := range trackable {
+		if _, ok := existing[fp]; !ok {
+			existing[fp] = fp
+		}
+	}
+
+	var sb strings.Builder
+	for _, line := range existing {
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+	}
+	_ = os.WriteFile(dirtyPath, []byte(sb.String()), 0o644)
 }
 
 func loadPluginConfig(projectDir string) PluginConfig {
@@ -154,24 +184,8 @@ func shouldTrack(filePath, projectDir string) bool {
 
 func extractFilesFromBash(command, projectDir string) []string {
 	command = strings.TrimSpace(command)
-	if command == "" {
+	if command == "" || isReadOnlyCommand(command) {
 		return nil
-	}
-
-	skipPrefixes := []string{
-		"ls", "cat", "echo", "grep", "find", "head", "tail", "less", "more",
-		"cd", "pwd", "which", "whereis", "type", "file", "stat", "wc",
-		"git status", "git log", "git diff", "git show", "git branch",
-		"git fetch", "git pull", "git push", "git clone", "git checkout",
-		"git stash", "git remote", "git tag", "git rev-parse",
-		"npm ", "yarn ", "pnpm ", "node ", "python", "pip ", "uv ",
-		"cargo ", "go ", "make", "cmake", "docker ", "kubectl ",
-		"curl ", "wget ", "ssh ", "scp ", "rsync ",
-	}
-	for _, prefix := range skipPrefixes {
-		if strings.HasPrefix(command, prefix) {
-			return nil
-		}
 	}
 
 	tokens := shellTokenize(command)
@@ -180,57 +194,65 @@ func extractFilesFromBash(command, projectDir string) []string {
 	}
 
 	var files []string
-	cmd := tokens[0]
-
-	switch {
+	switch cmd := tokens[0]; {
 	case cmd == "rm":
-		for _, tok := range tokens[1:] {
-			if isShellSyntax(tok) {
-				break
-			}
-			if !strings.HasPrefix(tok, "-") {
-				files = append(files, tok)
-			}
-		}
-
+		files = fileArgs(tokens[1:])
 	case cmd == "git" && len(tokens) > 1 && tokens[1] == "rm":
-		for _, tok := range tokens[2:] {
-			if isShellSyntax(tok) {
-				break
-			}
-			if !strings.HasPrefix(tok, "-") {
-				files = append(files, tok)
-			}
-		}
-
+		files = fileArgs(tokens[2:])
 	case cmd == "mv" && len(tokens) >= 3:
-		for _, tok := range tokens[1:] {
-			if isShellSyntax(tok) {
-				break
-			}
-			if !strings.HasPrefix(tok, "-") {
-				files = append(files, tok)
-				break
-			}
-		}
-
+		files = firstFileArg(tokens[1:])
 	case cmd == "git" && len(tokens) > 2 && tokens[1] == "mv":
-		for _, tok := range tokens[2:] {
-			if isShellSyntax(tok) {
-				break
-			}
-			if !strings.HasPrefix(tok, "-") {
-				files = append(files, tok)
-				break
-			}
-		}
-
-	case cmd == "unlink" && len(tokens) > 1:
-		if !isShellSyntax(tokens[1]) {
-			files = append(files, tokens[1])
-		}
+		files = firstFileArg(tokens[2:])
+	case cmd == "unlink" && len(tokens) > 1 && !isShellSyntax(tokens[1]):
+		files = tokens[1:2]
 	}
 
+	return resolvePaths(files, projectDir)
+}
+
+var readOnlyPrefixes = []string{
+	"ls", "cat", "echo", "grep", "find", "head", "tail", "less", "more",
+	"cd", "pwd", "which", "whereis", "type", "file", "stat", "wc",
+	"git status", "git log", "git diff", "git show", "git branch",
+	"git fetch", "git pull", "git push", "git clone", "git checkout",
+	"git stash", "git remote", "git tag", "git rev-parse",
+	"npm ", "yarn ", "pnpm ", "node ", "python", "pip ", "uv ",
+	"cargo ", "go ", "make", "cmake", "docker ", "kubectl ",
+	"curl ", "wget ", "ssh ", "scp ", "rsync ",
+}
+
+func isReadOnlyCommand(command string) bool {
+	for _, prefix := range readOnlyPrefixes {
+		if strings.HasPrefix(command, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileArgs returns non-flag tokens up to the first shell operator or redirect.
+func fileArgs(tokens []string) []string {
+	var files []string
+	for _, tok := range tokens {
+		if isShellSyntax(tok) {
+			break
+		}
+		if !strings.HasPrefix(tok, "-") {
+			files = append(files, tok)
+		}
+	}
+	return files
+}
+
+// firstFileArg returns the first non-flag token, stopping at shell syntax.
+func firstFileArg(tokens []string) []string {
+	if args := fileArgs(tokens); len(args) > 0 {
+		return args[:1]
+	}
+	return nil
+}
+
+func resolvePaths(files []string, projectDir string) []string {
 	var resolved []string
 	for _, f := range files {
 		if !filepath.IsAbs(f) {

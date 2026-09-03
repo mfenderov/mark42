@@ -25,6 +25,7 @@ A local, privacy-first memory layer for AI coding harnesses, built on SQLite wit
 | `make build-all` | Build both CLI and server binaries |
 | `make test` | Run tests with race detector |
 | `make test-coverage` | Generate coverage report (HTML) |
+| `make crap` | CRAP quality gate (gocrap, max 30) |
 | `make run` | Build and run CLI with test.db |
 | `make lint` | Run golangci-lint |
 | `make fmt` | Format code (go fmt + goimports) |

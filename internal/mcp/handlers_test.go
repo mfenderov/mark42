@@ -1947,3 +1947,56 @@ func TestHandler_ConsolidateMemories_SemanticMode_CustomThreshold(t *testing.T) 
 		t.Errorf("expected 2 observations unchanged, got %d: %v", len(entity.Observations), entity.Observations)
 	}
 }
+
+func TestHandler_SearchNodes_HybridFormat(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	handler.WithEmbedder(&fakeEmbedder{})
+
+	longObs := strings.Repeat("verbose detail ", 20) // 300 chars > maxObservationLength
+	if _, err := store.CreateEntity("GoPatterns", "pattern", []string{"table-driven testing patterns", longObs}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+
+	// Store distinct embeddings directly: identical fake vectors would trigger
+	// auto-supersede (cosine = 1.0 marks observations as no longer valid).
+	storedObs, err := store.GetObservationsWithoutEmbeddings()
+	if err != nil {
+		t.Fatalf("GetObservationsWithoutEmbeddings: %v", err)
+	}
+	if len(storedObs) != 2 {
+		t.Fatalf("expected 2 observations, got %d", len(storedObs))
+	}
+	if err := store.BatchStoreEmbeddings(storedObs, [][]float64{{1, 0, 0}, {0.9, 0.1, 0}}, "test-model"); err != nil {
+		t.Fatalf("BatchStoreEmbeddings: %v", err)
+	}
+
+	// Query with no keyword overlap: only the vector path can match,
+	// proving the hybrid formatter (formatHybridResults) was used.
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query":"zzznomatch"}`))
+	if err != nil {
+		t.Fatalf("search_nodes: %v", err)
+	}
+
+	text := result.Content[0].Text
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(text), &entities); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, text)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 grouped entity, got %d: %s", len(entities), text)
+	}
+	if entities[0]["name"] != "GoPatterns" || entities[0]["entityType"] != "pattern" {
+		t.Errorf("unexpected entity: %v", entities[0])
+	}
+	obs, ok := entities[0]["observations"].([]any)
+	if !ok || len(obs) == 0 {
+		t.Fatalf("observations missing: %s", text)
+	}
+	if len(obs) > 3 {
+		t.Errorf("observations = %d, want <= 3 (maxObservationsPerEntity)", len(obs))
+	}
+	if !strings.Contains(text, "…") {
+		t.Error("expected long observation to be truncated with …")
+	}
+}
