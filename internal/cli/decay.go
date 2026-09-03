@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/mfenderov/mark42/internal/storage"
 )
 
 // --- Decay commands ---
@@ -99,7 +97,7 @@ var decayArchiveCmd = &cobra.Command{
 		minImportance, _ := cmd.Flags().GetFloat64("min-importance")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-		cfg := storage.DefaultDecayConfig()
+		cfg := store.GetDecayConfig()
 		cfg.ArchiveAfterDays = days
 		cfg.MinImportanceToKeep = minImportance
 

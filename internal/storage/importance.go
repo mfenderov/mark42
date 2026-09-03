@@ -130,7 +130,7 @@ type ObservationImportance struct {
 // RecalculateImportance recalculates importance scores for all observations.
 // Returns the number of observations updated.
 func (s *Store) RecalculateImportance() (int, error) {
-	cfg := DefaultImportanceConfig()
+	cfg := s.GetImportanceConfig()
 	maxRelations := s.maxRelationCount()
 
 	// Load all observation rows into memory first, then apply updates in a single transaction.

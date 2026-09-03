@@ -33,7 +33,7 @@ type DecayResult struct {
 // ApplySoftDecay applies decay to importance scores based on recency.
 // Observations not accessed recently have their importance reduced.
 func (s *Store) ApplySoftDecay(threshold float64) (int, error) {
-	cfg := DefaultImportanceConfig()
+	cfg := s.GetImportanceConfig()
 
 	// Apply decay factor to importance based on days since last access
 	result, err := s.db.Exec(`
