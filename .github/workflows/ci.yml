@@ -75,7 +75,7 @@ jobs:
         run: echo "tag=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
 
       - name: Auto bump version and tag
-        uses: cocogitto/cocogitto-action@v3
+        uses: cocogitto/cocogitto-action@v4
         with:
           release: true
           # No `check`: cog check rejects the repo's historical dependabot
