@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.3.1 - 2026-09-10
+#### Bug Fixes
+- **(harness)** harden Claude and OpenCode adapters and session capture - (25be793) - Mark Fenderov
+
+- - -
+
 ## v3.3.0 - 2026-09-10
 #### Bug Fixes
 - **(server)** execute methods for notifications while suppressing responses - (b3463b4) - Mark Fenderov
