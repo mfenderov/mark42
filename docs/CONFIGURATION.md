@@ -144,16 +144,6 @@ mark42 importance recalculate
 mark42 importance stats
 ```
 
-## Hook Configuration
-
-Hooks run via Go CLI subcommands (`mark42 hook {session-start,post-tool-use,stop,pre-compact}`).
-Hook configurations are defined in `hooks/hooks.json`.
-
-Hooks receive these environment variables:
-- `CLAUDE_PROJECT_DIR`: Current working directory
-- `CLAUDE_MEMORY_TOKEN_BUDGET`: Token budget for session context injection (default: 2000)
-- `CLAUDE_MEMORY_BOOST`: Project boost factor (default: 1.5)
-
 ## MCP Server Configuration
 
 For `.mcp.json`:
@@ -168,6 +158,13 @@ For `.mcp.json`:
   }
 }
 ```
+
+Environment variables supported by `mark42-server`:
+- `MARK42_DB`: SQLite database path (default: `~/.mark42/memory.db`, with legacy fallback to `~/.claude/memory.db`)
+- `CLAUDE_MEMORY_EMBEDDER_URL`: Ollama or OpenAI-compatible embedding API (default: `http://localhost:11434/v1`)
+- `CLAUDE_MEMORY_EMBEDDER_MODEL`: Embedding model name (default: `nomic-embed-text`)
+- `CLAUDE_MEMORY_TOKEN_BUDGET`: Default token budget for context retrieval (default: 2000)
+- `CLAUDE_MEMORY_BOOST`: Project boost factor for local context weighting (default: 1.5)
 
 ## Performance Tuning
 

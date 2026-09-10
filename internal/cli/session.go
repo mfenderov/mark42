@@ -258,6 +258,20 @@ var distillCmd = &cobra.Command{
 	},
 }
 
+func getProjectDir() string {
+	if dir := os.Getenv("MARK42_PROJECT_DIR"); dir != "" {
+		return dir
+	}
+	if dir := os.Getenv("CLAUDE_PROJECT_DIR"); dir != "" {
+		return dir
+	}
+	dir, err := os.Getwd()
+	if err == nil {
+		return dir
+	}
+	return ""
+}
+
 func init() {
 	sessionCaptureCmd.Flags().Bool("json", false, "output captured session as JSON")
 

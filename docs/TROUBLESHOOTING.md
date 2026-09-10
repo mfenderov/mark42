@@ -114,30 +114,36 @@ sqlite3 ~/.mark42/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 1. Use smaller limits: `--limit 10`
 2. Increase minimum importance threshold: `--min-importance 0.5`
 
-### Plugin/Hook Issues
+### MCP Server Issues
 
-#### SessionStart hook not loading context
+#### Server fails to start or connect
 
-**Symptoms**: No memory context injected at session start.
+**Symptoms**: Harness reports MCP connection failed or tool calls time out.
 
 **Checklist**:
-1. Database exists: `ls ~/.mark42/memory.db` (or legacy `~/.claude/memory.db`)
-2. Binary is in PATH: `which mark42`
-3. Hook configuration exists in `hooks/hooks.json`
-4. Test the Go CLI hook manually:
-   ```bash
-   CLAUDE_PROJECT_DIR=$(pwd) mark42 hook session-start
-   ```
+1. Binary is installed and executable: `which mark42-server`
+2. Check standalone execution: `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mark42-server`
+3. Verify database permissions: `ls -la ~/.mark42/memory.db`
+4. Inspect configuration in `.mcp.json` or your IDE settings.
 
-#### "command not found: mark42"
+#### "command not found: mark42-server"
 
 **Solution**:
-1. Install binary: `make install`
+1. Install binaries: `make install-all`
 2. Add to PATH:
    ```bash
    export PATH="$HOME/bin:$PATH"
    ```
-3. Or specify full path in hooks
+3. Or specify absolute path in `.mcp.json`:
+   ```json
+   {
+     "mcpServers": {
+       "mark42": {
+         "command": "/absolute/path/to/bin/mark42-server"
+       }
+     }
+   }
+   ```
 
 ### Migration Issues
 
