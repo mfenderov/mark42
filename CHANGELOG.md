@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.3.2 - 2026-09-10
+#### Bug Fixes
+- **(ci)** dispatch release.yml via workflow_dispatch for npm trusted publishing (#39) - (7d156d2) - Mark Fenderov
+
+- - -
+
 ## v3.3.1 - 2026-09-10
 #### Bug Fixes
 - **(harness)** harden Claude and OpenCode adapters and session capture - (25be793) - Mark Fenderov
