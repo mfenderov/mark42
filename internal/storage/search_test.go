@@ -232,3 +232,48 @@ func TestReadGraph(t *testing.T) {
 		t.Errorf("expected 1 relation in graph, got %d", len(graph.Relations))
 	}
 }
+
+func TestSearch_EmptyAndSpecialCharacters(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("SpecialChars", "test", []string{"testing symbols: !@#$%^&*() and \"quotes\""})
+
+	// Empty query returns empty without error
+	results, err := store.Search("")
+	if err != nil {
+		t.Fatalf("expected nil error for empty query, got: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty query, got %d", len(results))
+	}
+
+	// Whitespace query returns empty without error
+	results, err = store.Search("   \t\n  ")
+	if err != nil {
+		t.Fatalf("expected nil error for whitespace query, got: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for whitespace query, got %d", len(results))
+	}
+
+	// Query with special characters and quotes searches cleanly without syntax crash
+	results, err = store.Search("symbols: !@#$%^&*()")
+	if err != nil {
+		t.Fatalf("search with symbols failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+}
+
+func TestSearch_ClosedDBReturnsError(t *testing.T) {
+	store := newTestStore(t)
+	store.Close()
+
+	// When database is closed, search MUST return an error, never swallow it
+	_, err := store.Search("anything")
+	if err == nil {
+		t.Fatal("expected error on closed database, got nil")
+	}
+}

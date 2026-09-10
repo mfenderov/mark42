@@ -72,16 +72,30 @@ func (s *Store) HasEmbedding(observationID int64) (bool, error) {
 
 // VectorSearch finds observations similar to the query embedding.
 func (s *Store) VectorSearch(queryEmbedding []float64, limit int) ([]VectorResult, error) {
-	// Load all embeddings (for small knowledge graphs this is fine)
-	// For larger datasets, consider approximate nearest neighbor indices
-	rows, err := s.db.Query(`
+	return s.VectorSearchWithModel(queryEmbedding, limit, "")
+}
+
+// VectorSearchWithModel finds observations similar to the query embedding, optionally filtered by model.
+func (s *Store) VectorSearchWithModel(queryEmbedding []float64, limit int, model string) ([]VectorResult, error) {
+	querySQL := `
 		SELECT oe.observation_id, oe.embedding, o.content, e.name, e.entity_type
 		FROM observation_embeddings oe
 		JOIN observations o ON o.id = oe.observation_id
 		JOIN entities e ON e.id = o.entity_id
 		WHERE (o.valid_until IS NULL OR e.entity_type = 'session')
 		AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
-	`)
+	`
+	var args []any
+	if model != "" {
+		querySQL += " AND oe.model = ?"
+		args = append(args, model)
+	}
+	if len(queryEmbedding) > 0 {
+		querySQL += " AND oe.dimensions = ?"
+		args = append(args, len(queryEmbedding))
+	}
+
+	rows, err := s.db.Query(querySQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("loading embeddings: %w", err)
 	}

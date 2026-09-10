@@ -36,6 +36,12 @@ func DefaultRRFConfig() RRFConfig {
 	return RRFConfig{K: 60}
 }
 
+// ResultKey uniquely identifies an observation candidate during score fusion.
+type ResultKey struct {
+	EntityName string
+	Content    string
+}
+
 // FuseRRF combines results from multiple search strategies using Reciprocal Rank Fusion.
 //
 // The RRF formula: score(d) = Σ(1 / (k + rank(d)))
@@ -68,7 +74,7 @@ func FuseRRF(strategyResults map[string][]RankedItem, config RRFConfig) []FusedR
 		}
 	}
 
-	// Build unique document map using content as key
+	// Build unique document map using ResultKey
 	type fusedDoc struct {
 		EntityName   string
 		EntityType   string
@@ -78,15 +84,17 @@ func FuseRRF(strategyResults map[string][]RankedItem, config RRFConfig) []FusedR
 		FusionScore  float64
 	}
 
-	docScores := make(map[string]*fusedDoc)
+	docScores := make(map[ResultKey]*fusedDoc)
 
 	for source, results := range strategyResults {
 		for rank, result := range results {
-			// Use content as unique identifier
-			docID := result.Content
+			key := ResultKey{
+				EntityName: result.EntityName,
+				Content:    result.Content,
+			}
 
-			if _, exists := docScores[docID]; !exists {
-				docScores[docID] = &fusedDoc{
+			if _, exists := docScores[key]; !exists {
+				docScores[key] = &fusedDoc{
 					EntityName:   result.EntityName,
 					EntityType:   result.EntityType,
 					Content:      result.Content,
@@ -99,9 +107,9 @@ func FuseRRF(strategyResults map[string][]RankedItem, config RRFConfig) []FusedR
 			// rank starts at 1 for the first result
 			rrfScore := 1.0 / float64(k+rank+1)
 
-			docScores[docID].FusionScore += rrfScore
-			docScores[docID].SourceScores[source] = result.Score
-			docScores[docID].SourceRanks[source] = rank + 1
+			docScores[key].FusionScore += rrfScore
+			docScores[key].SourceScores[source] = result.Score
+			docScores[key].SourceRanks[source] = rank + 1
 		}
 	}
 
@@ -152,7 +160,7 @@ func FuseWeighted(strategyResults map[string][]RankedItem, config WeightedConfig
 		FusionScore  float64
 	}
 
-	docScores := make(map[string]*fusedDoc)
+	docScores := make(map[ResultKey]*fusedDoc)
 
 	for source, results := range strategyResults {
 		weight := config.Weights[source]
@@ -161,10 +169,13 @@ func FuseWeighted(strategyResults map[string][]RankedItem, config WeightedConfig
 		}
 
 		for _, result := range results {
-			docID := result.Content
+			key := ResultKey{
+				EntityName: result.EntityName,
+				Content:    result.Content,
+			}
 
-			if _, exists := docScores[docID]; !exists {
-				docScores[docID] = &fusedDoc{
+			if _, exists := docScores[key]; !exists {
+				docScores[key] = &fusedDoc{
 					EntityName:   result.EntityName,
 					EntityType:   result.EntityType,
 					Content:      result.Content,
@@ -172,8 +183,8 @@ func FuseWeighted(strategyResults map[string][]RankedItem, config WeightedConfig
 				}
 			}
 
-			docScores[docID].FusionScore += result.Score * weight
-			docScores[docID].SourceScores[source] = result.Score
+			docScores[key].FusionScore += result.Score * weight
+			docScores[key].SourceScores[source] = result.Score
 		}
 	}
 

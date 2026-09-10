@@ -150,3 +150,28 @@ func TestFuseWeighted_WithWeights(t *testing.T) {
 		t.Errorf("expected weighted score %f, got %f", expected, results[0].FusionScore)
 	}
 }
+
+func TestFuseRRF_DistinctEntitiesIdenticalObservation_MultiStrategy(t *testing.T) {
+	input := map[string][]RankedItem{
+		"fts": {
+			{EntityName: "ProjectA", EntityType: "project", Content: "uses Go", Score: 0.9},
+		},
+		"vector": {
+			{EntityName: "ProjectB", EntityType: "project", Content: "uses Go", Score: 0.85},
+		},
+	}
+
+	results := FuseRRF(input, DefaultRRFConfig())
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 distinct results for different entities across strategies, got %d", len(results))
+	}
+
+	entities := make(map[string]bool)
+	for _, r := range results {
+		entities[r.EntityName] = true
+	}
+	if !entities["ProjectA"] || !entities["ProjectB"] {
+		t.Errorf("expected both ProjectA and ProjectB to be preserved, got: %v", entities)
+	}
+}

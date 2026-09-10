@@ -163,6 +163,28 @@ func TestCentralityScore(t *testing.T) {
 	}
 }
 
+func TestCalculateEffectiveImportance(t *testing.T) {
+	decayConstant := 30.0
+
+	// 0 days elapsed -> 100% of base importance
+	score0 := storage.CalculateEffectiveImportance(1.0, 0, decayConstant)
+	if score0 != 1.0 {
+		t.Errorf("expected 1.0 for 0 days, got %f", score0)
+	}
+
+	// 30 days elapsed -> ~36.8% of base importance
+	score30 := storage.CalculateEffectiveImportance(1.0, 30.0, decayConstant)
+	if score30 < 0.35 || score30 > 0.38 {
+		t.Errorf("expected ~0.368 for 30 days, got %f", score30)
+	}
+
+	// Double execution (idempotence verification): calling it twice returns exact same value
+	score30Repeat := storage.CalculateEffectiveImportance(1.0, 30.0, decayConstant)
+	if score30 != score30Repeat {
+		t.Errorf("pure function not idempotent: %f != %f", score30, score30Repeat)
+	}
+}
+
 func TestCalculateImportance(t *testing.T) {
 	cfg := storage.DefaultImportanceConfig()
 
