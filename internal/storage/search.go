@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -23,8 +24,15 @@ func (s *Store) Search(query string) ([]*SearchResult, error) {
 
 // SearchWithLimit finds entities with a result limit.
 func (s *Store) SearchWithLimit(query string, limit int) ([]*SearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return []*SearchResult{}, nil
+	}
+
 	// Escape FTS5 special characters and prepare query
 	ftsQuery := prepareFTSQuery(query)
+	if ftsQuery == "\"\"" {
+		return []*SearchResult{}, nil
+	}
 
 	// Search both observations and entity names
 	// Union results and rank by BM25 score
@@ -58,11 +66,7 @@ func (s *Store) SearchWithLimit(query string, limit int) ([]*SearchResult, error
 		LIMIT ?
 	`, ftsQuery, ftsQuery, limit)
 	if err != nil {
-		// If FTS query fails (invalid syntax), return empty results
-		if strings.Contains(err.Error(), "fts5") {
-			return []*SearchResult{}, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("FTS search execution failed: %w", err)
 	}
 	defer rows.Close()
 

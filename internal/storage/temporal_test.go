@@ -227,6 +227,7 @@ func TestDetectAndExpireSuperseded_WithEmbedder(t *testing.T) {
 	obs := store.GetObservationWithID("Dev", oldContent)
 	if obs == nil {
 		t.Fatalf("observation not found")
+		return
 	}
 	// Store a high-similarity embedding for old content
 	if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
@@ -273,6 +274,7 @@ func TestDetectAndExpireSuperseded_BelowThreshold(t *testing.T) {
 	obs := store.GetObservationWithID("Dev2", oldContent)
 	if obs == nil {
 		t.Fatalf("observation not found")
+		return
 	}
 	// Orthogonal embedding: [0, 1, 0] vs query [1, 0, 0] → similarity 0
 	if err := store.StoreEmbedding(obs.ID, []float64{0.0, 1.0, 0.0}, "test"); err != nil {
@@ -323,6 +325,7 @@ func TestDetectAndExpireSuperseded_DoesNotExpireNewContentItself(t *testing.T) {
 	obs := store.GetObservationWithID("Dev3", content)
 	if obs == nil {
 		t.Fatalf("observation not found")
+		return
 	}
 	// Same embedding for both
 	if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
@@ -419,6 +422,7 @@ func TestDetectAndExpireSupersededBatch_ProtectsBatchMembers(t *testing.T) {
 	oldObs := store.GetObservationWithID("Dev", oldContent)
 	if oldObs == nil {
 		t.Fatal("old observation not found")
+		return
 	}
 	if err := store.StoreEmbedding(oldObs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
 		t.Fatalf("StoreEmbedding failed: %v", err)
@@ -434,6 +438,7 @@ func TestDetectAndExpireSupersededBatch_ProtectsBatchMembers(t *testing.T) {
 		obs := store.GetObservationWithID("Dev", content)
 		if obs == nil {
 			t.Fatalf("observation %q not found", content)
+			return
 		}
 		if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
 			t.Fatalf("StoreEmbedding failed: %v", err)

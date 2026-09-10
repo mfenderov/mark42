@@ -79,7 +79,7 @@ mark42 migrate --from /path/to/memory.json
      "mcpServers": {
        "memory": {
          "command": "mark42-server",
-         "args": ["--db", "~/.claude/memory.db"]
+         "args": ["--db", "~/.mark42/memory.db"]
        }
      }
    }
@@ -125,9 +125,9 @@ mark42 upgrade
 
 ```bash
 # Check current schema version
-sqlite3 ~/.claude/memory.db "SELECT * FROM goose_db_version ORDER BY id DESC LIMIT 1;"
+sqlite3 ~/.mark42/memory.db "SELECT * FROM goose_db_version ORDER BY id DESC LIMIT 1;"
 
-# Expected: version_id = 7 (current)
+# Expected: version_id = 11 (current)
 ```
 
 ### Schema Version History
@@ -141,6 +141,10 @@ sqlite3 ~/.claude/memory.db "SELECT * FROM goose_db_version ORDER BY id DESC LIM
 | 5 | Versioning columns |
 | 6 | Importance and decay columns |
 | 7 | Archive table |
+| 8 | Session fact types |
+| 9 | Access count tracking |
+| 10 | Temporal validity columns (valid_from, valid_until) |
+| 11 | Settings table for persisted configuration |
 
 ### Rolling Back
 
@@ -148,10 +152,10 @@ If you need to revert schema changes:
 
 ```bash
 # Backup first
-sqlite3 ~/.claude/memory.db ".backup memory_backup.db"
+sqlite3 ~/.mark42/memory.db ".backup memory_backup.db"
 
 # Downgrade using goose (advanced)
-goose -dir internal/storage/migrations sqlite3 ~/.claude/memory.db down
+goose -dir internal/storage/migrations sqlite3 ~/.mark42/memory.db down
 ```
 
 **Warning**: Downgrading may lose data in new columns/tables.
@@ -183,7 +187,7 @@ import (
 )
 
 func main() {
-    store, _ := storage.NewStore("~/.claude/memory.db")
+    store, _ := storage.NewStore("~/.mark42/memory.db")
     defer store.Close()
     store.Migrate()
 

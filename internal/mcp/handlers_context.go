@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -8,7 +9,7 @@ import (
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
-func (h *Handler) getRecentContext(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) getRecentContext(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input GetRecentContextInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -48,7 +49,7 @@ func (h *Handler) getRecentContext(args json.RawMessage) (*ToolCallResult, error
 	}, nil
 }
 
-func (h *Handler) summarizeEntity(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) summarizeEntity(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input SummarizeEntityInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -98,7 +99,7 @@ func (h *Handler) summarizeEntity(args json.RawMessage) (*ToolCallResult, error)
 	}, nil
 }
 
-func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) getContext(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input GetContextInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)

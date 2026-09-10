@@ -31,15 +31,15 @@ mark42 upgrade
 **Symptoms**: All operations fail, database appears corrupted.
 
 **Solution**:
-1. Back up the corrupted file: `cp ~/.claude/memory.db ~/.claude/memory.db.bak`
+1. Back up the corrupted file: `cp ~/.mark42/memory.db ~/.mark42/memory.db.bak`
 2. Attempt repair:
    ```bash
-   sqlite3 ~/.claude/memory.db ".recover" | sqlite3 ~/.claude/memory_new.db
-   mv ~/.claude/memory_new.db ~/.claude/memory.db
+   sqlite3 ~/.mark42/memory.db ".recover" | sqlite3 ~/.mark42/memory_new.db
+   mv ~/.mark42/memory_new.db ~/.mark42/memory.db
    ```
 3. If repair fails, delete and reinitialize:
    ```bash
-   rm ~/.claude/memory.db
+   rm ~/.mark42/memory.db
    mark42 init
    ```
 
@@ -58,7 +58,7 @@ INSERT INTO entities_fts(entities_fts) VALUES('rebuild');
 
 Or via sqlite3:
 ```bash
-sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALUES('rebuild');"
+sqlite3 ~/.mark42/memory.db "INSERT INTO observations_fts(observations_fts) VALUES('rebuild');"
 ```
 
 #### Hybrid search not finding semantic matches
@@ -103,7 +103,7 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
    ```
 3. Check database size:
    ```bash
-   ls -lh ~/.claude/memory.db
+   ls -lh ~/.mark42/memory.db
    ```
 
 #### High memory usage
@@ -114,30 +114,36 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 1. Use smaller limits: `--limit 10`
 2. Increase minimum importance threshold: `--min-importance 0.5`
 
-### Plugin/Hook Issues
+### MCP Server Issues
 
-#### SessionStart hook not loading context
+#### Server fails to start or connect
 
-**Symptoms**: No memory context injected at session start.
+**Symptoms**: Harness reports MCP connection failed or tool calls time out.
 
 **Checklist**:
-1. Database exists: `ls ~/.claude/memory.db`
-2. Binary is in PATH: `which mark42`
-3. Hook is executable: `ls -l ~/.claude-plugin/hooks/session-start.py`
-4. Check hook output manually:
-   ```bash
-   CLAUDE_PROJECT_DIR=$(pwd) python3 ~/.claude-plugin/hooks/session-start.py
-   ```
+1. Binary is installed and executable: `which mark42-server`
+2. Check standalone execution: `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mark42-server`
+3. Verify database permissions: `ls -la ~/.mark42/memory.db`
+4. Inspect configuration in `.mcp.json` or your IDE settings.
 
-#### "command not found: mark42"
+#### "command not found: mark42-server"
 
 **Solution**:
-1. Install binary: `make install`
+1. Install binaries: `make install-all`
 2. Add to PATH:
    ```bash
    export PATH="$HOME/bin:$PATH"
    ```
-3. Or specify full path in hooks
+3. Or specify absolute path in `.mcp.json`:
+   ```json
+   {
+     "mcpServers": {
+       "mark42": {
+         "command": "/absolute/path/to/bin/mark42-server"
+       }
+     }
+   }
+   ```
 
 ### Migration Issues
 
@@ -190,7 +196,7 @@ mark42 context --token-budget 3000 --min-importance 0.2
 mark42 stats
 
 # Check schema version
-sqlite3 ~/.claude/memory.db "SELECT * FROM goose_db_version;"
+sqlite3 ~/.mark42/memory.db "SELECT * FROM goose_db_version;"
 
 # Check embedding coverage
 mark42 embed stats
@@ -202,7 +208,7 @@ mark42 decay stats
 mark42 importance stats
 
 # List all tables
-sqlite3 ~/.claude/memory.db ".tables"
+sqlite3 ~/.mark42/memory.db ".tables"
 ```
 
 ## Getting Help

@@ -25,16 +25,16 @@ func NewStore(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Enable WAL mode for better concurrency
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+	// Configure SQLite concurrency, lock-waiting, and foreign keys
+	pragmas := `
+		PRAGMA journal_mode=WAL;
+		PRAGMA busy_timeout=5000;
+		PRAGMA synchronous=NORMAL;
+		PRAGMA foreign_keys=ON;
+	`
+	if _, err := db.Exec(pragmas); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+		return nil, fmt.Errorf("failed to configure SQLite pragmas: %w", err)
 	}
 
 	store := &Store{db: db, path: path}
@@ -42,6 +42,11 @@ func NewStore(path string) (*Store, error) {
 	if err := store.initSchema(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	if err := store.Migrate(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return store, nil

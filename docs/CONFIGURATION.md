@@ -2,11 +2,11 @@
 
 ## Database Location
 
-Default: `~/.claude/memory.db`
+Default: `~/.mark42/memory.db` (automatically falls back to `~/.claude/memory.db` if legacy file exists).
 
 Override with `--db` flag or environment variable:
 ```bash
-export CLAUDE_MEMORY_DB=/path/to/custom/memory.db
+export MARK42_DB=/path/to/custom/memory.db
 mark42 --db /path/to/custom/memory.db
 ```
 
@@ -14,7 +14,8 @@ mark42 --db /path/to/custom/memory.db
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_MEMORY_DB` | `~/.claude/memory.db` | Database file path |
+| `MARK42_DB` | `~/.mark42/memory.db` | Primary database file path |
+| `CLAUDE_MEMORY_DB` | `~/.claude/memory.db` | Legacy database file path fallback |
 | `CLAUDE_MEMORY_TOKEN_BUDGET` | `2000` | Max tokens for context injection |
 | `CLAUDE_MEMORY_MIN_IMPORTANCE` | `0.3` | Minimum importance score for context |
 | `CLAUDE_MEMORY_BOOST` | `1.5` | Score boost for project-matching memories |
@@ -143,26 +144,6 @@ mark42 importance recalculate
 mark42 importance stats
 ```
 
-## Plugin Configuration
-
-### Hook Environment
-
-Hooks receive these environment variables:
-- `CLAUDE_PROJECT_DIR`: Current working directory
-- `CLAUDE_PLUGIN_ROOT`: Plugin installation directory
-
-### Customizing Session Start
-
-Edit `.claude-plugin/hooks/session-start.py`:
-
-```python
-# Adjust token budget
-token_budget = int(os.environ.get("CLAUDE_MEMORY_TOKEN_BUDGET", "2000"))
-
-# Adjust boost factor
-boost_factor = os.environ.get("CLAUDE_MEMORY_BOOST", "1.5")
-```
-
 ## MCP Server Configuration
 
 For `.mcp.json`:
@@ -172,11 +153,18 @@ For `.mcp.json`:
   "mcpServers": {
     "mark42": {
       "command": "mark42-server",
-      "args": ["--db", "~/.claude/memory.db"]
+      "args": ["--db", "~/.mark42/memory.db"]
     }
   }
 }
 ```
+
+Environment variables supported by `mark42-server`:
+- `MARK42_DB`: SQLite database path (default: `~/.mark42/memory.db`, with legacy fallback to `~/.claude/memory.db`)
+- `CLAUDE_MEMORY_EMBEDDER_URL`: Ollama or OpenAI-compatible embedding API (default: `http://localhost:11434/v1`)
+- `CLAUDE_MEMORY_EMBEDDER_MODEL`: Embedding model name (default: `nomic-embed-text`)
+- `CLAUDE_MEMORY_TOKEN_BUDGET`: Default token budget for context retrieval (default: 2000)
+- `CLAUDE_MEMORY_BOOST`: Project boost factor for local context weighting (default: 1.5)
 
 ## Performance Tuning
 
@@ -184,13 +172,13 @@ For `.mcp.json`:
 
 ```bash
 # Increase WAL checkpoint frequency
-sqlite3 ~/.claude/memory.db "PRAGMA wal_checkpoint(TRUNCATE);"
+sqlite3 ~/.mark42/memory.db "PRAGMA wal_checkpoint(TRUNCATE);"
 
 # Analyze for query optimization
-sqlite3 ~/.claude/memory.db "ANALYZE;"
+sqlite3 ~/.mark42/memory.db "ANALYZE;"
 
 # Vacuum to reclaim space
-sqlite3 ~/.claude/memory.db "VACUUM;"
+sqlite3 ~/.mark42/memory.db "VACUUM;"
 ```
 
 ### For Slow Searches
@@ -205,16 +193,16 @@ sqlite3 ~/.claude/memory.db "VACUUM;"
 
 ```bash
 # Simple copy (while not in use)
-cp ~/.claude/memory.db ~/.claude/memory.db.backup
+cp ~/.mark42/memory.db ~/.mark42/memory.db.backup
 
 # Safe backup (handles active connections)
-sqlite3 ~/.claude/memory.db ".backup ~/.claude/memory.db.backup"
+sqlite3 ~/.mark42/memory.db ".backup ~/.mark42/memory.db.backup"
 ```
 
 ### Restore
 
 ```bash
-mv ~/.claude/memory.db.backup ~/.claude/memory.db
+mv ~/.mark42/memory.db.backup ~/.mark42/memory.db
 mark42 upgrade  # Ensure schema is current
 ```
 
@@ -222,7 +210,7 @@ mark42 upgrade  # Ensure schema is current
 
 1. **File Permissions**: Database should be readable only by owner
    ```bash
-   chmod 600 ~/.claude/memory.db
+   chmod 600 ~/.mark42/memory.db
    ```
 
 2. **Sensitive Data**: Avoid storing secrets in observations
@@ -231,5 +219,5 @@ mark42 upgrade  # Ensure schema is current
 
 3. **Backup Encryption**: Encrypt backups if they contain sensitive context
    ```bash
-   sqlite3 ~/.claude/memory.db ".backup /dev/stdout" | gpg -c > memory.db.gpg
+   sqlite3 ~/.mark42/memory.db ".backup /dev/stdout" | gpg -c > memory.db.gpg
    ```

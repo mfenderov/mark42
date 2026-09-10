@@ -151,3 +151,10 @@ func TestNewOllamaEmbeddingClient(t *testing.T) {
 		t.Errorf("expected Ollama base URL, got %q", client.baseURL)
 	}
 }
+
+func TestEmbeddingClient_DefaultTimeout(t *testing.T) {
+	client := NewEmbeddingClient("http://localhost:11434/v1")
+	if client.httpClient.Timeout == 0 {
+		t.Errorf("expected non-zero default timeout on httpClient, got 0")
+	}
+}

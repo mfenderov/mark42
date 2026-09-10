@@ -95,10 +95,34 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 }
 
-func getStore() (*storage.Store, error) {
+var storeFactory func() (*storage.Store, error) = defaultStoreFactory
+
+func defaultStoreFactory() (*storage.Store, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	return storage.NewStore(dbPath)
+}
+
+func getStore() (*storage.Store, error) {
+	if storeFactory != nil {
+		return storeFactory()
+	}
+	return defaultStoreFactory()
+}
+
+// SetStoreFactory overrides the store provider for testing.
+func SetStoreFactory(fn func() (*storage.Store, error)) {
+	storeFactory = fn
+}
+
+// SetOutput sets the output writer for testing.
+// Passing nil resets the output writer to os.Stdout.
+func SetOutput(w io.Writer) {
+	if w == nil {
+		out = os.Stdout
+		return
+	}
+	out = w
 }

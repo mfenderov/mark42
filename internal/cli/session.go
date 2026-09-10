@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -53,6 +54,16 @@ Input format:
 			return fmt.Errorf("failed to read JSON from stdin: %w", err)
 		}
 
+		if strings.TrimSpace(input.Summary) == "" {
+			return errors.New("invalid session capture payload: summary is required and cannot be empty")
+		}
+
+		for i, evt := range input.Events {
+			if strings.TrimSpace(evt.ToolName) == "" {
+				return fmt.Errorf("invalid session capture payload: event %d has missing or empty toolName", i)
+			}
+		}
+
 		session, err := store.CreateSession(args[0])
 		if err != nil {
 			return err
@@ -73,6 +84,17 @@ Input format:
 
 		if err := store.CompleteSession(session.Name, input.Summary); err != nil {
 			return err
+		}
+
+		jsonOutput, _ := cmd.Flags().GetBool("json")
+		if jsonOutput {
+			enc := json.NewEncoder(out)
+			return enc.Encode(map[string]any{
+				"sessionName": session.Name,
+				"status":      "completed",
+				"project":     args[0],
+				"events":      len(input.Events),
+			})
 		}
 
 		output(successStyle.Render("✓") + " Session captured: " + entityStyle.Render(session.Name))
@@ -191,7 +213,7 @@ var sessionRecallCmd = &cobra.Command{
 		}
 
 		formatted := storage.FormatSessionRecall(results)
-		print(formatted)
+		output(formatted)
 		return nil
 	},
 }
@@ -236,7 +258,23 @@ var distillCmd = &cobra.Command{
 	},
 }
 
+func getProjectDir() string {
+	if dir := os.Getenv("MARK42_PROJECT_DIR"); dir != "" {
+		return dir
+	}
+	if dir := os.Getenv("CLAUDE_PROJECT_DIR"); dir != "" {
+		return dir
+	}
+	dir, err := os.Getwd()
+	if err == nil {
+		return dir
+	}
+	return ""
+}
+
 func init() {
+	sessionCaptureCmd.Flags().Bool("json", false, "output captured session as JSON")
+
 	sessionListCmd.Flags().String("project", "", "filter by project name")
 	sessionListCmd.Flags().Int("limit", 20, "maximum number of sessions")
 

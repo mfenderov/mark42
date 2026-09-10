@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 )
 
 // Embedder generates vector embeddings for text.
@@ -37,9 +38,11 @@ func DefaultOllamaBaseURL() string {
 // NewEmbeddingClient creates an embedding client for the given base URL.
 func NewEmbeddingClient(baseURL string) *EmbeddingClient {
 	return &EmbeddingClient{
-		baseURL:    baseURL,
-		httpClient: &http.Client{},
-		model:      "nomic-embed-text",
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		model: "nomic-embed-text",
 	}
 }
 

@@ -1,14 +1,19 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 )
 
-func (h *Handler) getMemoryAnalytics(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) getMemoryAnalytics(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input GetMemoryAnalyticsInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	topN := input.TopN
@@ -31,7 +36,11 @@ func (h *Handler) getMemoryAnalytics(args json.RawMessage) (*ToolCallResult, err
 	}, nil
 }
 
-func (h *Handler) getTuningRecommendation() (*ToolCallResult, error) {
+func (h *Handler) getTuningRecommendation(ctx context.Context) (*ToolCallResult, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	recommendation, err := h.store.RecommendTuning()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tuning recommendation: %w", err)

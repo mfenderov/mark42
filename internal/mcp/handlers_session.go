@@ -1,16 +1,21 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
-func (h *Handler) captureSession(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) captureSession(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input CaptureSessionInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	session, err := h.store.CreateSession(input.ProjectName)
@@ -32,17 +37,21 @@ func (h *Handler) captureSession(args json.RawMessage) (*ToolCallResult, error) 
 	}
 
 	// Auto-embed the summary
-	h.embedObservations(session.Name, []string{input.Summary})
+	h.embedObservations(ctx, session.Name, []string{input.Summary})
 
 	return &ToolCallResult{
 		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Session captured: %s (%d events)", session.Name, len(input.Events))}},
 	}, nil
 }
 
-func (h *Handler) recallSessions(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) recallSessions(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input RecallSessionsInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	results, err := h.store.GetRecentSessionSummaries(input.ProjectName, input.Hours, input.TokenBudget)
