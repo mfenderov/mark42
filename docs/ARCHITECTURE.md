@@ -32,29 +32,39 @@ Single-file database storing the knowledge graph.
 **Schema:**
 
 ```sql
--- Core entities (nodes in the graph)
+-- Core entities (nodes in the graph, with versioning)
 CREATE TABLE entities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    supersedes_id INTEGER REFERENCES entities(id),
+    is_latest BOOLEAN DEFAULT 1,
+    version INTEGER DEFAULT 1,
+    container_tag TEXT
 );
 
 CREATE INDEX idx_entities_name ON entities(name);
 CREATE INDEX idx_entities_type ON entities(entity_type);
+CREATE INDEX idx_entities_latest ON entities(name, is_latest);
+CREATE INDEX idx_entities_container ON entities(container_tag);
 
--- Observations (properties attached to entities)
+-- Observations (properties attached to entities, with fact types and temporal validity)
 CREATE TABLE observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    UNIQUE(entity_id, content)  -- Prevent duplicate observations
+    fact_type TEXT DEFAULT 'dynamic',
+    importance REAL DEFAULT 1.0,
+    forget_after TIMESTAMP,
+    last_accessed TIMESTAMP,
+    valid_from TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    valid_until TIMESTAMP DEFAULT NULL
 );
 
 CREATE INDEX idx_observations_entity ON observations(entity_id);
+CREATE INDEX idx_observations_fact_type ON observations(fact_type);
 
 -- Relations (edges between entities)
 CREATE TABLE relations (
@@ -69,6 +79,17 @@ CREATE TABLE relations (
 
 CREATE INDEX idx_relations_from ON relations(from_entity_id);
 CREATE INDEX idx_relations_to ON relations(to_entity_id);
+
+-- Observation vector embeddings (stored as little-endian IEEE 754 binary blobs)
+CREATE TABLE observation_embeddings (
+    observation_id INTEGER PRIMARY KEY REFERENCES observations(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_embeddings_model ON observation_embeddings(model);
 
 -- Full-text search index on observations
 CREATE VIRTUAL TABLE observations_fts USING fts5(
@@ -102,12 +123,6 @@ CREATE VIRTUAL TABLE entities_fts USING fts5(
     content_rowid='id',
     tokenize='porter unicode61'
 );
-
--- Phase 2: Vector embeddings table (sqlite-vec)
--- CREATE VIRTUAL TABLE observation_embeddings USING vec0(
---     observation_id INTEGER PRIMARY KEY,
---     embedding FLOAT[384]  -- nomic-embed-text dimension
--- );
 ```
 
 ### 3. Search Engine
@@ -139,105 +154,122 @@ Hybrid search combining multiple strategies:
                     └───────────────────┘
 ```
 
-**Phase 1 (FTS5 only):**
-```sql
--- Search observations
-SELECT e.*, o.content, bm25(observations_fts) as score
-FROM observations_fts f
-JOIN observations o ON o.id = f.rowid
-JOIN entities e ON e.id = o.entity_id
-WHERE observations_fts MATCH ?
-ORDER BY score
-LIMIT 20;
+### 3. Search Engine
 
--- Search entity names
-SELECT e.*, bm25(entities_fts) as score
-FROM entities_fts f
-JOIN entities e ON e.id = f.rowid
-WHERE entities_fts MATCH ?
-ORDER BY score
-LIMIT 20;
+Hybrid search combining multiple strategies:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Search Query                            │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+       ┌───────────┐                   ┌───────────┐
+       │   FTS5    │                   │  Vector   │
+       │  (BM25)   │                   │ (cosine)  │
+       └───────────┘                   └───────────┘
+              │                               │
+              └───────────────┬───────────────┘
+                              ▼
+                    ┌───────────────────┐
+                    │  RRF Score Fusion │
+                    │      (k = 60)     │
+                    └───────────────────┘
+                              │
+                              ▼
+                    ┌───────────────────┐
+                    │  Ranked Results   │
+                    └───────────────────┘
 ```
 
-**Phase 2 (Hybrid):**
+**Keyword Search (FTS5 BM25):**
 ```sql
-WITH keyword_results AS (
-    SELECT o.entity_id, MIN(bm25(observations_fts)) as keyword_score
+WITH observation_matches AS (
+    SELECT DISTINCT o.entity_id, bm25(observations_fts) as score
     FROM observations_fts f
     JOIN observations o ON o.id = f.rowid
     WHERE observations_fts MATCH ?
-    GROUP BY o.entity_id
+    AND o.valid_until IS NULL
 ),
-vector_results AS (
-    SELECT observation_id, distance as vector_score
-    FROM observation_embeddings
-    WHERE embedding MATCH ? AND k = 50
+entity_matches AS (
+    SELECT e.id as entity_id, bm25(entities_fts) as score
+    FROM entities_fts f
+    JOIN entities e ON e.id = f.rowid
+    WHERE entities_fts MATCH ?
 ),
 combined AS (
-    SELECT
-        COALESCE(k.entity_id, o.entity_id) as entity_id,
-        COALESCE(k.keyword_score, 0) as keyword_score,
-        COALESCE(v.vector_score, 1) as vector_score
-    FROM keyword_results k
-    FULL OUTER JOIN (
-        SELECT o.entity_id, MIN(v.vector_score) as vector_score
-        FROM vector_results v
-        JOIN observations o ON o.id = v.observation_id
-        GROUP BY o.entity_id
-    ) v ON k.entity_id = v.entity_id
+    SELECT entity_id, MIN(score) as score
+    FROM (
+        SELECT entity_id, score FROM observation_matches
+        UNION ALL
+        SELECT entity_id, score FROM entity_matches
+    )
+    GROUP BY entity_id
 )
-SELECT e.*, c.keyword_score, c.vector_score,
-       (c.keyword_score * 0.3 + (1 - c.vector_score) * 0.7) as combined_score
+SELECT e.id, e.name, e.entity_type, e.created_at, c.score
 FROM combined c
 JOIN entities e ON e.id = c.entity_id
-ORDER BY combined_score DESC
-LIMIT 20;
+ORDER BY c.score
+LIMIT ?;
 ```
 
-### 4. Embedding Pipeline (Phase 2)
+**Vector Search (In-Process Pure Go):**
+Vectors are stored as IEEE 754 Little-Endian binary blobs in SQLite, decoded into Go memory, and scored via cosine similarity filtered by active model and dimensions:
+
+```sql
+SELECT oe.observation_id, oe.embedding, o.content, e.name, e.entity_type
+FROM observation_embeddings oe
+JOIN observations o ON o.id = oe.observation_id
+JOIN entities e ON e.id = o.entity_id
+WHERE (o.valid_until IS NULL OR e.entity_type = 'session')
+AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
+AND oe.model = ?
+AND oe.dimensions = ?;
+```
+
+**Score Fusion (Reciprocal Rank Fusion):**
+Results from keyword and semantic paths are combined using Reciprocal Rank Fusion ($k=60$) via typed `ResultKey{EntityName, Content}` identities to prevent cross-entity observation absorption:
+$$RRF(d) = \sum_{m \in \text{strategies}} \frac{1}{k + \text{rank}_m(d)}$$
+
+### 4. Embedding Pipeline
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Observation    │────▶│  Ollama API     │────▶│  sqlite-vec     │
-│  (text)         │     │  (embedding)    │     │  (storage)      │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+┌─────────────────┐     ┌───────────────────────┐     ┌────────────────────────┐
+│  Observation    │────▶│ Ollama / DMR Local API│────▶│ SQLite Embeddings BLOB │
+│  (text)         │     │ (nomic-embed-text)    │     │ (observation_embeddings│
+└─────────────────┘     └───────────────────────┘     └────────────────────────┘
 ```
 
-**Embedding model options:**
-
-| Model | Dimensions | Speed | Quality | Memory |
-|-------|------------|-------|---------|--------|
-| `nomic-embed-text` | 768 | Fast | Good | 274MB |
-| `mxbai-embed-large` | 1024 | Medium | Better | 670MB |
-| `all-minilm` | 384 | Fastest | Adequate | 46MB |
-
-**Recommendation**: Start with `nomic-embed-text` for balance of quality and speed.
+**Supported embedding endpoints:**
+- Ollama: `http://localhost:11434/v1` (default)
+- Docker Model Runner (DMR): `http://127.0.0.1:12434/engines/v1`
+- Custom OpenAI-compatible endpoints configured via `CLAUDE_MEMORY_EMBEDDER_URL`
 
 ## Data Flow
 
-### Create Entity
+### Create Entity / Observation
 
 ```
-1. Claude Code: mcp__memory__create_entities({entities: [...]})
-2. MCP Server: Parse request
+1. Harness: mcp__memory__create_entities({entities: [...]})
+2. MCP Server: Parse request and validate schema
 3. SQLite: INSERT INTO entities (name, entity_type) VALUES (?, ?)
-4. SQLite: INSERT INTO observations (entity_id, content) VALUES (?, ?)
-5. [Phase 2] Ollama: Generate embedding for each observation
-6. [Phase 2] SQLite: INSERT INTO observation_embeddings VALUES (?, ?)
-7. MCP Server: Return success response
+4. SQLite: INSERT INTO observations (entity_id, content, fact_type) VALUES (?, ?, ?)
+5. Triggers: SQLite triggers automatically update observations_fts and entities_fts
+6. [Auto-Embed]: Local embedding client generates vector embedding
+7. SQLite: INSERT INTO observation_embeddings VALUES (?, blob, model, dims)
+8. MCP Server: Return structured success response with itemized diagnostics
 ```
 
 ### Search Nodes
 
 ```
-1. Claude Code: mcp__memory__search_nodes({query: "..."})
+1. Harness: mcp__memory__search_nodes({query: "..."})
 2. MCP Server: Parse request
-3. SQLite: FTS5 MATCH query on observations_fts
-4. SQLite: FTS5 MATCH query on entities_fts
-5. [Phase 2] Ollama: Generate query embedding
-6. [Phase 2] SQLite: Vector similarity search
-7. MCP Server: Merge and rank results
-8. MCP Server: Return matched entities with observations
+3. Storage: Execute FTS5 BM25 search on virtual tables
+4. Storage: Generate query embedding and execute VectorSearchWithModel
+5. Storage: Fuse candidates using Reciprocal Rank Fusion (k=60)
+6. MCP Server: Return top-ranked entities with observation snippets
 ```
 
 ## File Structure
@@ -246,26 +278,41 @@ LIMIT 20;
 mark42/
 ├── README.md
 ├── docs/
-│   ├── ARCHITECTURE.md        # This file
-│   └── DESIGN_DECISIONS.md    # Rationale for choices
+│   ├── ARCHITECTURE.md        # Technical architecture and schema
+│   ├── DESIGN_DECISIONS.md    # Design rationale
+│   ├── CONFIGURATION.md       # Configuration options
+│   ├── MIGRATION_GUIDE.md     # Migration from JSON Memory MCP
+│   ├── TROUBLESHOOTING.md     # Diagnostic and recovery guide
+│   └── adr/                   # Architecture Decision Records
+│       ├── 0001-cancellation-and-timeouts.md
+│       ├── 0002-query-time-decay-projection.md
+│       └── 0003-consumer-driven-contracts-and-neutral-state.md
+├── schemas/
+│   └── session-capture.v1.json# Session capture JSON contract
 ├── cmd/
-│   └── server/
-│       └── main.go            # Entry point
+│   ├── memory/main.go         # CLI entry point
+│   └── server/main.go         # MCP server entry point (stdio)
 ├── internal/
-│   ├── mcp/
-│   │   ├── server.go          # MCP protocol handling
-│   │   ├── handlers.go        # Tool implementations
-│   │   └── types.go           # Request/response types
-│   ├── storage/
-│   │   ├── sqlite.go          # Database operations
-│   │   ├── schema.go          # Schema definitions
-│   │   └── migrations.go      # Schema migrations
-│   ├── search/
-│   │   ├── fts.go             # Full-text search
-│   │   ├── vector.go          # Vector search (Phase 2)
-│   │   └── hybrid.go          # Score fusion
-│   └── embedding/
-│       └── ollama.go          # Ollama client (Phase 2)
+│   ├── storage/               # SQLite storage, FTS5, embeddings, RRF fusion
+│   │   ├── store.go           # Lifecycle and schema
+│   │   ├── search.go          # FTS5 full-text search
+│   │   ├── vector.go          # Vector BLOB search & cosine similarity
+│   │   ├── fusion.go          # Reciprocal Rank Fusion (RRF)
+│   │   ├── embedding.go       # Ollama / DMR embedding client
+│   │   ├── temporal.go        # Bitemporal validity & superseding
+│   │   ├── importance.go      # Query-time decay & importance scoring
+│   │   └── migrations/        # Versioned Goose Go migrations (001-011)
+│   ├── mcp/                   # JSON-RPC 2.0 protocol and 20 tool handlers
+│   ├── cli/                   # Cobra commands, formatters, and flags
+│   ├── distill/               # Structural session distillation
+│   ├── state/                 # State management and Strangler Fig migration
+│   ├── paths/                 # Neutral path resolution (~/.mark42)
+│   └── adapter/claude/        # Claude Code hook adapter
+├── adapters/
+│   ├── opencode/              # OpenCode JS plugin adapter
+│   └── pi/                    # Pi MCP recall adapter
+├── hooks/
+│   └── hooks.json             # Hook configuration (session-start, stop, pre-compact)
 ├── go.mod
 ├── go.sum
 └── Makefile
@@ -273,21 +320,12 @@ mark42/
 
 ## Configuration
 
-```yaml
-# ~/.mark42/config.yaml (optional)
-database:
-  path: ~/.mark42/memory.db
+Configuration is managed through environment variables, CLI flags, and persisted settings:
 
-search:
-  fts_weight: 0.3        # Weight for keyword matches
-  vector_weight: 0.7     # Weight for semantic matches
-  max_results: 20
-
-embedding:
-  enabled: false         # Set true for Phase 2
-  model: nomic-embed-text
-  ollama_url: http://localhost:11434
-```
+- **Database Path**: `--db` flag, or `MARK42_DB` (primary) $\rightarrow$ `CLAUDE_MEMORY_DB` (legacy) $\rightarrow$ `~/.mark42/memory.db` (default).
+- **Embedding Endpoint**: `CLAUDE_MEMORY_EMBEDDER_URL` (or default local Ollama at `http://localhost:11434/v1`). Set to `disabled` to disable semantic search.
+- **Context Injection**: `CLAUDE_MEMORY_TOKEN_BUDGET` (default: 2000), `CLAUDE_MEMORY_BOOST` (default: 1.5).
+- **Persisted Settings**: SQLite `settings` table maintains configuration dynamically tuned via `mark42 analytics tune --apply`.
 
 ## Performance Considerations
 

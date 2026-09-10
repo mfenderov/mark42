@@ -123,6 +123,8 @@ mark42 search "testing patterns"
 echo '{"summary":"Built auth module","events":[...]}' | mark42 session capture my-project
 mark42 session list --project my-project
 mark42 session recall my-project --hours 72
+mark42 distill <session-name>  # Distill raw session events into structural summary
+mark42 path slug               # Output canonical project slug for current directory
 
 # Embeddings & search
 mark42 embed generate          # Generate vector embeddings via Ollama
@@ -147,6 +149,7 @@ mark42 analytics tune          # Usage-driven config suggestions (add --apply to
 | `mark42 hook session-start` | Session begins | Injects session recall + knowledge graph context |
 | `mark42 hook post-tool-use` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
 | `mark42 hook stop` | Session ends | Triggers `capture_session` + memory sync |
+| `mark42 hook pre-compact` | Before context compaction | Preserves memory context prior to conversation compaction |
 
 **opencode** — JS plugin adapter (`adapters/opencode/`), capture + recall. **pi** — MCP recall adapter (`adapters/pi/`), capture deferred.
 

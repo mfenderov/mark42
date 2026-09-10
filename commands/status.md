@@ -51,7 +51,7 @@ Show trigger mode from `.claude/mark42/config.json`.
 mark42 Status
 ====================
 
-Database: ~/.claude/memory.db
+Database: ~/.mark42/memory.db
   Entities:     32
   Observations: 273
   Relations:    38
