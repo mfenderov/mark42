@@ -99,7 +99,7 @@ jobs:
             git push origin main
             git push origin "$AFTER"
             echo "Triggering release workflow for $AFTER..."
-            gh workflow run release.yml --ref main -f tag="$AFTER"
+            gh workflow run release.yml --ref "$AFTER"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
