@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -21,9 +22,16 @@ import (
 var Version = "dev"
 
 func main() {
+	var dbFlag string
+	flag.StringVar(&dbFlag, "db", "", "path to SQLite database")
+	flag.Parse()
+
 	// Determine database path
 	home, _ := os.UserHomeDir()
 	dbPath := paths.ResolveDBPath(home)
+	if dbFlag != "" {
+		dbPath = paths.ResolvePath(dbFlag)
+	}
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
