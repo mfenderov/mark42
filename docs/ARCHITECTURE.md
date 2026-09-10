@@ -306,13 +306,7 @@ mark42/
 │   ├── cli/                   # Cobra commands, formatters, and flags
 │   ├── distill/               # Structural session distillation
 │   ├── state/                 # State management and Strangler Fig migration
-│   ├── paths/                 # Neutral path resolution (~/.mark42)
-│   └── adapter/claude/        # Claude Code hook adapter
-├── adapters/
-│   ├── opencode/              # OpenCode JS plugin adapter
-│   └── pi/                    # Pi MCP recall adapter
-├── hooks/
-│   └── hooks.json             # Hook configuration (session-start, stop, pre-compact)
+│   └── paths/                 # Neutral path resolution (~/.mark42)
 ├── go.mod
 ├── go.sum
 └── Makefile

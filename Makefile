@@ -1,4 +1,4 @@
-.PHONY: build build-server build-all test test-coverage crap run lint clean install install-plugin
+.PHONY: build build-server build-all test test-coverage crap run lint clean install install-server install-all
 
 BINARY=mark42
 SERVER=mark42-server
@@ -69,16 +69,7 @@ install-all: build-all
 	mkdir -p ~/bin
 	cp $(BINARY) $(SERVER) ~/bin/
 
-## Plugin Installation
-
-install-plugin: build-all
-	@echo "Installing mark42 plugin..."
-	mkdir -p bin/
-	cp $(BINARY) $(SERVER) bin/
-	@echo "Plugin binaries ready in bin/"
-	@echo "To complete installation, copy to ~/.claude/plugins/local/mark42/"
-
 ## Migration (from JSON Memory MCP)
 
 migrate:
-	./$(BINARY) migrate --from ~/.claude/memory.json --to ~/.claude/memory.db
+	./$(BINARY) migrate --from ~/.config/mark42/memory.json

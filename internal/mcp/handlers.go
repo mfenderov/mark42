@@ -106,7 +106,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "add_observations",
-			Description: "Add new observations to existing entities in the knowledge graph",
+			Description: "Add new observations to existing entities in the knowledge graph. Call this to proactively remember newly discovered project conventions, architectural decisions, and user preferences.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -219,7 +219,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "get_context",
-			Description: "Get memories optimized for context injection, ordered by importance and fact type",
+			Description: "Get memories optimized for context injection, ordered by importance and fact type. Call this at session start to retrieve project conventions, architecture rules, and user preferences.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -277,7 +277,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "capture_session",
-			Description: "Capture a completed session with summary and optional tool-use events for cross-session recall",
+			Description: "Capture a completed session or milestone with a summary and optional tool-use events. Call this when concluding a user task to preserve progress for future sessions.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -303,7 +303,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "recall_sessions",
-			Description: "Recall recent session summaries for a project to understand what was done in previous sessions",
+			Description: "Recall recent session summaries for a project to understand what was done in previous sessions and maintain cross-session continuity.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{

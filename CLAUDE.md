@@ -34,7 +34,6 @@ A local, privacy-first memory layer for AI coding harnesses, built on SQLite wit
 | `make install` | Install CLI binary to ~/bin |
 | `make install-server` | Install MCP server to ~/bin |
 | `make install-all` | Install both binaries to ~/bin |
-| `make install-plugin` | Build binaries to bin/ for plugin deployment |
 | `make migrate` | Migrate from JSON Memory MCP to SQLite |
 <!-- END AUTO-MANAGED -->
 
@@ -65,27 +64,19 @@ internal/
   │   ├── session.go   → Session capture & recall (sessions as entities)
   │   ├── migration.go → Goose migration runner
   │   └── migrations/  → Goose Go migrations
-  ├── mcp/             → MCP protocol implementation
+  ├── mcp/             → MCP protocol implementation (20 tools, JSON-RPC 2.0)
   │   ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
   │   └── handlers_*.go → Tool handlers, split by domain
-  ├── cli/             → Cobra command tree (entity, obs, rel, search, session, hook, ...)
-  ├── adapter/claude/  → Claude Code hook adapter (session-start, post-tool-use, stop)
+  ├── cli/             → Cobra command tree (entity, obs, rel, search, session, path, ...)
   ├── distill/         → Structural session distillation pipeline
   ├── paths/           → Neutral config paths (~/.mark42, legacy ~/.claude back-compat)
   └── state/           → Local run state
-adapters/
-  ├── opencode/        → opencode JS plugin adapter (capture + recall)
-  └── pi/              → pi adapter (MCP recall, capture deferred)
-.claude-plugin/
-  ├── plugin.json      → Plugin metadata
-  └── hooks.json       → Hook configuration (Go CLI commands)
-.mcp.json              → MCP server configuration
-agents/                → Specialized agents (memory-updater)
-skills/                → Skill definitions (memory-processor, codebase-analyzer)
-commands/              → Command documentation (init, status, sync, calibrate)
+schemas/
+  └── session-capture.v1.json → Session capture contract
+.mcp.json              → MCP server configuration example
 ```
 
-**Data flow**: Harness (Claude Code / pi / opencode) → MCP Server (stdio, JSON-RPC) or CLI hooks → Storage Layer → SQLite (FTS5 + embeddings)
+**Data flow**: Any AI Harness (Claude Code / Cursor / Windsurf / Pi / Cline) → MCP Server (stdio, JSON-RPC 2.0) → Storage Layer → SQLite (FTS5 + embeddings)
 
 **Storage patterns**:
 - **sqlx** for struct scanning (db tags, no manual Scan calls)
@@ -175,32 +166,13 @@ See `docs/ARCHITECTURE.md` for:
 
 ## Harness Integration
 
-The neutral core (`internal/storage`, `internal/mcp`, `internal/cli`) is harness-agnostic. Per-harness adapters are thin shims translating lifecycle events into `mark42` CLI calls and MCP recall (see `adapters/README.md`):
+`mark42` operates as a pure, universal MCP server (`mark42-server`). Rather than maintaining brittle, harness-specific plugin infrastructure and shell hooks, `mark42` integrates cleanly with any MCP-capable harness over standard JSON-RPC 2.0 stdio:
 
-- **Claude Code**: plugin (`.claude-plugin/`, agents, skills, commands) + Go hook adapter (`internal/adapter/claude/`)
-- **opencode**: JS plugin adapter (`adapters/opencode/`) — capture + recall
-- **pi**: MCP recall adapter (`adapters/pi/`) — recall-only, capture deferred
+- **Claude Code**: Add `mark42-server` to `.mcp.json` or `~/.claude.json`
+- **Cursor / Windsurf**: Add to IDE MCP settings as a stdio server
+- **Pi / OpenCode / Cline / Roo Code / Zed**: Add to MCP config
 
-Claude Code plugin components:
-
-**Agents** (specialized behavior):
-- `memory-updater.md` - Orchestrates CLAUDE.md updates and knowledge extraction
-
-**Skills** (reusable operations):
-- `memory-processor/SKILL.md` - Updates AUTO-MANAGED sections in CLAUDE.md
-- `codebase-analyzer/SKILL.md` - Analyzes code patterns and conventions
-
-**Commands** (user-facing):
-- `init.md` - Initialize plugin and database
-- `status.md` - Show memory system status
-- `sync.md` - Synchronize dirty files to memory
-- `calibrate.md` - Tune memory extraction parameters
-
-**Hooks** (lifecycle integration via Go CLI):
-- `mark42 hook session-start` - Injects session recall + knowledge graph context
-- `mark42 hook post-tool-use` - Tracks modified files + session events
-- `mark42 hook stop` - Triggers session capture + memory sync
-- `mark42 hook pre-compact` - Preserves memory context prior to conversation compaction
+Memory retrieval and capture happen natively through standard MCP tool invocations (`get_context`, `recall_sessions`, `add_observations`, `capture_session`).
 
 ## Key Files
 
@@ -209,10 +181,8 @@ Claude Code plugin components:
 - `internal/storage/store.go` - Database schema definitions and initialization
 - `internal/storage/search.go` - FTS5 search implementation (BM25 ranking)
 - `internal/mcp/handlers*.go` - MCP tool implementations (JSON-RPC handlers)
-- `internal/cli/` - Cobra command tree (entity, obs, rel, search, session, hooks)
-- `internal/adapter/claude/` - Claude Code hook adapter
+- `internal/cli/` - Cobra command tree (entity, obs, rel, search, session, paths)
 - `internal/distill/` - Structural session distillation pipeline
-- `adapters/` - Per-harness adapters (opencode, pi)
 - `cmd/server/main.go` - MCP server entry point (stdio communication)
 - `Makefile` - Build commands with version tagging
 - `.gitignore` - Excludes binary, test.db, coverage reports, IDE files

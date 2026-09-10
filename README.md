@@ -19,32 +19,63 @@ AI coding sessions are ephemeral. Whether you're working in Claude Code, pi, or 
 - **Session capture & recall** for cross-session continuity
 - **MCP interface + harness adapters** for Claude Code, pi, and opencode
 
-## Installation
+## Installation & Setup
+
+Build the server binary or install it to `~/bin`:
 
 ```bash
-claude plugin install mark42@mark42
+make install-server   # Installs mark42-server to ~/bin
 ```
 
-That's it. The MCP server registers automatically. The binary downloads on first Claude Code start (~30s one-time). All subsequent starts are instant.
+### Connect to Any AI Coding Harness
 
-### Updating
+`mark42` communicates over standard stdio JSON-RPC 2.0 via the Model Context Protocol. Add `mark42-server` to your tool's MCP configuration:
 
-```bash
-claude plugin update mark42@mark42
+#### Claude Code (`~/.claude.json` or `.mcp.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
 ```
 
-### Migration from brew
-
-If you previously installed via brew:
-
-```bash
-claude mcp remove mark42 --scope user
-claude plugin install mark42@mark42
+#### Cursor (`~/.cursor/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
 ```
 
-### Other harnesses
+#### Windsurf (`~/.codeium/windsurf/mcp_config.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
+```
 
-mark42 is harness-agnostic. See [`adapters/`](adapters/README.md) for setup: opencode (JS plugin, capture + recall) and pi (MCP recall, capture deferred).
+#### Pi (`~/.config/mcp/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
+```
+
+No external plugins, hooks, or language-specific adapters required. Memory is automatically available in any tool supporting MCP.
 
 ## Architecture
 
@@ -139,19 +170,6 @@ mark42 context --project my-project  # Preview context injection output
 mark42 analytics               # Dashboard: overview, decay curve, hotspots, activity
 mark42 analytics tune          # Usage-driven config suggestions (add --apply to persist)
 ```
-
-## Harness Integration
-
-**Claude Code** — plugin hooks for automatic memory management:
-
-| Hook | Trigger | Action |
-|------|---------|--------|
-| `mark42 hook session-start` | Session begins | Injects session recall + knowledge graph context |
-| `mark42 hook post-tool-use` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
-| `mark42 hook stop` | Session ends | Triggers `capture_session` + memory sync |
-| `mark42 hook pre-compact` | Before context compaction | Preserves memory context prior to conversation compaction |
-
-**opencode** — JS plugin adapter (`adapters/opencode/`), capture + recall. **pi** — MCP recall adapter (`adapters/pi/`), capture deferred.
 
 ## Analytics
 
