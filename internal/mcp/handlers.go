@@ -358,7 +358,7 @@ func (h *Handler) Tools() []Tool {
 }
 
 // toolDispatch maps tool names to handler methods (method expressions).
-var toolDispatch = map[string]func(*Handler, json.RawMessage) (*ToolCallResult, error){
+var toolDispatch = map[string]func(*Handler, context.Context, json.RawMessage) (*ToolCallResult, error){
 	"create_entities":           (*Handler).createEntities,
 	"create_or_update_entities": (*Handler).createOrUpdateEntities,
 	"create_relations":          (*Handler).createRelations,
@@ -366,25 +366,32 @@ var toolDispatch = map[string]func(*Handler, json.RawMessage) (*ToolCallResult, 
 	"delete_entities":           (*Handler).deleteEntities,
 	"delete_observations":       (*Handler).deleteObservations,
 	"delete_relations":          (*Handler).deleteRelations,
-	"read_graph":                func(h *Handler, _ json.RawMessage) (*ToolCallResult, error) { return h.readGraph() },
-	"search_nodes":              (*Handler).searchNodes,
-	"open_nodes":                (*Handler).openNodes,
-	"get_context":               (*Handler).getContext,
-	"get_recent_context":        (*Handler).getRecentContext,
-	"summarize_entity":          (*Handler).summarizeEntity,
-	"consolidate_memories":      (*Handler).consolidateMemories,
-	"capture_session":           (*Handler).captureSession,
-	"recall_sessions":           (*Handler).recallSessions,
-	"invalidate_observation":    (*Handler).invalidateObservation,
-	"get_entity_history":        (*Handler).getEntityHistory,
-	"get_memory_analytics":      (*Handler).getMemoryAnalytics,
-	"get_tuning_recommendation": func(h *Handler, _ json.RawMessage) (*ToolCallResult, error) { return h.getTuningRecommendation() },
+	"read_graph": func(h *Handler, ctx context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		return h.readGraph(ctx)
+	},
+	"search_nodes":           (*Handler).searchNodes,
+	"open_nodes":             (*Handler).openNodes,
+	"get_context":            (*Handler).getContext,
+	"get_recent_context":     (*Handler).getRecentContext,
+	"summarize_entity":       (*Handler).summarizeEntity,
+	"consolidate_memories":   (*Handler).consolidateMemories,
+	"capture_session":        (*Handler).captureSession,
+	"recall_sessions":        (*Handler).recallSessions,
+	"invalidate_observation": (*Handler).invalidateObservation,
+	"get_entity_history":     (*Handler).getEntityHistory,
+	"get_memory_analytics":   (*Handler).getMemoryAnalytics,
+	"get_tuning_recommendation": func(h *Handler, ctx context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		return h.getTuningRecommendation(ctx)
+	},
 }
 
 // CallToolContext executes the named tool with the given context and arguments.
 func (h *Handler) CallToolContext(ctx context.Context, name string, args json.RawMessage) (*ToolCallResult, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	if fn, ok := toolDispatch[name]; ok {
-		return fn(h, args)
+		return fn(h, ctx, args)
 	}
 	return nil, fmt.Errorf("unknown tool: %s", name)
 }

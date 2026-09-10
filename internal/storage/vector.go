@@ -89,7 +89,8 @@ func (s *Store) VectorSearchWithModel(queryEmbedding []float64, limit int, model
 	if model != "" {
 		querySQL += " AND oe.model = ?"
 		args = append(args, model)
-	} else if len(queryEmbedding) > 0 {
+	}
+	if len(queryEmbedding) > 0 {
 		querySQL += " AND oe.dimensions = ?"
 		args = append(args, len(queryEmbedding))
 	}

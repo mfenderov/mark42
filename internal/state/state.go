@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,12 +43,12 @@ func MigrateLegacyState(projectDir string) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("reading legacy state dir: %w", err)
 	}
 
 	targetDir := Dir(projectDir)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("creating target state dir: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -56,14 +57,24 @@ func MigrateLegacyState(projectDir string) error {
 		}
 		src := filepath.Join(legacy, entry.Name())
 		dst := filepath.Join(targetDir, entry.Name())
-
-		// Only copy if destination does not already exist
-		if _, err := os.Stat(dst); os.IsNotExist(err) {
-			data, err := os.ReadFile(src)
-			if err == nil {
-				_ = os.WriteFile(dst, data, 0o644)
-			}
+		if err := migrateStateFile(src, dst); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func migrateStateFile(src, dst string) error {
+	if _, err := os.Stat(dst); os.IsNotExist(err) {
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("reading legacy state file %s: %w", src, err)
+		}
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return fmt.Errorf("writing migrated state file %s: %w", dst, err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("stat destination state file %s: %w", dst, err)
 	}
 	return nil
 }

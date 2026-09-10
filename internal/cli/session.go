@@ -58,6 +58,12 @@ Input format:
 			return errors.New("invalid session capture payload: summary is required and cannot be empty")
 		}
 
+		for i, evt := range input.Events {
+			if strings.TrimSpace(evt.ToolName) == "" {
+				return fmt.Errorf("invalid session capture payload: event %d has missing or empty toolName", i)
+			}
+		}
+
 		session, err := store.CreateSession(args[0])
 		if err != nil {
 			return err

@@ -118,6 +118,11 @@ func SetStoreFactory(fn func() (*storage.Store, error)) {
 }
 
 // SetOutput sets the output writer for testing.
+// Passing nil resets the output writer to os.Stdout.
 func SetOutput(w io.Writer) {
+	if w == nil {
+		out = os.Stdout
+		return
+	}
 	out = w
 }

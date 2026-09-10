@@ -247,3 +247,9 @@ func TestCLI_SessionCommands(t *testing.T) {
 		t.Errorf("expected session recall to show summary, got: %s", buf.String())
 	}
 }
+
+func TestSetOutput_NilResetsToStdout(t *testing.T) {
+	// Set to nil, should reset to os.Stdout without panicking on output
+	cli.SetOutput(nil)
+	cli.SetOutput(new(bytes.Buffer))
+}

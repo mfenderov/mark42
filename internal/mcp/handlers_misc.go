@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -8,7 +9,7 @@ import (
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
-func (h *Handler) readGraph() (*ToolCallResult, error) {
+func (h *Handler) readGraph(_ context.Context) (*ToolCallResult, error) {
 	graph, err := h.store.ReadGraph()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read graph: %w", err)
@@ -24,7 +25,7 @@ func (h *Handler) readGraph() (*ToolCallResult, error) {
 	}, nil
 }
 
-func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) consolidateMemories(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input ConsolidateMemoriesInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -58,7 +59,7 @@ func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, er
 	}, nil
 }
 
-func (h *Handler) invalidateObservation(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) invalidateObservation(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input InvalidateObservationInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -73,7 +74,7 @@ func (h *Handler) invalidateObservation(args json.RawMessage) (*ToolCallResult, 
 	}, nil
 }
 
-func (h *Handler) getEntityHistory(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) getEntityHistory(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input GetEntityHistoryInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)

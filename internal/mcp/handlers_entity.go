@@ -10,7 +10,7 @@ import (
 	"github.com/mfenderov/mark42/internal/storage"
 )
 
-func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) createEntities(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input CreateEntitiesInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -27,9 +27,9 @@ func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) 
 		} else {
 			created = append(created, entity.Name)
 		}
-		h.embedObservations(e.Name, e.Observations)
+		h.embedObservations(ctx, e.Name, e.Observations)
 		if e.EntityType != "session" {
-			h.autoDetectSuperseded(e.Name, e.Observations, storage.FactTypeDynamic)
+			h.autoDetectSuperseded(ctx, e.Name, e.Observations, storage.FactTypeDynamic)
 		}
 	}
 
@@ -38,7 +38,7 @@ func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) 
 	}, nil
 }
 
-func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) createOrUpdateEntities(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input CreateEntitiesInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -51,9 +51,9 @@ func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult,
 			results = append(results, fmt.Sprintf("Error: %s - %v", e.Name, err))
 		} else {
 			results = append(results, fmt.Sprintf("%s (v%d)", entity.Name, entity.Version))
-			h.embedObservations(e.Name, e.Observations)
+			h.embedObservations(ctx, e.Name, e.Observations)
 			if e.EntityType != "session" {
-				h.autoDetectSuperseded(e.Name, e.Observations, storage.FactTypeDynamic)
+				h.autoDetectSuperseded(ctx, e.Name, e.Observations, storage.FactTypeDynamic)
 			}
 		}
 	}
@@ -63,7 +63,7 @@ func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult,
 	}, nil
 }
 
-func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) addObservations(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input AddObservationsInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -93,8 +93,8 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 				errs = append(errs, fmt.Sprintf("%s: %q: %v", obs.EntityName, content, err))
 			}
 		}
-		h.embedObservations(obs.EntityName, addedContents)
-		h.autoDetectSuperseded(obs.EntityName, addedContents, factType)
+		h.embedObservations(ctx, obs.EntityName, addedContents)
+		h.autoDetectSuperseded(ctx, obs.EntityName, addedContents, factType)
 	}
 
 	msg := fmt.Sprintf("Added %d observations", added)
@@ -107,7 +107,7 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 	}, nil
 }
 
-func (h *Handler) deleteEntities(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) deleteEntities(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input DeleteEntitiesInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -133,7 +133,7 @@ func (h *Handler) deleteEntities(args json.RawMessage) (*ToolCallResult, error) 
 	}, nil
 }
 
-func (h *Handler) deleteObservations(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) deleteObservations(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input DeleteObservationsInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -161,8 +161,8 @@ func (h *Handler) deleteObservations(args json.RawMessage) (*ToolCallResult, err
 	}, nil
 }
 
-func (h *Handler) autoDetectSuperseded(entityName string, contents []string, factType storage.FactType) {
-	if h.embedder == nil {
+func (h *Handler) autoDetectSuperseded(ctx context.Context, entityName string, contents []string, factType storage.FactType) {
+	if h.embedder == nil || ctx.Err() != nil {
 		return
 	}
 	if isSessionFactType(factType) {
@@ -176,16 +176,19 @@ func (h *Handler) autoDetectSuperseded(entityName string, contents []string, fac
 	}
 }
 
-func (h *Handler) embedObservations(entityName string, contents []string) {
-	if h.embedder == nil {
+func (h *Handler) embedObservations(ctx context.Context, entityName string, contents []string) {
+	if h.embedder == nil || ctx.Err() != nil {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	loggedWarning := false
 	for _, content := range contents {
+		if ctx.Err() != nil {
+			return
+		}
 		embedding, err := h.embedder.CreateEmbedding(ctx, content)
 		if err != nil {
 			if !loggedWarning {

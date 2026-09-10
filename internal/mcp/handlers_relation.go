@@ -1,12 +1,13 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
 
-func (h *Handler) createRelations(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) createRelations(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input CreateRelationsInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -32,7 +33,7 @@ func (h *Handler) createRelations(args json.RawMessage) (*ToolCallResult, error)
 	}, nil
 }
 
-func (h *Handler) deleteRelations(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) deleteRelations(_ context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input DeleteRelationsInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)

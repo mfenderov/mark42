@@ -92,6 +92,7 @@ func TestHandler_ToolsSchemaConstraints(t *testing.T) {
 	obsItems := addObs.InputSchema.Properties["observations"].Items
 	if obsItems == nil {
 		t.Fatal("observations items is nil")
+		return
 	}
 	factTypeProp := obsItems.Properties["factType"]
 	if len(factTypeProp.Enum) == 0 {
@@ -203,6 +204,7 @@ func TestHandler_CreateEntities(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			if len(result.Content) == 0 {
@@ -333,6 +335,7 @@ func TestHandler_CreateOrUpdateEntities(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			if len(result.Content) == 0 {
@@ -460,6 +463,7 @@ func TestHandler_CreateRelations(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			// Check response text contains count
@@ -918,6 +922,7 @@ func TestHandler_ReadGraph(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			if len(result.Content) == 0 {
@@ -1001,6 +1006,7 @@ func TestHandler_SearchNodes(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			// Result should be valid JSON array
@@ -1177,6 +1183,7 @@ func TestHandler_OpenNodes(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			// Parse and verify entity count
@@ -2204,5 +2211,21 @@ func TestHandler_BulkDiagnostics_SurfacesErrors(t *testing.T) {
 	}
 	if !strings.Contains(res.Content[0].Text, "failed:") {
 		t.Errorf("expected failure diagnostics in delete_observations response, got: %s", res.Content[0].Text)
+	}
+}
+
+func TestHandler_CallToolContext_PropagatesCancellation(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := handler.CallToolContext(ctx, "search_nodes", json.RawMessage(`{"query":"test"}`))
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+	if err != context.Canceled {
+		t.Errorf("expected context.Canceled error, got: %v", err)
 	}
 }

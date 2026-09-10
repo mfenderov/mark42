@@ -257,6 +257,27 @@ func TestVectorSearch_ModelPartitioning(t *testing.T) {
 	if results[0].EntityName != "EntityV2" {
 		t.Errorf("expected EntityV2, got %s", results[0].EntityName)
 	}
+
+	// Entity 3: same model ("model-v2") but different dimension (3D instead of 2D)
+	e3, err := store.CreateEntity("EntityV2_3D", "test", []string{"v2 3D content"})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+	id3, _ := store.getObservationID(e3.ID, "v2 3D content")
+	if err := store.StoreEmbedding(id3, []float64{0.9, 0.1, 0.0}, "model-v2"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	// Query with 2D embedding and model-v2 should filter out EntityV2_3D due to dimension constraint
+	results, err = store.VectorSearchWithModel([]float64{0.9, 0.1}, 10, "model-v2")
+	if err != nil {
+		t.Fatalf("VectorSearchWithModel failed: %v", err)
+	}
+	for _, r := range results {
+		if r.EntityName == "EntityV2_3D" {
+			t.Errorf("expected EntityV2_3D to be excluded due to dimension mismatch, but was included")
+		}
+	}
 }
 
 func TestHasEmbedding(t *testing.T) {
@@ -383,6 +404,7 @@ func TestGetObservationsWithoutEmbeddings(t *testing.T) {
 	target := store.GetObservationWithID("embed-check", "already embedded")
 	if target == nil {
 		t.Fatal("observation not found")
+		return
 	}
 	if err := store.StoreEmbedding(target.ID, []float64{0.1, 0.2}, "test"); err != nil {
 		t.Fatalf("StoreEmbedding: %v", err)

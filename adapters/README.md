@@ -68,7 +68,7 @@ for a working reference):
      mark42 session capture my-project
    ```
 
-   with JSON on stdin validated against `schemas/session-capture.v1.json`:
+   with JSON on stdin adhering to `schemas/session-capture.v1.json`:
 
    ```json
    {
@@ -81,9 +81,10 @@ for a working reference):
    }
    ```
 
-   `summary` (string, required) and `events[]` (objects with `toolName` + optional
-   `filePath`, `command`, `timestamp`) is the validated schema. Any validation
-   failure will return an exit code 1 with descriptive error text on stderr.
+   `summary` (string, required) and `events[]` (objects with required `toolName` + optional
+   `filePath`, `command`, `timestamp`). The CLI validates that `summary` is non-empty and
+   every event has a non-blank `toolName`, failing with exit code 1 and a descriptive error
+   on stderr if violated.
 
 3. **Distill** — after capture exits, read
    `~/.mark42/state/<slug>/current-session` for the session name, then spawn:
