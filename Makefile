@@ -60,9 +60,11 @@ clean:
 ## Install
 
 install: build
+	mkdir -p ~/bin
 	cp $(BINARY) ~/bin/
 
 install-server: build-server
+	mkdir -p ~/bin
 	cp $(SERVER) ~/bin/
 
 install-all: build-all
@@ -71,5 +73,5 @@ install-all: build-all
 
 ## Migration (from JSON Memory MCP)
 
-migrate:
+migrate: build
 	./$(BINARY) migrate --from ~/.config/mark42/memory.json

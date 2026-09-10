@@ -16,10 +16,11 @@ mark42 --db /path/to/custom/memory.db
 |----------|---------|-------------|
 | `MARK42_DB` | `~/.mark42/memory.db` | Primary database file path |
 | `CLAUDE_MEMORY_DB` | `~/.claude/memory.db` | Legacy database file path fallback |
-| `CLAUDE_MEMORY_TOKEN_BUDGET` | `2000` | Max tokens for context injection |
-| `CLAUDE_MEMORY_MIN_IMPORTANCE` | `0.3` | Minimum importance score for context |
-| `CLAUDE_MEMORY_BOOST` | `1.5` | Score boost for project-matching memories |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama API URL |
+| `CLAUDE_MEMORY_EMBEDDER_URL` | `http://localhost:11434/v1` | OpenAI/Ollama-compatible embedding API endpoint |
+| `MARK42_PROJECT_DIR` | (none) | Project directory for CLI session capture |
+| `CLAUDE_PROJECT_DIR` | (none) | Legacy fallback project directory |
+
+Context injection budgets and thresholds are specified dynamically via MCP tool parameters (e.g. `tokenBudget`, `minImportance` in `get_context`) and persisted settings in the `settings` table (tuned via `mark42 analytics tune --apply`).
 
 ## Ollama Configuration
 
@@ -153,7 +154,9 @@ For `.mcp.json`:
   "mcpServers": {
     "mark42": {
       "command": "mark42-server",
-      "args": ["--db", "~/.mark42/memory.db"]
+      "env": {
+        "MARK42_DB": "/path/to/custom/memory.db"
+      }
     }
   }
 }
@@ -161,10 +164,8 @@ For `.mcp.json`:
 
 Environment variables supported by `mark42-server`:
 - `MARK42_DB`: SQLite database path (default: `~/.mark42/memory.db`, with legacy fallback to `~/.claude/memory.db`)
-- `CLAUDE_MEMORY_EMBEDDER_URL`: Ollama or OpenAI-compatible embedding API (default: `http://localhost:11434/v1`)
-- `CLAUDE_MEMORY_EMBEDDER_MODEL`: Embedding model name (default: `nomic-embed-text`)
-- `CLAUDE_MEMORY_TOKEN_BUDGET`: Default token budget for context retrieval (default: 2000)
-- `CLAUDE_MEMORY_BOOST`: Project boost factor for local context weighting (default: 1.5)
+- `CLAUDE_MEMORY_DB`: Legacy fallback database file path
+- `CLAUDE_MEMORY_EMBEDDER_URL`: Ollama or OpenAI-compatible embedding API (default: `http://localhost:11434/v1`; set to `disabled` to run without vector embeddings)
 
 ## Performance Tuning
 

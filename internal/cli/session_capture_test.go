@@ -136,3 +136,37 @@ func TestSessionCapture_JSONFlag(t *testing.T) {
 		t.Errorf("expected non-empty sessionName in JSON output")
 	}
 }
+
+func TestSessionCapture_DoesNotWriteCurrentSessionWithoutEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MARK42_PROJECT_DIR", "")
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+
+	tmpDir := t.TempDir()
+	testDBPath := filepath.Join(tmpDir, "test_no_env.db")
+	oldDBPath := dbPath
+	dbPath = testDBPath
+	defer func() { dbPath = oldDBPath }()
+
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	w.WriteString(`{"summary":"valid summary","events":[]}`)
+	w.Close()
+	defer func() { os.Stdin = oldStdin }()
+
+	var buf bytes.Buffer
+	oldOut := out
+	out = &buf
+	defer func() { out = oldOut }()
+
+	if err := sessionCaptureCmd.RunE(sessionCaptureCmd, []string{"testproject"}); err != nil {
+		t.Fatalf("capture failed: %v", err)
+	}
+
+	stateDir := filepath.Join(home, ".mark42", "state")
+	if entries, err := os.ReadDir(stateDir); err == nil && len(entries) > 0 {
+		t.Errorf("expected no state written when project env is unset, found entries in %s", stateDir)
+	}
+}

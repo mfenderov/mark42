@@ -316,9 +316,9 @@ mark42/
 
 Configuration is managed through environment variables, CLI flags, and persisted settings:
 
-- **Database Path**: `--db` flag, or `MARK42_DB` (primary) $\rightarrow$ `CLAUDE_MEMORY_DB` (legacy) $\rightarrow$ `~/.mark42/memory.db` (default).
+- **Database Path**: `--db` flag (CLI), or `MARK42_DB` (primary) $\rightarrow$ `CLAUDE_MEMORY_DB` (legacy) $\rightarrow$ `~/.mark42/memory.db` (default).
 - **Embedding Endpoint**: `CLAUDE_MEMORY_EMBEDDER_URL` (or default local Ollama at `http://localhost:11434/v1`). Set to `disabled` to disable semantic search.
-- **Context Injection**: `CLAUDE_MEMORY_TOKEN_BUDGET` (default: 2000), `CLAUDE_MEMORY_BOOST` (default: 1.5).
+- **Context Injection**: Configured via MCP tool parameters (`tokenBudget`, `minImportance`, `project`) and persisted settings in the `settings` table.
 - **Persisted Settings**: SQLite `settings` table maintains configuration dynamically tuned via `mark42 analytics tune --apply`.
 
 ## Performance Considerations

@@ -17,14 +17,14 @@ AI coding sessions are ephemeral. Whether you're working in Claude Code, pi, or 
 - **Vector search** (Ollama embeddings) for semantic retrieval
 - **Hybrid ranking** (RRF fusion) combining both approaches
 - **Session capture & recall** for cross-session continuity
-- **MCP interface + harness adapters** for Claude Code, pi, and opencode
+- **Standard MCP interface** compatible with Claude Code, Cursor, Windsurf, Pi, and any MCP client
 
 ## Installation & Setup
 
 Build the server binary or install it to `~/bin`:
 
 ```bash
-make install-server   # Installs mark42-server to ~/bin
+mkdir -p ~/bin && make install-server   # Installs mark42-server to ~/bin
 ```
 
 ### Connect to Any AI Coding Harness
