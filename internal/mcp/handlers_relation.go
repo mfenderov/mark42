@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 func (h *Handler) createRelations(args json.RawMessage) (*ToolCallResult, error) {
@@ -12,14 +13,22 @@ func (h *Handler) createRelations(args json.RawMessage) (*ToolCallResult, error)
 	}
 
 	var created int
+	var errs []string
 	for _, r := range input.Relations {
 		if err := h.store.CreateRelation(r.From, r.To, r.RelationType); err == nil {
 			created++
+		} else {
+			errs = append(errs, fmt.Sprintf("%s -> %s (%s): %v", r.From, r.To, r.RelationType, err))
 		}
 	}
 
+	msg := fmt.Sprintf("Created %d relations", created)
+	if len(errs) > 0 {
+		msg += fmt.Sprintf(" (failed: %s)", strings.Join(errs, "; "))
+	}
+
 	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Created %d relations", created)}},
+		Content: []ContentBlock{{Type: "text", Text: msg}},
 	}, nil
 }
 
@@ -30,13 +39,21 @@ func (h *Handler) deleteRelations(args json.RawMessage) (*ToolCallResult, error)
 	}
 
 	var deleted int
+	var errs []string
 	for _, r := range input.Relations {
 		if err := h.store.DeleteRelation(r.From, r.To, r.RelationType); err == nil {
 			deleted++
+		} else {
+			errs = append(errs, fmt.Sprintf("%s -> %s (%s): %v", r.From, r.To, r.RelationType, err))
 		}
 	}
 
+	msg := fmt.Sprintf("Deleted %d relations", deleted)
+	if len(errs) > 0 {
+		msg += fmt.Sprintf(" (failed: %s)", strings.Join(errs, "; "))
+	}
+
 	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Deleted %d relations", deleted)}},
+		Content: []ContentBlock{{Type: "text", Text: msg}},
 	}, nil
 }

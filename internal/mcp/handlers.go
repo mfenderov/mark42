@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -117,7 +118,11 @@ func (h *Handler) Tools() []Tool {
 							Properties: map[string]Property{
 								"entityName": {Type: "string", Description: "Entity name to add observations to"},
 								"contents":   {Type: "array", Description: "Observation contents", Items: &Items{Type: "string"}},
-								"factType":   {Type: "string", Description: "Optional fact type: 'static' (permanent), 'dynamic' (session), 'session_turn' (conversation)"},
+								"factType": {
+									Type:        "string",
+									Description: "Optional fact type: 'static' (permanent), 'dynamic' (session), 'session_turn' (conversation)",
+									Enum:        []string{"static", "dynamic", "session_turn"},
+								},
 							},
 							Required: []string{"entityName", "contents"},
 						},
@@ -255,8 +260,17 @@ func (h *Handler) Tools() []Tool {
 				Type: "object",
 				Properties: map[string]Property{
 					"entityName": {Type: "string", Description: "Name of the entity whose observations to consolidate"},
-					"mode":       {Type: "string", Description: "Consolidation mode: 'semantic' uses embedding similarity, default uses substring matching"},
-					"threshold":  {Type: "number", Description: "Similarity threshold for semantic mode (0.0-1.0, default 0.85)"},
+					"mode": {
+						Type:        "string",
+						Description: "Consolidation mode: 'semantic' uses embedding similarity, default uses substring matching",
+						Enum:        []string{"exact", "substring", "semantic"},
+					},
+					"threshold": {
+						Type:        "number",
+						Description: "Similarity threshold for semantic mode (0.0-1.0, default 0.85)",
+						Minimum:     float64Ptr(0.0),
+						Maximum:     float64Ptr(1.0),
+					},
 				},
 				Required: []string{"entityName"},
 			},
@@ -367,10 +381,19 @@ var toolDispatch = map[string]func(*Handler, json.RawMessage) (*ToolCallResult, 
 	"get_tuning_recommendation": func(h *Handler, _ json.RawMessage) (*ToolCallResult, error) { return h.getTuningRecommendation() },
 }
 
-// CallTool executes the named tool with the given arguments.
-func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, error) {
+// CallToolContext executes the named tool with the given context and arguments.
+func (h *Handler) CallToolContext(ctx context.Context, name string, args json.RawMessage) (*ToolCallResult, error) {
 	if fn, ok := toolDispatch[name]; ok {
 		return fn(h, args)
 	}
 	return nil, fmt.Errorf("unknown tool: %s", name)
+}
+
+// CallTool executes the named tool with the given arguments.
+func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, error) {
+	return h.CallToolContext(context.Background(), name, args)
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }

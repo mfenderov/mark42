@@ -70,6 +70,7 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 	}
 
 	var added int
+	var errs []string
 	for _, obs := range input.Observations {
 		// Determine fact type (default to dynamic for API compatibility)
 		factType := storage.FactTypeDynamic
@@ -88,14 +89,21 @@ func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error)
 			if err == nil {
 				added++
 				addedContents = append(addedContents, content)
+			} else {
+				errs = append(errs, fmt.Sprintf("%s: %q: %v", obs.EntityName, content, err))
 			}
 		}
 		h.embedObservations(obs.EntityName, addedContents)
 		h.autoDetectSuperseded(obs.EntityName, addedContents, factType)
 	}
 
+	msg := fmt.Sprintf("Added %d observations", added)
+	if len(errs) > 0 {
+		msg += fmt.Sprintf(" (failed: %s)", strings.Join(errs, "; "))
+	}
+
 	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Added %d observations", added)}},
+		Content: []ContentBlock{{Type: "text", Text: msg}},
 	}, nil
 }
 
@@ -106,14 +114,22 @@ func (h *Handler) deleteEntities(args json.RawMessage) (*ToolCallResult, error) 
 	}
 
 	var deleted int
+	var errs []string
 	for _, name := range input.EntityNames {
 		if err := h.store.DeleteEntity(name); err == nil {
 			deleted++
+		} else {
+			errs = append(errs, fmt.Sprintf("%s: %v", name, err))
 		}
 	}
 
+	msg := fmt.Sprintf("Deleted %d entities", deleted)
+	if len(errs) > 0 {
+		msg += fmt.Sprintf(" (failed: %s)", strings.Join(errs, "; "))
+	}
+
 	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Deleted %d entities", deleted)}},
+		Content: []ContentBlock{{Type: "text", Text: msg}},
 	}, nil
 }
 
@@ -124,16 +140,24 @@ func (h *Handler) deleteObservations(args json.RawMessage) (*ToolCallResult, err
 	}
 
 	var deleted int
+	var errs []string
 	for _, d := range input.Deletions {
 		for _, obs := range d.Observations {
 			if err := h.store.DeleteObservation(d.EntityName, obs); err == nil {
 				deleted++
+			} else {
+				errs = append(errs, fmt.Sprintf("%s: %q: %v", d.EntityName, obs, err))
 			}
 		}
 	}
 
+	msg := fmt.Sprintf("Deleted %d observations", deleted)
+	if len(errs) > 0 {
+		msg += fmt.Sprintf(" (failed: %s)", strings.Join(errs, "; "))
+	}
+
 	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Deleted %d observations", deleted)}},
+		Content: []ContentBlock{{Type: "text", Text: msg}},
 	}, nil
 }
 

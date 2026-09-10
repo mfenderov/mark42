@@ -293,29 +293,30 @@ embedding:
 
 ### Database
 
-- **WAL mode**: Enable Write-Ahead Logging for concurrent reads
-- **Connection pooling**: Single writer, multiple readers
+- **WAL mode & Concurrency**: Write-Ahead Logging with busy-wait tolerance
+- **Connection pooling**: Controlled pool with serialized writers
 - **Prepared statements**: Cache frequently used queries
 - **Index coverage**: Ensure queries use indexes
 
 ```sql
 PRAGMA journal_mode=WAL;
+PRAGMA busy_timeout=5000;
 PRAGMA synchronous=NORMAL;
-PRAGMA cache_size=10000;
-PRAGMA temp_store=MEMORY;
+PRAGMA foreign_keys=ON;
 ```
 
-### Search
+### Search & RRF Fusion
 
 - **FTS5 tokenizer**: Use `porter` for English stemming
-- **Query optimization**: Limit results early in the pipeline
-- **Batch embedding**: Queue observations for batch processing
+- **RRF Dedup Identity**: RRF fusion uses a typed `ResultKey{EntityName, Content}` to guarantee that distinct entities sharing identical observation text are never collapsed or lost during score combination
+- **Vector Search Model Isolation**: Vector queries filter by active model (`WHERE oe.model = ?`) and dimensional parity to prevent cross-model vector space contamination
+- **Stateless Query-Time Decay**: Importance decay is computed dynamically during scoring rather than via in-place database row mutations (see `docs/adr/0002-query-time-decay-projection.md`)
 
-### Memory
+### Memory & Session Accretion
 
-- **Lazy loading**: Don't load entire graph into memory
-- **Result streaming**: Stream large result sets
-- **Connection reuse**: Keep database connection open
+- **Immutable History**: Session distillation is a non-destructive projection; raw tool execution events are preserved in SQLite rather than deleted upon distillation
+- **Single Source of Truth**: Database schema is unified via versioned Goose migrations from baseline version 0
+- **Architectural Decision Records**: See `docs/adr/` for detailed architectural records
 
 ## Security
 

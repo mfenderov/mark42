@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -38,7 +37,7 @@ var graphCmd = &cobra.Command{
 			}
 			output("}")
 		default:
-			enc := json.NewEncoder(os.Stdout)
+			enc := json.NewEncoder(out)
 			enc.SetIndent("", "  ")
 			return enc.Encode(graph)
 		}

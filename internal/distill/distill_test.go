@@ -175,8 +175,9 @@ func TestRun_Idempotent(t *testing.T) {
 	}
 	summary1 := s1.Summary
 
-	if err := Run(store, sessionName, StructuralSummarizer{}); err != ErrNothingToDistill {
-		t.Fatalf("expected ErrNothingToDistill on second run, got %v", err)
+	// Re-running succeeds idempotently without error
+	if err := Run(store, sessionName, StructuralSummarizer{}); err != nil {
+		t.Fatalf("second Run failed: %v", err)
 	}
 
 	s2, err := store.GetSession(sessionName)
@@ -197,7 +198,7 @@ func TestRun_NotFound(t *testing.T) {
 	}
 }
 
-func TestRun_ConsumesEvents(t *testing.T) {
+func TestRun_PreservesEvents(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
 
@@ -214,8 +215,8 @@ func TestRun_ConsumesEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSessionEvents failed: %v", err)
 	}
-	if len(events) != 0 {
-		t.Errorf("expected raw events consumed after distill, got %d", len(events))
+	if len(events) != 2 {
+		t.Errorf("expected 2 raw events preserved after distill, got %d", len(events))
 	}
 
 	s, err := store.GetSession(sessionName)

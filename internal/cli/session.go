@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -51,6 +52,10 @@ Input format:
 
 		if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 			return fmt.Errorf("failed to read JSON from stdin: %w", err)
+		}
+
+		if strings.TrimSpace(input.Summary) == "" {
+			return errors.New("invalid session capture payload: summary is required and cannot be empty")
 		}
 
 		session, err := store.CreateSession(args[0])
@@ -191,7 +196,7 @@ var sessionRecallCmd = &cobra.Command{
 		}
 
 		formatted := storage.FormatSessionRecall(results)
-		print(formatted)
+		output(formatted)
 		return nil
 	},
 }

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mark42.dev/schemas/session-capture.v1.json",
+  "title": "Mark42SessionCapturePayload",
+  "description": "Schema for session capture payloads passed via stdin to mark42 session capture",
+  "type": "object",
+  "required": ["summary"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What was accomplished in the session"
+    },
+    "events": {
+      "type": "array",
+      "description": "Tool execution events from the session",
+      "items": {
+        "type": "object",
+        "required": ["toolName"],
+        "properties": {
+          "toolName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Tool name executed (e.g. Bash, Edit, Write, Read, Grep)"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Target file path if applicable"
+          },
+          "command": {
+            "type": "string",
+            "description": "CLI command executed if applicable"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 or RFC 3339 timestamp"
+          }
+        }
+      }
+    }
+  }
+}

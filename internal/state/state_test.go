@@ -1,6 +1,7 @@
 package state
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -34,5 +35,36 @@ func TestProjectSlug(t *testing.T) {
 				t.Errorf("ProjectSlug(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMigrateLegacyState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projDir := t.TempDir()
+	legacyPath := filepath.Join(projDir, ".claude", "mark42")
+	if err := os.MkdirAll(legacyPath, 0o755); err != nil {
+		t.Fatalf("failed to create legacy dir: %v", err)
+	}
+
+	legacySessionFile := filepath.Join(legacyPath, "current-session")
+	if err := os.WriteFile(legacySessionFile, []byte("session-legacy-123"), 0o644); err != nil {
+		t.Fatalf("failed to write legacy file: %v", err)
+	}
+
+	// Run migration
+	if err := MigrateLegacyState(projDir); err != nil {
+		t.Fatalf("MigrateLegacyState failed: %v", err)
+	}
+
+	// Verify neutral path now has current-session
+	neutralFile := CurrentSessionPath(projDir)
+	data, err := os.ReadFile(neutralFile)
+	if err != nil {
+		t.Fatalf("failed to read migrated neutral file: %v", err)
+	}
+	if string(data) != "session-legacy-123" {
+		t.Errorf("expected migrated content %q, got %q", "session-legacy-123", string(data))
 	}
 }

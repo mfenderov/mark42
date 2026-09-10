@@ -74,6 +74,46 @@ func TestHandler_Tools(t *testing.T) {
 	}
 }
 
+func TestHandler_ToolsSchemaConstraints(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	tools := handler.Tools()
+	toolMap := make(map[string]mcp.Tool)
+	for _, tool := range tools {
+		toolMap[tool.Name] = tool
+	}
+
+	// Verify add_observations factType has enum
+	addObs, ok := toolMap["add_observations"]
+	if !ok {
+		t.Fatal("tool add_observations not found")
+	}
+	obsItems := addObs.InputSchema.Properties["observations"].Items
+	if obsItems == nil {
+		t.Fatal("observations items is nil")
+	}
+	factTypeProp := obsItems.Properties["factType"]
+	if len(factTypeProp.Enum) == 0 {
+		t.Errorf("expected factType to have enum defined, got empty")
+	}
+
+	// Verify consolidate_memories mode has enum and threshold has bounds
+	consMem, ok := toolMap["consolidate_memories"]
+	if !ok {
+		t.Fatal("tool consolidate_memories not found")
+	}
+	modeProp := consMem.InputSchema.Properties["mode"]
+	if len(modeProp.Enum) == 0 {
+		t.Errorf("expected mode to have enum defined, got empty")
+	}
+
+	threshProp := consMem.InputSchema.Properties["threshold"]
+	if threshProp.Minimum == nil || threshProp.Maximum == nil {
+		t.Errorf("expected threshold to have Minimum and Maximum bounds, got min=%v, max=%v", threshProp.Minimum, threshProp.Maximum)
+	}
+}
+
 // --- CallTool unknown tool test ---
 
 func TestHandler_CallTool_UnknownTool(t *testing.T) {
@@ -2121,5 +2161,48 @@ func TestHandler_RecallSessions(t *testing.T) {
 	}
 	if !strings.Contains(result.Content[0].Text, "built auth module") {
 		t.Errorf("expected recalled summary, got: %s", result.Content[0].Text)
+	}
+}
+
+func TestHandler_BulkDiagnostics_SurfacesErrors(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	// 1. create_relations with non-existent entities should report diagnostics in response text
+	res, err := handler.CallTool("create_relations", json.RawMessage(`{
+		"relations": [
+			{"from": "ghost1", "to": "ghost2", "relationType": "relates"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("create_relations failed: %v", err)
+	}
+	if !strings.Contains(res.Content[0].Text, "failed:") {
+		t.Errorf("expected failure diagnostics in create_relations response, got: %s", res.Content[0].Text)
+	}
+
+	// 2. delete_entities with non-existent entity should report diagnostics in response text
+	res, err = handler.CallTool("delete_entities", json.RawMessage(`{
+		"entityNames": ["ghostEntity"]
+	}`))
+	if err != nil {
+		t.Fatalf("delete_entities failed: %v", err)
+	}
+	if !strings.Contains(res.Content[0].Text, "failed:") {
+		t.Errorf("expected failure diagnostics in delete_entities response, got: %s", res.Content[0].Text)
+	}
+
+	// 3. delete_observations with non-existent observation should report diagnostics in response text
+	store.CreateEntity("Exist", "test", []string{"real observation"})
+	res, err = handler.CallTool("delete_observations", json.RawMessage(`{
+		"deletions": [
+			{"entityName": "Exist", "observations": ["ghost observation"]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("delete_observations failed: %v", err)
+	}
+	if !strings.Contains(res.Content[0].Text, "failed:") {
+		t.Errorf("expected failure diagnostics in delete_observations response, got: %s", res.Content[0].Text)
 	}
 }

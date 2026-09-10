@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"math"
 	"path/filepath"
 	"strings"
@@ -214,6 +215,50 @@ func TestVectorSearch_ExcludesSessionEvents(t *testing.T) {
 	}
 }
 
+func TestVectorSearch_ModelPartitioning(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_vector_partition.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	// Entity 1: embedded with "model-v1"
+	e1, err := store.CreateEntity("EntityV1", "test", []string{"v1 content"})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+	id1, _ := store.getObservationID(e1.ID, "v1 content")
+	if err := store.StoreEmbedding(id1, []float64{0.9, 0.1}, "model-v1"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	// Entity 2: embedded with "model-v2"
+	e2, err := store.CreateEntity("EntityV2", "test", []string{"v2 content"})
+	if err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+	id2, _ := store.getObservationID(e2.ID, "v2 content")
+	if err := store.StoreEmbedding(id2, []float64{0.9, 0.1}, "model-v2"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	// Searching with model-v2 should ONLY return EntityV2, ignoring EntityV1
+	results, err := store.VectorSearchWithModel([]float64{0.9, 0.1}, 10, "model-v2")
+	if err != nil {
+		t.Fatalf("VectorSearchWithModel failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result from model-v2, got %d", len(results))
+	}
+	if results[0].EntityName != "EntityV2" {
+		t.Errorf("expected EntityV2, got %s", results[0].EntityName)
+	}
+}
+
 func TestHasEmbedding(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_has_embedding.db")
@@ -349,5 +394,68 @@ func TestGetObservationsWithoutEmbeddings(t *testing.T) {
 	}
 	if len(obs) != 1 || obs[0].Content != "needs embedding" {
 		t.Errorf("expected only 'needs embedding', got %v", obs)
+	}
+}
+
+func BenchmarkCosineSimilarity_768Dim(b *testing.B) {
+	vecA := make([]float64, 768)
+	vecB := make([]float64, 768)
+	for i := range vecA {
+		vecA[i] = float64(i) / 768.0
+		vecB[i] = float64(768-i) / 768.0
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = CosineSimilarity(vecA, vecB)
+	}
+}
+
+func BenchmarkVectorSearch_1000Vectors(b *testing.B) {
+	tmpDir := b.TempDir()
+	store, err := NewStore(filepath.Join(tmpDir, "bench_vector.db"))
+	if err != nil {
+		b.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	// Seed 1000 observations with 768-dim embeddings
+	obsList := make([]ObservationWithID, 1000)
+	embeddings := make([][]float64, 1000)
+	for i := 0; i < 1000; i++ {
+		content := fmt.Sprintf("observation content for benchmark vector item %d", i)
+		entity, err := store.CreateEntity(fmt.Sprintf("entity_%d", i), "benchmark", []string{content})
+		if err != nil {
+			b.Fatalf("CreateEntity failed: %v", err)
+		}
+		obsID, err := store.getObservationID(entity.ID, content)
+		if err != nil {
+			b.Fatalf("getObservationID failed: %v", err)
+		}
+		obsList[i] = ObservationWithID{ID: obsID}
+
+		vec := make([]float64, 768)
+		vec[i%768] = 1.0
+		embeddings[i] = vec
+	}
+
+	if err := store.BatchStoreEmbeddings(obsList, embeddings, "nomic-embed-text"); err != nil {
+		b.Fatalf("BatchStoreEmbeddings failed: %v", err)
+	}
+
+	query := make([]float64, 768)
+	query[0] = 1.0
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		results, err := store.VectorSearch(query, 10)
+		if err != nil {
+			b.Fatalf("VectorSearch failed: %v", err)
+		}
+		if len(results) == 0 {
+			b.Fatal("expected results")
+		}
 	}
 }
