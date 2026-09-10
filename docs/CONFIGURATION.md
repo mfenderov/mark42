@@ -166,7 +166,6 @@ Environment variables supported by `mark42-server`:
 - `MARK42_DB`: SQLite database path (default: `~/.mark42/memory.db`, with legacy fallback to `~/.claude/memory.db`)
 - `CLAUDE_MEMORY_DB`: Legacy fallback database file path
 - `CLAUDE_MEMORY_EMBEDDER_URL`: Ollama or OpenAI-compatible embedding API (default: `http://localhost:11434/v1`; set to `disabled` to run without vector embeddings)
-
 ## Performance Tuning
 
 ### For Large Databases

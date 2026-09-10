@@ -264,7 +264,6 @@ func getProjectDir() string {
 	}
 	return os.Getenv("CLAUDE_PROJECT_DIR")
 }
-
 func init() {
 	sessionCaptureCmd.Flags().Bool("json", false, "output captured session as JSON")
 
