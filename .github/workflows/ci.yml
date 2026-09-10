@@ -66,7 +66,7 @@ jobs:
       cancel-in-progress: false
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -77,11 +77,8 @@ jobs:
       - name: Auto bump version and tag
         uses: cocogitto/cocogitto-action@v4
         with:
-          release: true
-          # No `check`: cog check rejects the repo's historical dependabot
-          # merge commits. `bump --auto` itself skips non-conventional
-          # commits safely (verified), so linting would only add red noise.
-          check: false
+          command: bump
+          args: --auto
           git-user: 'github-actions[bot]'
           git-user-email: 'github-actions[bot]@users.noreply.github.com'
 
