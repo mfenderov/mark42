@@ -42,6 +42,18 @@ mkdir -p ~/bin && make install-server   # Installs mark42-server to ~/bin
 }
 ```
 
+#### VS Code / GitHub Copilot (`.vscode/mcp.json` or User `mcp.json`)
+```json
+{
+  "servers": {
+    "mark42": {
+      "type": "stdio",
+      "command": "mark42-server"
+    }
+  }
+}
+```
+
 #### Cursor (`~/.cursor/mcp.json`)
 ```json
 {
@@ -81,8 +93,8 @@ No external plugins, hooks, or language-specific adapters required. Memory is au
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│          AI Harness (Claude Code / pi / opencode)           │
-│          mcp__mark42__* tools / mark42 CLI hooks            │
+│    AI Client (Claude Code / Copilot / Cursor / Windsurf)    │
+│  Standard MCP Tools (get_context, capture_session, search)  │
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC 2.0 (stdio)
                            ▼
@@ -212,8 +224,8 @@ Applied. New config saved.
 - **Phase 1** ✅ Foundation — SQLite schema, FTS5 search, MCP server, CLI, plugin structure
 - **Phase 2** ✅ Semantic Search — Hybrid search (FTS5 + vector), Ollama embeddings, fact types, entity versioning
 - **Phase 3** ✅ Intelligence — Auto-embed on write, recency-boosted context injection, consolidation
-- **Phase 4** ✅ Session Capture & Recall — Cross-session continuity, capture/recall tools, hook integration
-- **Phase 5** ✅ Cross-Harness & Lifecycle — Harness adapters (Claude Code, pi, opencode), neutral config paths (`~/.mark42`), distill pipeline, importance scoring, decay/archive commands, per-project workdirs
+- **Phase 4** ✅ Session Capture & Recall — Cross-session continuity, capture/recall tools, session entities
+- **Phase 5** ✅ Pure MCP Architecture — Universal stdio MCP server for all AI harnesses, neutral config paths (`~/.mark42`), distill pipeline, importance scoring, decay/archive commands, per-project workdirs
 - **Phase 6** ✅ Analytics — Memory analytics dashboard (`mark42 analytics`), usage-driven tuning recommendations (`mark42 analytics tune`), persisted importance/decay config, read-only MCP tools (`get_memory_analytics`, `get_tuning_recommendation`)
 
 ## License
