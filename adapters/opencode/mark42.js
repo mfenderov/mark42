@@ -46,8 +46,8 @@ function logError(message) {
 
 function extractFilePath(tool, args) {
   if (!args) return "";
-  if (tool === "grep") return args.path ?? "";
-  return args.filePath ?? "";
+  if (tool === "grep") return args.path ?? args.filePath ?? "";
+  return args.filePath ?? args.path ?? args.file ?? "";
 }
 
 export const Mark42 = async ({ project, client, $, directory, worktree }) => {
@@ -56,6 +56,7 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
 
   const queue = [];
   let flushed = false;
+  let lastRecordedCallId = null;
 
   function mapTool(tool, args) {
     const toolName = TOOL_MAP[tool] || "Other";
@@ -65,12 +66,18 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
       command = args.command.trim();
       if (command.length > 200) command = command.slice(0, 200);
     }
-    return { toolName, filePath, command };
+    return {
+      toolName,
+      filePath,
+      command,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   function enqueue(event) {
     if (queue.length >= QUEUE_CAP) queue.shift();
     queue.push(event);
+    flushed = false;
   }
 
   function readCurrentSession() {
@@ -103,13 +110,24 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
     );
     child.stdin.on("error", () => {});
 
+    let timer = setTimeout(() => {
+      try {
+        child.kill("SIGTERM");
+      } catch {}
+      logError("capture process timed out after 15s");
+    }, 15000);
+
     let stderr = "";
-    child.stderr?.on("data", (d) => { stderr += String(d); if (stderr.length > 2000) stderr = stderr.slice(-2000); });
+    child.stderr?.on("data", (d) => {
+      stderr += String(d);
+      if (stderr.length > 2000) stderr = stderr.slice(-2000);
+    });
 
     child.stdin.write(payload);
     child.stdin.end();
 
     child.on("close", (code) => {
+      clearTimeout(timer);
       if (code !== 0) {
         logError(`capture exited ${code}: ${stderr.trim().slice(0, 500)}`);
         return;
@@ -127,6 +145,20 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
     if (events.length === 0) return;
     spawnCapture(events);
   }
+
+  const recordTool = async (input, output) => {
+    try {
+      const callId = input?.callId || input?.id;
+      if (callId && callId === lastRecordedCallId) return;
+      if (callId) lastRecordedCallId = callId;
+
+      const tool = input?.tool ?? "";
+      const args = output?.args ?? input?.args ?? {};
+      enqueue(mapTool(tool, args));
+    } catch (err) {
+      logError(`tool execution error: ${err?.message ?? err}`);
+    }
+  };
 
   return {
     event: async ({ event }) => {
@@ -146,14 +178,7 @@ export const Mark42 = async ({ project, client, $, directory, worktree }) => {
       }
     },
 
-    "tool.execute.before": async (input, output) => {
-      try {
-        const tool = input?.tool ?? "";
-        const args = output?.args ?? input?.args ?? {};
-        enqueue(mapTool(tool, args));
-      } catch (err) {
-        logError(`tool.execute.before error: ${err?.message ?? err}`);
-      }
-    },
+    "tool.execute.before": recordTool,
+    "tool.execute.after": recordTool,
   };
 };

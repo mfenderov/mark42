@@ -86,6 +86,17 @@ Input format:
 			return err
 		}
 
+		jsonOutput, _ := cmd.Flags().GetBool("json")
+		if jsonOutput {
+			enc := json.NewEncoder(out)
+			return enc.Encode(map[string]any{
+				"sessionName": session.Name,
+				"status":      "completed",
+				"project":     args[0],
+				"events":      len(input.Events),
+			})
+		}
+
 		output(successStyle.Render("✓") + " Session captured: " + entityStyle.Render(session.Name))
 		output("  " + dimStyle.Render("Events:") + "  " + itoa(len(input.Events)))
 		output("  " + dimStyle.Render("Summary:") + " " + input.Summary)
@@ -248,6 +259,8 @@ var distillCmd = &cobra.Command{
 }
 
 func init() {
+	sessionCaptureCmd.Flags().Bool("json", false, "output captured session as JSON")
+
 	sessionListCmd.Flags().String("project", "", "filter by project name")
 	sessionListCmd.Flags().Int("limit", 20, "maximum number of sessions")
 
