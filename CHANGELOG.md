@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.3.4 - 2026-09-10
+#### Bug Fixes
+- (**mcp**) update .mcp.json to invoke mark42-server directly instead of npx wrapper - (d9a05a3) - Mark Fenderov
+
+- - -
+
 ## v3.3.3 - 2026-09-10
 #### Bug Fixes
 - (**ci**) remove legacy plugin paths from cog and goreleaser configs (#43) - (1683850) - Mark Fenderov

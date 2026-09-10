@@ -1,6 +1,6 @@
 {
   "name": "@mfenderov/mark42",
-  "version": "3.3.3",
+  "version": "3.3.4",
   "description": "Local, privacy-first RAG memory system for Claude Code",
   "bin": {
     "mark42": "bin/mark42.js",
