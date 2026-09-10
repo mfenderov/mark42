@@ -36,6 +36,13 @@ func CalculateRecencyDecay(daysSinceAccess, decayConstant float64) float64 {
 	return math.Exp(-daysSinceAccess / decayConstant)
 }
 
+// CalculateEffectiveImportance computes the decayed importance as a stateless query-time projection.
+// It combines the base importance with exponential recency decay without mutating database state.
+func CalculateEffectiveImportance(baseImportance, daysSinceAccess, decayConstant float64) float64 {
+	decay := CalculateRecencyDecay(daysSinceAccess, decayConstant)
+	return baseImportance * decay
+}
+
 // CalculateFrequencyScore returns a score based on access count.
 // Uses logarithmic scaling to provide diminishing returns for frequent access.
 // Formula: 1 + log(1 + accessCount) / 10

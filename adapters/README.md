@@ -40,8 +40,9 @@ own hook. Recall is a separate, user-driven concern:
 - `~/.mark42/state/<slug>/current-session` — the active session name, written
   by `mark42 session capture` (when `CLAUDE_PROJECT_DIR` is set) and read back
   by the adapter to know which session to distill.
-- `<slug>` = the project directory with `/` replaced by `-`
-  (`internal/state.ProjectSlug`). Adapters must replicate this scheme exactly.
+- `<slug>` = computed canonically via `mark42 path slug <projectDir>` or
+  `internal/state.ProjectSlug`. Adapters should query `mark42 path slug` or
+  replicate this scheme exactly.
 
 ### 4. Environment
 
@@ -67,7 +68,7 @@ for a working reference):
      mark42 session capture my-project
    ```
 
-   with this exact JSON on stdin:
+   with JSON on stdin adhering to `schemas/session-capture.v1.json`:
 
    ```json
    {
@@ -80,10 +81,10 @@ for a working reference):
    }
    ```
 
-   `summary` (string) and `events[]` (objects with `toolName` + optional
-   `filePath`, `command`, `timestamp`) is the complete schema — this is the
-   exact shape `internal/cli/session.go` decodes. A mismatch here is a silent
-   capture failure.
+   `summary` (string, required) and `events[]` (objects with required `toolName` + optional
+   `filePath`, `command`, `timestamp`). The CLI validates that `summary` is non-empty and
+   every event has a non-blank `toolName`, failing with exit code 1 and a descriptive error
+   on stderr if violated.
 
 3. **Distill** — after capture exits, read
    `~/.mark42/state/<slug>/current-session` for the session name, then spawn:
@@ -92,8 +93,9 @@ for a working reference):
    mark42 distill session-my-project-20260902-113000-123456789
    ```
 
-   `distill` replaces the placeholder `summary` with a structural summary
-   derived from the events and consolidates duplicate observations.
+   `distill` is **non-destructive**: it replaces the placeholder `summary`
+   with a structural summary derived from the events, keeping the raw events
+   intact for historical auditability and re-distillation.
 
 4. **Failures** — every spawn is fire-and-forget with `stdio` ignored; errors
    are appended to `~/.mark42/state/adapter-errors.log` (and logged to the

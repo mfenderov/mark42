@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -70,11 +72,17 @@ func main() {
 type Server struct {
 	handler     *mcp.Handler
 	initialized bool
+	in          io.Reader
+	out         io.Writer
 }
 
 // Run starts the server's main loop. Stops when ctx is cancelled or stdin is closed.
 func (s *Server) Run(ctx context.Context) error {
-	scanner := bufio.NewScanner(os.Stdin)
+	in := s.in
+	if in == nil {
+		in = os.Stdin
+	}
+	scanner := bufio.NewScanner(in)
 
 	const maxScannerSize = 10 * 1024 * 1024 // 10MB
 	buf := make([]byte, maxScannerSize)
@@ -111,24 +119,26 @@ func (s *Server) Run(ctx context.Context) error {
 				s.sendError(nil, mcp.ErrCodeParse, "Parse error", err)
 				continue
 			}
-			s.handleRequest(&req)
+			s.handleRequest(ctx, &req)
 		}
 	}
 }
 
-func (s *Server) handleRequest(req *mcp.Request) {
+func (s *Server) handleRequest(ctx context.Context, req *mcp.Request) {
 	switch req.Method {
 	case "initialize":
 		s.handleInitialize(req)
 	case "notifications/initialized":
 		s.initialized = true
-		// No response for notifications
 	case "tools/list":
 		s.handleToolsList(req)
 	case "tools/call":
-		s.handleToolsCall(req)
+		s.handleToolsCall(ctx, req)
 	default:
-		s.sendError(req.ID, mcp.ErrCodeMethodNotFound, "Method not found", nil)
+		// Per JSON-RPC 2.0, notifications (no ID or notifications/*) must never receive error responses.
+		if req.ID != nil && !strings.HasPrefix(req.Method, "notifications/") {
+			s.sendError(req.ID, mcp.ErrCodeMethodNotFound, "Method not found", nil)
+		}
 	}
 }
 
@@ -154,14 +164,14 @@ func (s *Server) handleToolsList(req *mcp.Request) {
 	s.sendResult(req.ID, result)
 }
 
-func (s *Server) handleToolsCall(req *mcp.Request) {
+func (s *Server) handleToolsCall(ctx context.Context, req *mcp.Request) {
 	var params mcp.ToolCallParams
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		s.sendError(req.ID, mcp.ErrCodeInvalidParams, "Invalid params", err)
 		return
 	}
 
-	result, err := s.handler.CallTool(params.Name, params.Arguments)
+	result, err := s.handler.CallToolContext(ctx, params.Name, params.Arguments)
 	if err != nil {
 		s.sendResult(req.ID, &mcp.ToolCallResult{
 			Content: []mcp.ContentBlock{{Type: "text", Text: err.Error()}},
@@ -174,6 +184,9 @@ func (s *Server) handleToolsCall(req *mcp.Request) {
 }
 
 func (s *Server) sendResult(id, result any) {
+	if id == nil {
+		return
+	}
 	resp := mcp.Response{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -183,6 +196,9 @@ func (s *Server) sendResult(id, result any) {
 }
 
 func (s *Server) sendError(id any, code int, message string, data any) {
+	if id == nil && code != mcp.ErrCodeParse {
+		return
+	}
 	resp := mcp.Response{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -201,7 +217,11 @@ func (s *Server) send(resp mcp.Response) {
 		logError("failed to marshal response: %v", err)
 		return
 	}
-	fmt.Println(string(data))
+	out := s.out
+	if out == nil {
+		out = os.Stdout
+	}
+	fmt.Fprintln(out, string(data))
 }
 
 func logError(format string, args ...any) {

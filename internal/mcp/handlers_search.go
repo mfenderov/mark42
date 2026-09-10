@@ -14,14 +14,18 @@ const (
 	maxObservationLength     = 240
 )
 
-func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) searchNodes(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input SearchNodesInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	// Try hybrid search (FTS + vector) if embedder is available
-	if result, ok := h.tryHybridSearch(input.Query); ok {
+	if result, ok := h.tryHybridSearch(ctx, input.Query); ok {
 		return result, nil
 	}
 
@@ -95,12 +99,12 @@ func truncateObservation(s string) string {
 // tryHybridSearch attempts hybrid search when an embedder is configured.
 // Returns (result, true) only when hybrid search produced usable results;
 // otherwise the caller falls back to FTS-only search.
-func (h *Handler) tryHybridSearch(query string) (*ToolCallResult, bool) {
-	if h.embedder == nil {
+func (h *Handler) tryHybridSearch(ctx context.Context, query string) (*ToolCallResult, bool) {
+	if h.embedder == nil || ctx.Err() != nil {
 		return nil, false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	results, err := h.store.HybridSearchWithEmbedder(ctx, query, h.embedder, 20)
@@ -172,10 +176,14 @@ func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallR
 	}, nil
 }
 
-func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
+func (h *Handler) openNodes(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
 	var input OpenNodesInput
 	if err := json.Unmarshal(args, &input); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
 	var entities []map[string]any

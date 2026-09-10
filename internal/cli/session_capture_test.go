@@ -47,3 +47,49 @@ func TestSessionCapture_WritesCurrentSession(t *testing.T) {
 		t.Errorf("unexpected session name: %q", strings.TrimSpace(string(data)))
 	}
 }
+
+func TestSessionCapture_ValidatesEmptySummary(t *testing.T) {
+	tmpDir := t.TempDir()
+	testDBPath := filepath.Join(tmpDir, "test_validation.db")
+	oldDBPath := dbPath
+	dbPath = testDBPath
+	defer func() { dbPath = oldDBPath }()
+
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	w.WriteString(`{"summary":"","events":[]}`)
+	w.Close()
+	defer func() { os.Stdin = oldStdin }()
+
+	err := sessionCaptureCmd.RunE(sessionCaptureCmd, []string{"testproject"})
+	if err == nil {
+		t.Fatal("expected error for empty summary, got nil")
+	}
+	if !strings.Contains(err.Error(), "summary is required") {
+		t.Errorf("expected error mentioning 'summary is required', got: %v", err)
+	}
+}
+
+func TestSessionCapture_ValidatesEmptyEventToolName(t *testing.T) {
+	tmpDir := t.TempDir()
+	testDBPath := filepath.Join(tmpDir, "test_validation_event.db")
+	oldDBPath := dbPath
+	dbPath = testDBPath
+	defer func() { dbPath = oldDBPath }()
+
+	oldStdin := os.Stdin
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	w.WriteString(`{"summary":"valid summary","events":[{"toolName":"","filePath":"/a.go"}]}`)
+	w.Close()
+	defer func() { os.Stdin = oldStdin }()
+
+	err := sessionCaptureCmd.RunE(sessionCaptureCmd, []string{"testproject"})
+	if err == nil {
+		t.Fatal("expected error for empty event toolName, got nil")
+	}
+	if !strings.Contains(err.Error(), "toolName") {
+		t.Errorf("expected error mentioning 'toolName', got: %v", err)
+	}
+}

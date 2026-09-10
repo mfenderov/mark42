@@ -214,6 +214,7 @@ func TestHybridSearchWithEmbedder(t *testing.T) {
 	obs := store.GetObservationWithID("TDD", "table driven tests")
 	if obs == nil {
 		t.Fatal("observation not found")
+		return
 	}
 	if err := store.StoreEmbedding(obs.ID, []float64{1, 0, 0}, "test"); err != nil {
 		t.Fatalf("StoreEmbedding: %v", err)
