@@ -3,10 +3,20 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v3.3.0). If omitted, uses the ref that triggered the workflow.'
+        required: false
+        type: string
 
 permissions:
   contents: write
   id-token: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -14,7 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
+
+      - name: Verify release tag
+        run: |
+          EXACT_TAG="$(git describe --tags --exact-match 2>/dev/null || true)"
+          if [ -z "$EXACT_TAG" ]; then
+            echo "Error: HEAD ($(git rev-parse --short HEAD)) does not point to an exact git tag."
+            echo "Provide a valid tag input (e.g. -f tag=v3.3.0) or trigger on a git tag ref."
+            exit 1
+          fi
+          echo "Releasing verified tag: $EXACT_TAG"
 
       - uses: actions/setup-go@v6
         with:

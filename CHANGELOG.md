@@ -2,6 +2,26 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.3.1 - 2026-09-10
+#### Bug Fixes
+- **(harness)** harden Claude and OpenCode adapters and session capture - (25be793) - Mark Fenderov
+
+- - -
+
+## v3.3.0 - 2026-09-10
+#### Bug Fixes
+- **(server)** execute methods for notifications while suppressing responses - (b3463b4) - Mark Fenderov
+- **(state)** skip symlinks and non-regular files during legacy state migration - (af14e05) - Mark Fenderov
+- address PR review feedback on context, state, vector, and cli - (1198d3f) - Mark Fenderov
+#### Continuous Integration
+- run goreleaser+npm inline, gate on new tag - (c3c7e78) - Mark Fenderov
+#### Documentation
+- reconcile architecture, migration, and troubleshooting guides with codebase - (26422b0) - Mark Fenderov
+#### Features
+- harden concurrency, mcp protocol, search correctness, and state contracts - (1b201a4) - Mark Fenderov
+
+- - -
+
 ## v3.2.0 - 2026-09-03
 #### Bug Fixes
 - resolve golangci-lint issues from tasks 2/4 - (7fd47cb) - Mark Fenderov
