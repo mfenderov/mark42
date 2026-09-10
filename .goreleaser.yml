@@ -28,22 +28,6 @@ archives:
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      # Plugin manifest
-      - src: .claude-plugin/plugin.json
-        dst: .claude-plugin/plugin.json
-      # Agents (flat directory with .md files)
-      - src: agents/*.md
-        dst: agents/
-      # Skills (nested structure)
-      - src: skills/**/SKILL.md
-      # Commands (flat directory with .md files)
-      - src: commands/*.md
-        dst: commands/
-      # Hooks config (Go hooks are compiled into mark42 binary)
-      - src: hooks/hooks.json
-        dst: hooks/hooks.json
-      # NOTE: .mcp.json excluded - ${CLAUDE_PLUGIN_ROOT} variable not resolved by Claude Code
-      # Users must run: claude mcp add mark42 --scope user --transport stdio -- ~/.claude/plugins/local/mark42/bin/mark42-server
       - README.md
       - LICENSE
 
