@@ -93,3 +93,67 @@ func TestMigrateLegacyState_ErrorOnUnreadableFile(t *testing.T) {
 		}
 	}
 }
+
+func TestMigrateLegacyState_SkipsSymlinksAndNonRegularFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projDir := t.TempDir()
+	legacyPath := filepath.Join(projDir, ".claude", "mark42")
+	if err := os.MkdirAll(legacyPath, 0o755); err != nil {
+		t.Fatalf("failed to create legacy dir: %v", err)
+	}
+
+	// 1. Regular state file
+	regularFile := filepath.Join(legacyPath, "current-session")
+	if err := os.WriteFile(regularFile, []byte("session-valid-123"), 0o644); err != nil {
+		t.Fatalf("failed to write regular file: %v", err)
+	}
+
+	// 2. Sensitive external file
+	sensitiveDir := t.TempDir()
+	sensitiveFile := filepath.Join(sensitiveDir, "secret.key")
+	if err := os.WriteFile(sensitiveFile, []byte("super-secret-content"), 0o600); err != nil {
+		t.Fatalf("failed to write sensitive file: %v", err)
+	}
+
+	// 3. Symlink inside legacy dir pointing to the sensitive external file
+	symlinkPath := filepath.Join(legacyPath, "symlink-to-secret")
+	if err := os.Symlink(sensitiveFile, symlinkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	// 4. Subdirectory (non-regular file)
+	subDir := filepath.Join(legacyPath, "subdir")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("failed to create subdir: %v", err)
+	}
+
+	// Run migration
+	if err := MigrateLegacyState(projDir); err != nil {
+		t.Fatalf("MigrateLegacyState failed: %v", err)
+	}
+
+	// Verify regular file WAS migrated
+	migratedRegular := CurrentSessionPath(projDir)
+	data, err := os.ReadFile(migratedRegular)
+	if err != nil {
+		t.Fatalf("expected regular file to be migrated: %v", err)
+	}
+	if string(data) != "session-valid-123" {
+		t.Errorf("expected content %q, got %q", "session-valid-123", string(data))
+	}
+
+	// Verify symlink was NOT migrated
+	targetDir := Dir(projDir)
+	migratedSymlink := filepath.Join(targetDir, "symlink-to-secret")
+	if _, err := os.Lstat(migratedSymlink); !os.IsNotExist(err) {
+		t.Errorf("symlink was migrated into target state dir, expected it to be skipped")
+	}
+
+	// Verify subdir was NOT migrated as a file
+	migratedSubdir := filepath.Join(targetDir, "subdir")
+	if _, err := os.Lstat(migratedSubdir); !os.IsNotExist(err) {
+		t.Errorf("subdir was migrated into target state dir, expected it to be skipped")
+	}
+}

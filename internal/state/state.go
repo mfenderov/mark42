@@ -52,7 +52,9 @@ func MigrateLegacyState(projectDir string) error {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() {
+		// Skip non-regular files (directories, symlinks, sockets, pipes) to prevent
+		// arbitrary file reads or local file disclosure via symlinks in legacy dir.
+		if !entry.Type().IsRegular() {
 			continue
 		}
 		src := filepath.Join(legacy, entry.Name())
@@ -65,6 +67,14 @@ func MigrateLegacyState(projectDir string) error {
 }
 
 func migrateStateFile(src, dst string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return fmt.Errorf("stat legacy state file %s: %w", src, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil // skip non-regular files or symlinks
+	}
+
 	if _, err := os.Stat(dst); os.IsNotExist(err) {
 		data, err := os.ReadFile(src)
 		if err != nil {
