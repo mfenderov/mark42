@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type Session struct {
@@ -80,15 +83,9 @@ func (s *Store) CompleteSession(sessionName, summary string) error {
 	}
 	defer tx.Rollback()
 
-	var entityID int64
-	if err := tx.QueryRow(
-		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
-		sessionName,
-	).Scan(&entityID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return fmt.Errorf("getting session entity: %w", err)
+	entityID, err := sessionEntityID(tx, sessionName)
+	if err != nil {
+		return err
 	}
 
 	if _, err := tx.Exec(
@@ -98,19 +95,9 @@ func (s *Store) CompleteSession(sessionName, summary string) error {
 		return fmt.Errorf("storing session summary: %w", err)
 	}
 
-	var tag string
-	if err := tx.QueryRow(
-		"SELECT COALESCE(container_tag, '') FROM entities WHERE id = ?",
-		entityID,
-	).Scan(&tag); err != nil {
-		return fmt.Errorf("reading session metadata: %w", err)
-	}
-
-	var meta SessionMetadata
-	if tag != "" {
-		if err := json.Unmarshal([]byte(tag), &meta); err != nil {
-			return fmt.Errorf("parsing session metadata: %w", err)
-		}
+	meta, err := readSessionMetadata(tx, entityID)
+	if err != nil {
+		return err
 	}
 	meta.Status = "completed"
 	meta.EndedAt = time.Now().Format(time.RFC3339)
@@ -128,6 +115,57 @@ func (s *Store) CompleteSession(sessionName, summary string) error {
 	}
 
 	return tx.Commit()
+}
+
+// sessionEntityID resolves a session's entity ID, returning ErrNotFound for unknown sessions.
+func sessionEntityID(tx *sqlx.Tx, sessionName string) (int64, error) {
+	var entityID int64
+	err := tx.QueryRow(
+		"SELECT id FROM entities WHERE name = ? AND is_latest = 1",
+		sessionName,
+	).Scan(&entityID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("getting session entity: %w", err)
+	}
+	return entityID, nil
+}
+
+// readSessionMetadata reads and parses the session's container-tag metadata.
+func readSessionMetadata(tx *sqlx.Tx, entityID int64) (SessionMetadata, error) {
+	var tag string
+	if err := tx.QueryRow(
+		"SELECT COALESCE(container_tag, '') FROM entities WHERE id = ?",
+		entityID,
+	).Scan(&tag); err != nil {
+		return SessionMetadata{}, fmt.Errorf("reading session metadata: %w", err)
+	}
+
+	var meta SessionMetadata
+	if tag != "" {
+		if err := json.Unmarshal([]byte(tag), &meta); err != nil {
+			return SessionMetadata{}, fmt.Errorf("parsing session metadata: %w", err)
+		}
+	}
+	return meta, nil
+}
+
+// sessionFromEntity converts an entity to a Session, reading project/status
+// from the container-tag metadata.
+func (s *Store) sessionFromEntity(entity *Entity) *Session {
+	tag, _ := s.GetContainerTag(entity.Name)
+	var meta SessionMetadata
+	if tag != "" {
+		_ = json.Unmarshal([]byte(tag), &meta)
+	}
+	return &Session{
+		Name:      entity.Name,
+		Project:   meta.Project,
+		Status:    meta.Status,
+		StartedAt: entity.CreatedAt,
+	}
 }
 
 func (s *Store) GetSession(sessionName string) (*Session, error) {
@@ -182,32 +220,36 @@ func (s *Store) ListSessions(project, status string, limit int) ([]*Session, err
 
 	var sessions []*Session
 	for _, entity := range entities {
-		tag, _ := s.GetContainerTag(entity.Name)
-		var meta SessionMetadata
-		if tag != "" {
-			_ = json.Unmarshal([]byte(tag), &meta)
-		}
-
-		if project != "" && meta.Project != project {
+		session := s.sessionFromEntity(entity)
+		if project != "" && session.Project != project {
 			continue
 		}
-		if status != "" && meta.Status != status {
+		if status != "" && session.Status != status {
 			continue
 		}
-
-		sessions = append(sessions, &Session{
-			Name:      entity.Name,
-			Project:   meta.Project,
-			Status:    meta.Status,
-			StartedAt: entity.CreatedAt,
-		})
-
-		if len(sessions) >= limit {
-			break
-		}
+		sessions = append(sessions, session)
 	}
 
-	return sessions, nil
+	sortSessions(sessions)
+	return limitSessions(sessions, limit), nil
+}
+
+// sortSessions orders sessions newest-first, breaking ties by name descending.
+func sortSessions(sessions []*Session) {
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].StartedAt.Equal(sessions[j].StartedAt) {
+			return sessions[i].Name > sessions[j].Name
+		}
+		return sessions[i].StartedAt.After(sessions[j].StartedAt)
+	})
+}
+
+// limitSessions truncates to limit entries (0 or negative = no limit).
+func limitSessions(sessions []*Session, limit int) []*Session {
+	if limit > 0 && len(sessions) > limit {
+		return sessions[:limit]
+	}
+	return sessions
 }
 
 func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int) ([]ContextResult, error) {
@@ -238,33 +280,118 @@ func (s *Store) GetRecentSessionSummaries(project string, hours, tokenBudget int
 		return nil, err
 	}
 
-	// Filter by project if specified
-	if project != "" {
-		var filtered []ContextResult
-		for _, r := range results {
-			tag, _ := s.GetContainerTag(r.EntityName)
-			var meta SessionMetadata
-			if tag != "" {
-				_ = json.Unmarshal([]byte(tag), &meta)
-			}
-			if meta.Project == project {
-				filtered = append(filtered, r)
-			}
-		}
-		results = filtered
-	}
+	return applyTokenBudget(s.filterSessionsByProject(results, project), tokenBudget), nil
+}
 
-	// Apply token budget
-	tokenCount := 0
-	var selected []ContextResult
+// filterSessionsByProject keeps only sessions whose container-tag project
+// matches. Empty project returns results unchanged.
+func (s *Store) filterSessionsByProject(results []ContextResult, project string) []ContextResult {
+	if project == "" {
+		return results
+	}
+	var filtered []ContextResult
 	for _, r := range results {
-		entryTokens := (len(r.EntityName) + len(r.Content) + 20) / 4
-		if tokenCount+entryTokens > tokenBudget {
-			break
+		tag, _ := s.GetContainerTag(r.EntityName)
+		var meta SessionMetadata
+		if tag != "" {
+			_ = json.Unmarshal([]byte(tag), &meta)
 		}
-		tokenCount += entryTokens
-		selected = append(selected, r)
+		if meta.Project == project {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+func (s *Store) GetSessionEvents(sessionName string) ([]SessionEvent, error) {
+	entity, err := s.GetEntity(sessionName)
+	if err != nil {
+		return nil, err
+	}
+	if entity.Type != "session" {
+		return nil, ErrNotFound
 	}
 
-	return selected, nil
+	var contents []string
+	if err := s.db.Select(&contents, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND fact_type = ? AND valid_until IS NULL
+		ORDER BY created_at`, entity.ID, string(FactTypeSessionEvent)); err != nil {
+		return nil, err
+	}
+
+	events := make([]SessionEvent, 0, len(contents))
+	for _, c := range contents {
+		var evt SessionEvent
+		if err := json.Unmarshal([]byte(c), &evt); err == nil && evt.ToolName != "" {
+			events = append(events, evt)
+		}
+	}
+	return events, nil
+}
+
+func (s *Store) UpdateSessionSummary(sessionName, summary string) error {
+	entity, err := s.GetEntity(sessionName)
+	if err != nil {
+		return err
+	}
+	if entity.Type != "session" {
+		return ErrNotFound
+	}
+
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
+		"DELETE FROM observations WHERE entity_id = ? AND fact_type = ?",
+		entity.ID, string(FactTypeSessionSummary),
+	); err != nil {
+		return fmt.Errorf("deleting existing summary: %w", err)
+	}
+
+	if _, err := tx.Exec(
+		"INSERT INTO observations (entity_id, content, fact_type) VALUES (?, ?, ?)",
+		entity.ID, summary, string(FactTypeSessionSummary),
+	); err != nil {
+		return fmt.Errorf("storing session summary: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (s *Store) DeleteSessionEvents(sessionName string) error {
+	entity, err := s.GetEntity(sessionName)
+	if err != nil {
+		return err
+	}
+	if entity.Type != "session" {
+		return ErrNotFound
+	}
+
+	if _, err := s.db.Exec(
+		"DELETE FROM observations WHERE entity_id = ? AND fact_type = ?",
+		entity.ID, string(FactTypeSessionEvent),
+	); err != nil {
+		return fmt.Errorf("deleting session events: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetSessionEventObservations(entityName string) ([]string, error) {
+	entity, err := s.GetEntity(entityName)
+	if err != nil {
+		return nil, err
+	}
+
+	var contents []string
+	if err := s.db.Select(&contents, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND fact_type = ? AND valid_until IS NULL
+	`, entity.ID, string(FactTypeSessionEvent)); err != nil {
+		return nil, err
+	}
+	return contents, nil
 }

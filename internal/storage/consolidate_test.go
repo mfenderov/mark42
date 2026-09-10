@@ -150,6 +150,7 @@ func TestConsolidateWithSimilarity_SemanticMode(t *testing.T) {
 	obs2 := store.GetObservationWithID("Animals", "A is about cats")
 	if obs1 == nil || obs2 == nil {
 		t.Fatal("could not get observation IDs")
+		return
 	}
 
 	// Store nearly identical embeddings — cosine similarity will be > 0.85
@@ -236,6 +237,7 @@ func TestConsolidateWithSimilarity_KeepsLonger(t *testing.T) {
 	obs2 := store.GetObservationWithID("Tech", "Go is fast")
 	if obs1 == nil || obs2 == nil {
 		t.Fatal("could not get observation IDs")
+		return
 	}
 
 	// High-similarity embeddings

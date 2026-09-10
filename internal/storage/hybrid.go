@@ -12,33 +12,21 @@ func (s *Store) HybridSearch(ctx context.Context, query string, queryEmbedding [
 	strategyResults := make(map[string][]RankedItem)
 
 	// FTS search if query provided
-	if strings.TrimSpace(query) != "" {
-		ftsResults, err := s.ftsSearch(query, limit*2) // Get more results for better fusion
-		if err != nil {
-			return nil, err
-		}
-		if len(ftsResults) > 0 {
-			strategyResults["fts"] = ftsResults
-		}
+	ftsResults, err := s.ftsCandidates(query, limit*2) // Get more results for better fusion
+	if err != nil {
+		return nil, err
+	}
+	if len(ftsResults) > 0 {
+		strategyResults["fts"] = ftsResults
 	}
 
 	// Vector search if embedding provided
 	if len(queryEmbedding) > 0 {
-		vectorResults, err := s.VectorSearch(queryEmbedding, limit*2)
+		ranked, err := s.vectorCandidates(queryEmbedding, limit*2)
 		if err != nil {
 			return nil, err
 		}
-		if len(vectorResults) > 0 {
-			ranked := make([]RankedItem, len(vectorResults))
-			for i, r := range vectorResults {
-				ranked[i] = RankedItem{
-					EntityName: r.EntityName,
-					EntityType: r.EntityType,
-					Content:    r.Content,
-					Score:      r.Score,
-					Source:     "vector",
-				}
-			}
+		if len(ranked) > 0 {
 			strategyResults["vector"] = ranked
 		}
 	}
@@ -59,6 +47,33 @@ func (s *Store) HybridSearch(ctx context.Context, query string, queryEmbedding [
 	return results, nil
 }
 
+// ftsCandidates runs FTS search, returning nil when the query is blank.
+func (s *Store) ftsCandidates(query string, limit int) ([]RankedItem, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, nil
+	}
+	return s.ftsSearch(query, limit)
+}
+
+// vectorCandidates runs vector search and converts results to RankedItems.
+func (s *Store) vectorCandidates(queryEmbedding []float64, limit int) ([]RankedItem, error) {
+	vectorResults, err := s.VectorSearch(queryEmbedding, limit)
+	if err != nil {
+		return nil, err
+	}
+	ranked := make([]RankedItem, len(vectorResults))
+	for i, r := range vectorResults {
+		ranked[i] = RankedItem{
+			EntityName: r.EntityName,
+			EntityType: r.EntityType,
+			Content:    r.Content,
+			Score:      r.Score,
+			Source:     "vector",
+		}
+	}
+	return ranked, nil
+}
+
 // ftsSearch performs FTS5 search and returns RankedItems.
 func (s *Store) ftsSearch(query string, limit int) ([]RankedItem, error) {
 	ftsQuery := prepareFTSQuery(query)
@@ -70,6 +85,7 @@ func (s *Store) ftsSearch(query string, limit int) ([]RankedItem, error) {
 			JOIN observations o ON o.id = f.rowid
 			WHERE observations_fts MATCH ?
 			AND o.valid_until IS NULL
+			AND COALESCE(o.fact_type, 'dynamic') != 'session_event'
 		),
 		entity_matches AS (
 			SELECT e.id as entity_id, e.name as content, bm25(entities_fts) as score

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -23,8 +24,15 @@ func (s *Store) Search(query string) ([]*SearchResult, error) {
 
 // SearchWithLimit finds entities with a result limit.
 func (s *Store) SearchWithLimit(query string, limit int) ([]*SearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return []*SearchResult{}, nil
+	}
+
 	// Escape FTS5 special characters and prepare query
 	ftsQuery := prepareFTSQuery(query)
+	if ftsQuery == "\"\"" {
+		return []*SearchResult{}, nil
+	}
 
 	// Search both observations and entity names
 	// Union results and rank by BM25 score
@@ -58,11 +66,7 @@ func (s *Store) SearchWithLimit(query string, limit int) ([]*SearchResult, error
 		LIMIT ?
 	`, ftsQuery, ftsQuery, limit)
 	if err != nil {
-		// If FTS query fails (invalid syntax), return empty results
-		if strings.Contains(err.Error(), "fts5") {
-			return []*SearchResult{}, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("FTS search execution failed: %w", err)
 	}
 	defer rows.Close()
 
@@ -133,8 +137,20 @@ func (s *Store) ReadGraph() (*Graph, error) {
 func (s *Store) loadObservations(entityID int64) ([]string, error) {
 	var observations []string
 	err := s.db.Select(&observations,
-		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL ORDER BY created_at",
+		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL AND COALESCE(fact_type, 'dynamic') != 'session_event' ORDER BY created_at",
 		entityID)
+	return observations, err
+}
+
+// TopObservations returns the most important observations for an entity, capped at limit.
+func (s *Store) TopObservations(entityID int64, limit int) ([]string, error) {
+	var observations []string
+	err := s.db.Select(&observations, `
+		SELECT content FROM observations
+		WHERE entity_id = ? AND valid_until IS NULL AND COALESCE(fact_type, 'dynamic') != 'session_event'
+		ORDER BY importance DESC, COALESCE(last_accessed, created_at) DESC, id DESC
+		LIMIT ?
+	`, entityID, limit)
 	return observations, err
 }
 

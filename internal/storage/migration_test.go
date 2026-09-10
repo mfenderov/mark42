@@ -1,6 +1,9 @@
 package storage
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,7 +11,7 @@ import (
 
 // ExpectedMigrationCount is the total number of goose migrations.
 // Update this when adding new migrations.
-const ExpectedMigrationCount int64 = 10
+const ExpectedMigrationCount int64 = 11
 
 func TestMigrate_CreatesSchemaVersion(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -170,6 +173,108 @@ func TestMigrate_PersistsAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestMigrate_IgnoresStraySQLInCWD(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "not_a_migration.sql"), []byte("-- not a migration\n"), 0o644); err != nil {
+		t.Fatalf("failed to write decoy sql: %v", err)
+	}
+	t.Chdir(dir)
+
+	dbPath := filepath.Join(dir, "test_stray_sql.db")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed with stray sql in CWD: %v", err)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
+}
+
+func TestMigrateTo(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_migrateto.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	// No-op: already at latest
+	if err := store.MigrateTo(ExpectedMigrationCount); err != nil {
+		t.Fatalf("MigrateTo(current) failed: %v", err)
+	}
+
+	// Down to a specific version
+	const target int64 = 5
+	if err := store.MigrateTo(target); err != nil {
+		t.Fatalf("MigrateTo(%d) down failed: %v", target, err)
+	}
+	version, err := store.GetSchemaVersion()
+	if err != nil {
+		t.Fatalf("GetSchemaVersion: %v", err)
+	}
+	if version != target {
+		t.Errorf("after down: version = %d, want %d", version, target)
+	}
+
+	// Back up to latest
+	if err := store.MigrateTo(ExpectedMigrationCount); err != nil {
+		t.Fatalf("MigrateTo(latest) up failed: %v", err)
+	}
+	version, err = store.GetSchemaVersion()
+	if err != nil {
+		t.Fatalf("GetSchemaVersion: %v", err)
+	}
+	if version != ExpectedMigrationCount {
+		t.Errorf("after up: version = %d, want %d", version, ExpectedMigrationCount)
+	}
+}
+
+func TestRunMigrationFunc(t *testing.T) {
+	store := newTestStoreWithMigrations(t)
+	defer store.Close()
+
+	// Successful migration commits
+	err := RunMigrationFunc(store.db.DB, func(_ context.Context, tx *sql.Tx) error {
+		_, err := tx.Exec("CREATE TABLE IF NOT EXISTS run_migration_probe (id INTEGER)")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("RunMigrationFunc failed: %v", err)
+	}
+	var n int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='run_migration_probe'").Scan(&n); err != nil {
+		t.Fatalf("probe query failed: %v", err)
+	}
+	if n != 1 {
+		t.Error("expected probe table to exist after commit")
+	}
+
+	// Failing migration rolls back
+	err = RunMigrationFunc(store.db.DB, func(_ context.Context, tx *sql.Tx) error {
+		if _, err := tx.Exec("CREATE TABLE rolled_back_probe (id INTEGER)"); err != nil {
+			return err
+		}
+		return errors.New("boom")
+	})
+	if err == nil {
+		t.Fatal("expected error from failing migration func")
+	}
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='rolled_back_probe'").Scan(&n); err != nil {
+		t.Fatalf("probe query failed: %v", err)
+	}
+	if n != 0 {
+		t.Error("expected rolled-back table to be absent")
+	}
 }

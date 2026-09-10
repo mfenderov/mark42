@@ -227,6 +227,7 @@ func TestDetectAndExpireSuperseded_WithEmbedder(t *testing.T) {
 	obs := store.GetObservationWithID("Dev", oldContent)
 	if obs == nil {
 		t.Fatalf("observation not found")
+		return
 	}
 	// Store a high-similarity embedding for old content
 	if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
@@ -273,6 +274,7 @@ func TestDetectAndExpireSuperseded_BelowThreshold(t *testing.T) {
 	obs := store.GetObservationWithID("Dev2", oldContent)
 	if obs == nil {
 		t.Fatalf("observation not found")
+		return
 	}
 	// Orthogonal embedding: [0, 1, 0] vs query [1, 0, 0] → similarity 0
 	if err := store.StoreEmbedding(obs.ID, []float64{0.0, 1.0, 0.0}, "test"); err != nil {
@@ -323,6 +325,7 @@ func TestDetectAndExpireSuperseded_DoesNotExpireNewContentItself(t *testing.T) {
 	obs := store.GetObservationWithID("Dev3", content)
 	if obs == nil {
 		t.Fatalf("observation not found")
+		return
 	}
 	// Same embedding for both
 	if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
@@ -400,5 +403,63 @@ func TestGetObservationHistory(t *testing.T) {
 		default:
 			t.Errorf("unexpected observation content: %q", h.Content)
 		}
+	}
+}
+
+func TestDetectAndExpireSupersededBatch_ProtectsBatchMembers(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	// Existing observation with a high-similarity embedding
+	oldContent := "old content about TDD"
+	if _, err := store.CreateEntity("Dev", "person", []string{oldContent}); err != nil {
+		t.Fatalf("CreateEntity failed: %v", err)
+	}
+	oldObs := store.GetObservationWithID("Dev", oldContent)
+	if oldObs == nil {
+		t.Fatal("old observation not found")
+		return
+	}
+	if err := store.StoreEmbedding(oldObs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
+		t.Fatalf("StoreEmbedding failed: %v", err)
+	}
+
+	// New batch written together: both already stored + embedded (create-then-detect flow)
+	newA := "new content A about TDD"
+	newB := "new content B about TDD"
+	for _, content := range []string{newA, newB} {
+		if err := store.AddObservation("Dev", content); err != nil {
+			t.Fatalf("AddObservation failed: %v", err)
+		}
+		obs := store.GetObservationWithID("Dev", content)
+		if obs == nil {
+			t.Fatalf("observation %q not found", content)
+			return
+		}
+		if err := store.StoreEmbedding(obs.ID, []float64{0.9, 0.1, 0.0}, "test"); err != nil {
+			t.Fatalf("StoreEmbedding failed: %v", err)
+		}
+	}
+
+	// Constant embedder: every new content has cosine 1.0 with every stored embedding
+	expired, err := store.DetectAndExpireSupersededBatch("Dev", []string{newA, newB}, &highSimilarityEmbedder{}, 0.85)
+	if err != nil {
+		t.Fatalf("DetectAndExpireSupersededBatch failed: %v", err)
+	}
+
+	// Old similar observation is expired; batch members must survive
+	if len(expired) != 1 || expired[0] != oldContent {
+		t.Errorf("expected only %q expired, got %v", oldContent, expired)
+	}
+	entity, err := store.GetEntity("Dev")
+	if err != nil {
+		t.Fatalf("GetEntity failed: %v", err)
+	}
+	if len(entity.Observations) != 2 {
+		t.Errorf("expected both batch members to remain valid, got %v", entity.Observations)
 	}
 }

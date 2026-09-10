@@ -1,0 +1,7 @@
+tag_prefix = "v"
+
+branch_whitelist = ["main"]
+
+pre_bump_hooks = [
+    "jq --arg v '{{version}}' '.version = $v' .claude-plugin/plugin.json > .claude-plugin/plugin.json.tmp && mv .claude-plugin/plugin.json.tmp .claude-plugin/plugin.json",
+]

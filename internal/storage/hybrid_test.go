@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -110,6 +111,44 @@ func TestHybridSearch_FTSOnly(t *testing.T) {
 	}
 }
 
+func TestFtsSearch_ExcludesSessionEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_fts_exclude.db")
+
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	store.CreateEntity("SessEntity", "test", []string{"searchable static content"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"searchable.go"}`, FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.ftsSearch("searchable", 10)
+	if err != nil {
+		t.Fatalf("ftsSearch failed: %v", err)
+	}
+
+	foundStatic := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "toolName") {
+			t.Error("session_event should be excluded from FTS search")
+		}
+		if r.Content == "searchable static content" {
+			foundStatic = true
+		}
+	}
+	if !foundStatic {
+		t.Error("static observation should be present in FTS results")
+	}
+}
+
 func TestHybridSearch_VectorOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test_hybrid_vector.db")
@@ -148,5 +187,54 @@ func TestHybridSearch_VectorOnly(t *testing.T) {
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+}
+
+type constEmbedder struct{}
+
+func (e *constEmbedder) CreateEmbedding(_ context.Context, _ string) ([]float64, error) {
+	return []float64{0.9, 0.1, 0.0}, nil
+}
+
+func TestHybridSearchWithEmbedder(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(filepath.Join(tmpDir, "test_hybrid_embedder.db"))
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	if _, err := store.CreateEntity("TDD", "pattern", []string{"table driven tests"}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+	obs := store.GetObservationWithID("TDD", "table driven tests")
+	if obs == nil {
+		t.Fatal("observation not found")
+		return
+	}
+	if err := store.StoreEmbedding(obs.ID, []float64{1, 0, 0}, "test"); err != nil {
+		t.Fatalf("StoreEmbedding: %v", err)
+	}
+
+	// Query with no keyword overlap: only the vector path can match.
+	results, err := store.HybridSearchWithEmbedder(context.Background(), "zzznomatch", &constEmbedder{}, 10)
+	if err != nil {
+		t.Fatalf("HybridSearchWithEmbedder: %v", err)
+	}
+	if len(results) != 1 || results[0].EntityName != "TDD" {
+		t.Errorf("expected vector-only match for TDD, got %v", results)
+	}
+
+	// Nil embedder falls back to FTS-only behavior.
+	ftsResults, err := store.HybridSearchWithEmbedder(context.Background(), "table driven", nil, 10)
+	if err != nil {
+		t.Fatalf("HybridSearchWithEmbedder(nil embedder): %v", err)
+	}
+	if len(ftsResults) != 1 {
+		t.Errorf("expected FTS match, got %v", ftsResults)
 	}
 }

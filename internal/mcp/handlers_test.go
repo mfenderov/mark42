@@ -54,6 +54,8 @@ func TestHandler_Tools(t *testing.T) {
 		"recall_sessions",
 		"invalidate_observation",
 		"get_entity_history",
+		"get_memory_analytics",
+		"get_tuning_recommendation",
 	}
 
 	if len(tools) != len(expectedTools) {
@@ -69,6 +71,47 @@ func TestHandler_Tools(t *testing.T) {
 		if !toolNames[expected] {
 			t.Errorf("expected tool %q not found", expected)
 		}
+	}
+}
+
+func TestHandler_ToolsSchemaConstraints(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	tools := handler.Tools()
+	toolMap := make(map[string]mcp.Tool)
+	for _, tool := range tools {
+		toolMap[tool.Name] = tool
+	}
+
+	// Verify add_observations factType has enum
+	addObs, ok := toolMap["add_observations"]
+	if !ok {
+		t.Fatal("tool add_observations not found")
+	}
+	obsItems := addObs.InputSchema.Properties["observations"].Items
+	if obsItems == nil {
+		t.Fatal("observations items is nil")
+		return
+	}
+	factTypeProp := obsItems.Properties["factType"]
+	if len(factTypeProp.Enum) == 0 {
+		t.Errorf("expected factType to have enum defined, got empty")
+	}
+
+	// Verify consolidate_memories mode has enum and threshold has bounds
+	consMem, ok := toolMap["consolidate_memories"]
+	if !ok {
+		t.Fatal("tool consolidate_memories not found")
+	}
+	modeProp := consMem.InputSchema.Properties["mode"]
+	if len(modeProp.Enum) == 0 {
+		t.Errorf("expected mode to have enum defined, got empty")
+	}
+
+	threshProp := consMem.InputSchema.Properties["threshold"]
+	if threshProp.Minimum == nil || threshProp.Maximum == nil {
+		t.Errorf("expected threshold to have Minimum and Maximum bounds, got min=%v, max=%v", threshProp.Minimum, threshProp.Maximum)
 	}
 }
 
@@ -161,6 +204,7 @@ func TestHandler_CreateEntities(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			if len(result.Content) == 0 {
@@ -291,6 +335,7 @@ func TestHandler_CreateOrUpdateEntities(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			if len(result.Content) == 0 {
@@ -418,6 +463,7 @@ func TestHandler_CreateRelations(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			// Check response text contains count
@@ -876,6 +922,7 @@ func TestHandler_ReadGraph(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			if len(result.Content) == 0 {
@@ -959,6 +1006,7 @@ func TestHandler_SearchNodes(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			// Result should be valid JSON array
@@ -981,6 +1029,81 @@ func TestHandler_SearchNodes(t *testing.T) {
 }
 
 // --- open_nodes tests ---
+
+func TestHandler_SearchNodes_BudgetsObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	obs := make([]string, 10)
+	for i := range obs {
+		obs[i] = fmt.Sprintf("budgettest observation number %d with some content", i)
+	}
+	store.CreateEntity("BudgetEntity", "test", obs)
+
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "budgettest"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &entities); err != nil {
+		t.Fatalf("failed to parse search results: %v", err)
+	}
+
+	for _, e := range entities {
+		if e["name"] != "BudgetEntity" {
+			continue
+		}
+		obsArr, ok := e["observations"].([]any)
+		if !ok {
+			t.Fatalf("observations not an array: %T", e["observations"])
+		}
+		if len(obsArr) > 3 {
+			t.Errorf("expected at most 3 observations, got %d", len(obsArr))
+		}
+		for _, o := range obsArr {
+			s, _ := o.(string)
+			if len(s) > 240 {
+				t.Errorf("observation exceeds 240 chars: %d", len(s))
+			}
+		}
+	}
+}
+
+func TestHandler_SearchNodes_TruncatesLongObservations(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	longObs := strings.Repeat("x", 500)
+	store.CreateEntity("TruncEntity", "test", []string{longObs})
+
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query": "TruncEntity"}`))
+	if err != nil {
+		t.Fatalf("search_nodes failed: %v", err)
+	}
+
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &entities); err != nil {
+		t.Fatalf("failed to parse search results: %v", err)
+	}
+
+	for _, e := range entities {
+		if e["name"] != "TruncEntity" {
+			continue
+		}
+		obsArr, _ := e["observations"].([]any)
+		if len(obsArr) != 1 {
+			t.Fatalf("expected 1 observation, got %d", len(obsArr))
+		}
+		s, _ := obsArr[0].(string)
+		if len([]rune(s)) > 241 {
+			t.Errorf("truncated observation too long: %d runes", len([]rune(s)))
+		}
+		if !strings.HasSuffix(s, "…") {
+			t.Errorf("truncated observation should end with ellipsis")
+		}
+	}
+}
 
 func TestHandler_OpenNodes(t *testing.T) {
 	tests := []struct {
@@ -1060,6 +1183,7 @@ func TestHandler_OpenNodes(t *testing.T) {
 
 			if result == nil {
 				t.Fatal("expected result, got nil")
+				return
 			}
 
 			// Parse and verify entity count
@@ -1078,6 +1202,33 @@ func TestHandler_OpenNodes(t *testing.T) {
 }
 
 // --- get_context tests ---
+
+func TestHandler_OpenNodes_ExcludesSessionEvents(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+	store.CreateEntity("SessEntity", "test", []string{"static observation"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	result, err := handler.CallTool("open_nodes", json.RawMessage(`{"names":["SessEntity"]}`))
+	if err != nil {
+		t.Fatalf("open_nodes failed: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("expected result content")
+	}
+
+	text := result.Content[0].Text
+	if strings.Contains(text, "toolName") {
+		t.Error("session_event should be excluded from open_nodes result")
+	}
+	if !strings.Contains(text, "static observation") {
+		t.Error("static observation should be present in open_nodes result")
+	}
+}
 
 func TestHandler_GetContext(t *testing.T) {
 	tests := []struct {
@@ -1622,9 +1773,54 @@ func TestHandler_Tools_Count(t *testing.T) {
 	defer store.Close()
 
 	tools := handler.Tools()
-	// 16 original + 2 new (invalidate_observation, get_entity_history)
-	if len(tools) != 18 {
-		t.Errorf("expected 18 tools, got %d", len(tools))
+	// 18 original + 2 new (get_memory_analytics, get_tuning_recommendation)
+	if len(tools) != 20 {
+		t.Errorf("expected 20 tools, got %d", len(tools))
+	}
+}
+
+// --- get_memory_analytics / get_tuning_recommendation tests ---
+
+func TestHandler_GetMemoryAnalytics(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	if _, err := store.CreateEntity("Alpha", "project", []string{"hello"}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+
+	result, err := handler.CallTool("get_memory_analytics", json.RawMessage(`{"topN": 5}`))
+	if err != nil {
+		t.Fatalf("get_memory_analytics: %v", err)
+	}
+	text := result.Content[0].Text
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		t.Fatalf("result not JSON: %v", err)
+	}
+	if parsed["TotalEntities"].(float64) != 1 {
+		t.Errorf("TotalEntities = %v, want 1", parsed["TotalEntities"])
+	}
+}
+
+func TestHandler_GetTuningRecommendation(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	store.Migrate()
+
+	result, err := handler.CallTool("get_tuning_recommendation", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("get_tuning_recommendation: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &parsed); err != nil {
+		t.Fatalf("result not JSON: %v", err)
+	}
+	if _, ok := parsed["Suggested"]; !ok {
+		t.Error("missing Suggested in recommendation")
 	}
 }
 
@@ -1843,5 +2039,193 @@ func TestHandler_ConsolidateMemories_SemanticMode_CustomThreshold(t *testing.T) 
 	entity, _ := store.GetEntity("Pets")
 	if len(entity.Observations) != 2 {
 		t.Errorf("expected 2 observations unchanged, got %d: %v", len(entity.Observations), entity.Observations)
+	}
+}
+
+func TestHandler_SearchNodes_HybridFormat(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	handler.WithEmbedder(&fakeEmbedder{})
+
+	longObs := strings.Repeat("verbose detail ", 20) // 300 chars > maxObservationLength
+	if _, err := store.CreateEntity("GoPatterns", "pattern", []string{"table-driven testing patterns", longObs}); err != nil {
+		t.Fatalf("CreateEntity: %v", err)
+	}
+
+	// Store distinct embeddings directly: identical fake vectors would trigger
+	// auto-supersede (cosine = 1.0 marks observations as no longer valid).
+	storedObs, err := store.GetObservationsWithoutEmbeddings()
+	if err != nil {
+		t.Fatalf("GetObservationsWithoutEmbeddings: %v", err)
+	}
+	if len(storedObs) != 2 {
+		t.Fatalf("expected 2 observations, got %d", len(storedObs))
+	}
+	if err := store.BatchStoreEmbeddings(storedObs, [][]float64{{1, 0, 0}, {0.9, 0.1, 0}}, "test-model"); err != nil {
+		t.Fatalf("BatchStoreEmbeddings: %v", err)
+	}
+
+	// Query with no keyword overlap: only the vector path can match,
+	// proving the hybrid formatter (formatHybridResults) was used.
+	result, err := handler.CallTool("search_nodes", json.RawMessage(`{"query":"zzznomatch"}`))
+	if err != nil {
+		t.Fatalf("search_nodes: %v", err)
+	}
+
+	text := result.Content[0].Text
+	var entities []map[string]any
+	if err := json.Unmarshal([]byte(text), &entities); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, text)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("expected 1 grouped entity, got %d: %s", len(entities), text)
+	}
+	if entities[0]["name"] != "GoPatterns" || entities[0]["entityType"] != "pattern" {
+		t.Errorf("unexpected entity: %v", entities[0])
+	}
+	obs, ok := entities[0]["observations"].([]any)
+	if !ok || len(obs) == 0 {
+		t.Fatalf("observations missing: %s", text)
+	}
+	if len(obs) > 3 {
+		t.Errorf("observations = %d, want <= 3 (maxObservationsPerEntity)", len(obs))
+	}
+	if !strings.Contains(text, "…") {
+		t.Error("expected long observation to be truncated with …")
+	}
+}
+
+// Issue #32: identical embeddings must not expire the new batch itself.
+func TestHandler_CreateEntities_SupersedeKeepsNewContent(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	handler.WithEmbedder(&fakeEmbedder{}) // constant vector: worst-case identical embeddings
+
+	_, err := handler.CallTool("create_entities", json.RawMessage(`{"entities":[{"name":"GoPatterns","entityType":"pattern","observations":["use table-driven tests","use table driven tests for cases"]}]}`))
+	if err != nil {
+		t.Fatalf("create_entities: %v", err)
+	}
+
+	history, err := store.GetObservationHistory("GoPatterns")
+	if err != nil {
+		t.Fatalf("GetObservationHistory: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 observations, got %d", len(history))
+	}
+	for _, h := range history {
+		if h.ValidUntil.Valid {
+			t.Errorf("new observation was expired by its own batch: %.40q", h.Content)
+		}
+	}
+}
+
+func TestHandler_CaptureSession(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	result, err := handler.CallTool("capture_session", json.RawMessage(`{"projectName":"testproj","summary":"built auth module","events":[{"toolName":"Edit","filePath":"auth.go"}]}`))
+	if err != nil {
+		t.Fatalf("capture_session: %v", err)
+	}
+	text := result.Content[0].Text
+	if !strings.Contains(text, "Session captured") || !strings.Contains(text, "1 events") {
+		t.Errorf("unexpected result: %s", text)
+	}
+
+	sessions, err := store.ListSessions("testproj", "", 0)
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	if sessions[0].Status != "completed" {
+		t.Errorf("expected completed session, got %q", sessions[0].Status)
+	}
+}
+
+func TestHandler_RecallSessions(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	// Empty recall
+	result, err := handler.CallTool("recall_sessions", json.RawMessage(`{"projectName":"nonexistent"}`))
+	if err != nil {
+		t.Fatalf("recall_sessions: %v", err)
+	}
+	if !strings.Contains(result.Content[0].Text, "No recent sessions found") {
+		t.Errorf("expected empty recall message, got: %s", result.Content[0].Text)
+	}
+
+	// Recall after capture
+	if _, err := handler.CallTool("capture_session", json.RawMessage(`{"projectName":"testproj","summary":"built auth module"}`)); err != nil {
+		t.Fatalf("capture_session: %v", err)
+	}
+	result, err = handler.CallTool("recall_sessions", json.RawMessage(`{"projectName":"testproj"}`))
+	if err != nil {
+		t.Fatalf("recall_sessions: %v", err)
+	}
+	if !strings.Contains(result.Content[0].Text, "built auth module") {
+		t.Errorf("expected recalled summary, got: %s", result.Content[0].Text)
+	}
+}
+
+func TestHandler_BulkDiagnostics_SurfacesErrors(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	// 1. create_relations with non-existent entities should report diagnostics in response text
+	res, err := handler.CallTool("create_relations", json.RawMessage(`{
+		"relations": [
+			{"from": "ghost1", "to": "ghost2", "relationType": "relates"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("create_relations failed: %v", err)
+	}
+	if !strings.Contains(res.Content[0].Text, "failed:") {
+		t.Errorf("expected failure diagnostics in create_relations response, got: %s", res.Content[0].Text)
+	}
+
+	// 2. delete_entities with non-existent entity should report diagnostics in response text
+	res, err = handler.CallTool("delete_entities", json.RawMessage(`{
+		"entityNames": ["ghostEntity"]
+	}`))
+	if err != nil {
+		t.Fatalf("delete_entities failed: %v", err)
+	}
+	if !strings.Contains(res.Content[0].Text, "failed:") {
+		t.Errorf("expected failure diagnostics in delete_entities response, got: %s", res.Content[0].Text)
+	}
+
+	// 3. delete_observations with non-existent observation should report diagnostics in response text
+	store.CreateEntity("Exist", "test", []string{"real observation"})
+	res, err = handler.CallTool("delete_observations", json.RawMessage(`{
+		"deletions": [
+			{"entityName": "Exist", "observations": ["ghost observation"]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("delete_observations failed: %v", err)
+	}
+	if !strings.Contains(res.Content[0].Text, "failed:") {
+		t.Errorf("expected failure diagnostics in delete_observations response, got: %s", res.Content[0].Text)
+	}
+}
+
+func TestHandler_CallToolContext_PropagatesCancellation(t *testing.T) {
+	handler, store := newTestHandler(t)
+	defer store.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := handler.CallToolContext(ctx, "search_nodes", json.RawMessage(`{"query":"test"}`))
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+	if err != context.Canceled {
+		t.Errorf("expected context.Canceled error, got: %v", err)
 	}
 }

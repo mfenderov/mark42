@@ -1,10 +1,10 @@
 # mark42
 
-A local, privacy-first RAG memory system for Claude Code, built on SQLite with Go.
+A local, privacy-first memory layer for AI coding harnesses, built on SQLite with Go.
 
 ## Why This Exists
 
-Claude Code sessions are ephemeral. Valuable context—patterns learned, decisions made, codebase knowledge—disappears when a session ends.
+AI coding sessions are ephemeral. Whether you're working in Claude Code, pi, or opencode, valuable context—patterns learned, decisions made, codebase knowledge—disappears when a session ends.
 
 | Solution | Issue |
 |----------|-------|
@@ -17,37 +17,72 @@ Claude Code sessions are ephemeral. Valuable context—patterns learned, decisio
 - **Vector search** (Ollama embeddings) for semantic retrieval
 - **Hybrid ranking** (RRF fusion) combining both approaches
 - **Session capture & recall** for cross-session continuity
-- **MCP interface** for seamless Claude Code integration
+- **MCP interface + harness adapters** for Claude Code, pi, and opencode
 
-## Installation
+## Installation & Setup
 
-```bash
-claude plugin install mark42@mark42
-```
-
-That's it. The MCP server registers automatically. The binary downloads on first Claude Code start (~30s one-time). All subsequent starts are instant.
-
-### Updating
+Build the server binary or install it to `~/bin`:
 
 ```bash
-claude plugin update mark42@mark42
+make install-server   # Installs mark42-server to ~/bin
 ```
 
-### Migration from brew
+### Connect to Any AI Coding Harness
 
-If you previously installed via brew:
+`mark42` communicates over standard stdio JSON-RPC 2.0 via the Model Context Protocol. Add `mark42-server` to your tool's MCP configuration:
 
-```bash
-claude mcp remove mark42 --scope user
-claude plugin install mark42@mark42
+#### Claude Code (`~/.claude.json` or `.mcp.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
 ```
+
+#### Cursor (`~/.cursor/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
+```
+
+#### Windsurf (`~/.codeium/windsurf/mcp_config.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
+```
+
+#### Pi (`~/.config/mcp/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "mark42": {
+      "command": "mark42-server"
+    }
+  }
+}
+```
+
+No external plugins, hooks, or language-specific adapters required. Memory is automatically available in any tool supporting MCP.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       Claude Code                           │
-│                    mcp__mark42__* tools                      │
+│          AI Harness (Claude Code / pi / opencode)           │
+│          mcp__mark42__* tools / mark42 CLI hooks            │
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC 2.0 (stdio)
                            ▼
@@ -81,7 +116,7 @@ claude plugin install mark42@mark42
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## MCP Tools (16 total)
+## MCP Tools (20 total)
 
 | Tool | Description |
 |------|-------------|
@@ -101,6 +136,10 @@ claude plugin install mark42@mark42
 | `consolidate_memories` | Deduplicate similar observations |
 | `capture_session` | Capture session summary + tool-use events |
 | `recall_sessions` | Recall recent session summaries for continuity |
+| `invalidate_observation` | Mark an observation as no longer valid (temporal) |
+| `get_entity_history` | Full observation history, including superseded |
+| `get_memory_analytics` | Aggregate stats: overview, decay curve, access hotspots, activity |
+| `get_tuning_recommendation` | Usage-driven importance/decay config suggestions with rationale |
 
 ## CLI
 
@@ -115,6 +154,8 @@ mark42 search "testing patterns"
 echo '{"summary":"Built auth module","events":[...]}' | mark42 session capture my-project
 mark42 session list --project my-project
 mark42 session recall my-project --hours 72
+mark42 distill <session-name>  # Distill raw session events into structural summary
+mark42 path slug               # Output canonical project slug for current directory
 
 # Embeddings & search
 mark42 embed generate          # Generate vector embeddings via Ollama
@@ -124,17 +165,33 @@ mark42 hybrid-search "testing" # FTS5 + vector hybrid search
 mark42 importance recalculate  # Update importance scores
 mark42 decay archive           # Archive old, low-importance memories
 mark42 context --project my-project  # Preview context injection output
+
+# Analytics
+mark42 analytics               # Dashboard: overview, decay curve, hotspots, activity
+mark42 analytics tune          # Usage-driven config suggestions (add --apply to persist)
 ```
 
-## Plugin Hooks
+## Analytics
 
-mark42 includes Claude Code plugin hooks for automatic memory management:
+`mark42 analytics` shows a dashboard of overview counts, a decay curve by memory age, top-accessed observations, dormant/fact-type breakdown, and recent session activity (`--json` for machine-readable output, `--top N` to control the hotspot list size). `mark42 analytics tune` compares your persisted importance/decay config against usage-driven suggestions, with a rationale per changed parameter; add `--apply` to persist the suggestion.
 
-| Hook | Trigger | Action |
-|------|---------|--------|
-| `mark42 hook session-start` | Session begins | Injects session recall + knowledge graph context |
-| `mark42 hook post-tool-use` | After Edit/Write/Bash | Tracks modified files + session events (zero tokens) |
-| `mark42 hook stop` | Session ends | Triggers `capture_session` + memory sync |
+```bash
+$ mark42 analytics
+Memory Analytics
+  Entities: 42   Observations: 310   Relations: 18   Sessions: 12
+  Embedding coverage: 91%   DB size: 3.2 MB
+
+Decay Curve
+  0-7d    120 obs  avg importance 0.82
+  8-30d    90 obs  avg importance 0.61
+  31d+     100 obs  avg importance 0.34
+...
+
+$ mark42 analytics tune --apply
+Tuning Recommendation
+  DecayConstant    30 → 45   (low overall access frequency favors a slower decay)
+Applied. New config saved.
+```
 
 ## Comparison
 
@@ -156,7 +213,8 @@ mark42 includes Claude Code plugin hooks for automatic memory management:
 - **Phase 2** ✅ Semantic Search — Hybrid search (FTS5 + vector), Ollama embeddings, fact types, entity versioning
 - **Phase 3** ✅ Intelligence — Auto-embed on write, recency-boosted context injection, consolidation
 - **Phase 4** ✅ Session Capture & Recall — Cross-session continuity, capture/recall tools, hook integration
-- **Phase 5** 🔮 Analytics & Advanced Decay — Automatic importance decay, memory analytics
+- **Phase 5** ✅ Cross-Harness & Lifecycle — Harness adapters (Claude Code, pi, opencode), neutral config paths (`~/.mark42`), distill pipeline, importance scoring, decay/archive commands, per-project workdirs
+- **Phase 6** ✅ Analytics — Memory analytics dashboard (`mark42 analytics`), usage-driven tuning recommendations (`mark42 analytics tune`), persisted importance/decay config, read-only MCP tools (`get_memory_analytics`, `get_tuning_recommendation`)
 
 ## License
 

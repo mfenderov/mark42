@@ -2,6 +2,9 @@
 bin/
 claude-memory
 claude-memory-server
+mark42
+mark42-server
+memory
 
 # npm package: track JS launchers but not downloaded native binaries
 !npm/bin/

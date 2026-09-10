@@ -5,7 +5,7 @@
       "command": "mark42-server",
       "args": [],
       "env": {
-        "CLAUDE_MEMORY_DB": "${HOME}/.claude/memory.db"
+        "CLAUDE_MEMORY_DB": "${HOME}/.mark42/memory.db"
       }
     }
   }

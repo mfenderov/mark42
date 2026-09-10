@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/charmbracelet/log"
 
@@ -108,7 +106,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "add_observations",
-			Description: "Add new observations to existing entities in the knowledge graph",
+			Description: "Add new observations to existing entities in the knowledge graph. Call this to proactively remember newly discovered project conventions, architectural decisions, and user preferences.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -120,7 +118,11 @@ func (h *Handler) Tools() []Tool {
 							Properties: map[string]Property{
 								"entityName": {Type: "string", Description: "Entity name to add observations to"},
 								"contents":   {Type: "array", Description: "Observation contents", Items: &Items{Type: "string"}},
-								"factType":   {Type: "string", Description: "Optional fact type: 'static' (permanent), 'dynamic' (session), 'session_turn' (conversation)"},
+								"factType": {
+									Type:        "string",
+									Description: "Optional fact type: 'static' (permanent), 'dynamic' (session), 'session_turn' (conversation)",
+									Enum:        []string{"static", "dynamic", "session_turn"},
+								},
 							},
 							Required: []string{"entityName", "contents"},
 						},
@@ -217,7 +219,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "get_context",
-			Description: "Get memories optimized for context injection, ordered by importance and fact type",
+			Description: "Get memories optimized for context injection, ordered by importance and fact type. Call this at session start to retrieve project conventions, architecture rules, and user preferences.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -258,15 +260,24 @@ func (h *Handler) Tools() []Tool {
 				Type: "object",
 				Properties: map[string]Property{
 					"entityName": {Type: "string", Description: "Name of the entity whose observations to consolidate"},
-					"mode":       {Type: "string", Description: "Consolidation mode: 'semantic' uses embedding similarity, default uses substring matching"},
-					"threshold":  {Type: "number", Description: "Similarity threshold for semantic mode (0.0-1.0, default 0.85)"},
+					"mode": {
+						Type:        "string",
+						Description: "Consolidation mode: 'semantic' uses embedding similarity, default uses substring matching",
+						Enum:        []string{"exact", "substring", "semantic"},
+					},
+					"threshold": {
+						Type:        "number",
+						Description: "Similarity threshold for semantic mode (0.0-1.0, default 0.85)",
+						Minimum:     float64Ptr(0.0),
+						Maximum:     float64Ptr(1.0),
+					},
 				},
 				Required: []string{"entityName"},
 			},
 		},
 		{
 			Name:        "capture_session",
-			Description: "Capture a completed session with summary and optional tool-use events for cross-session recall",
+			Description: "Capture a completed session or milestone with a summary and optional tool-use events. Call this when concluding a user task to preserve progress for future sessions.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -292,7 +303,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "recall_sessions",
-			Description: "Recall recent session summaries for a project to understand what was done in previous sessions",
+			Description: "Recall recent session summaries for a project to understand what was done in previous sessions and maintain cross-session continuity.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -325,700 +336,71 @@ func (h *Handler) Tools() []Tool {
 				Required: []string{"entityName"},
 			},
 		},
+		{
+			Name:        "get_memory_analytics",
+			Description: "Get aggregate database-wide statistics: overview counts, decay curve, access hotspots, fact-type breakdown, and recent session activity.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"topN": {Type: "number", Description: "Number of top-accessed observations to include (default: 10)"},
+				},
+			},
+		},
+		{
+			Name:        "get_tuning_recommendation",
+			Description: "Get usage-driven suggestions for the importance/decay config, with rationale for each suggested change.",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
 	}
+}
+
+// toolDispatch maps tool names to handler methods (method expressions).
+var toolDispatch = map[string]func(*Handler, context.Context, json.RawMessage) (*ToolCallResult, error){
+	"create_entities":           (*Handler).createEntities,
+	"create_or_update_entities": (*Handler).createOrUpdateEntities,
+	"create_relations":          (*Handler).createRelations,
+	"add_observations":          (*Handler).addObservations,
+	"delete_entities":           (*Handler).deleteEntities,
+	"delete_observations":       (*Handler).deleteObservations,
+	"delete_relations":          (*Handler).deleteRelations,
+	"read_graph": func(h *Handler, ctx context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		return h.readGraph(ctx)
+	},
+	"search_nodes":           (*Handler).searchNodes,
+	"open_nodes":             (*Handler).openNodes,
+	"get_context":            (*Handler).getContext,
+	"get_recent_context":     (*Handler).getRecentContext,
+	"summarize_entity":       (*Handler).summarizeEntity,
+	"consolidate_memories":   (*Handler).consolidateMemories,
+	"capture_session":        (*Handler).captureSession,
+	"recall_sessions":        (*Handler).recallSessions,
+	"invalidate_observation": (*Handler).invalidateObservation,
+	"get_entity_history":     (*Handler).getEntityHistory,
+	"get_memory_analytics":   (*Handler).getMemoryAnalytics,
+	"get_tuning_recommendation": func(h *Handler, ctx context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		return h.getTuningRecommendation(ctx)
+	},
+}
+
+// CallToolContext executes the named tool with the given context and arguments.
+func (h *Handler) CallToolContext(ctx context.Context, name string, args json.RawMessage) (*ToolCallResult, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if fn, ok := toolDispatch[name]; ok {
+		return fn(h, ctx, args)
+	}
+	return nil, fmt.Errorf("unknown tool: %s", name)
 }
 
 // CallTool executes the named tool with the given arguments.
 func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, error) {
-	switch name {
-	case "create_entities":
-		return h.createEntities(args)
-	case "create_or_update_entities":
-		return h.createOrUpdateEntities(args)
-	case "create_relations":
-		return h.createRelations(args)
-	case "add_observations":
-		return h.addObservations(args)
-	case "delete_entities":
-		return h.deleteEntities(args)
-	case "delete_observations":
-		return h.deleteObservations(args)
-	case "delete_relations":
-		return h.deleteRelations(args)
-	case "read_graph":
-		return h.readGraph()
-	case "search_nodes":
-		return h.searchNodes(args)
-	case "open_nodes":
-		return h.openNodes(args)
-	case "get_context":
-		return h.getContext(args)
-	case "get_recent_context":
-		return h.getRecentContext(args)
-	case "summarize_entity":
-		return h.summarizeEntity(args)
-	case "consolidate_memories":
-		return h.consolidateMemories(args)
-	case "capture_session":
-		return h.captureSession(args)
-	case "recall_sessions":
-		return h.recallSessions(args)
-	case "invalidate_observation":
-		return h.invalidateObservation(args)
-	case "get_entity_history":
-		return h.getEntityHistory(args)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", name)
-	}
+	return h.CallToolContext(context.Background(), name, args)
 }
 
-func (h *Handler) createEntities(args json.RawMessage) (*ToolCallResult, error) {
-	var input CreateEntitiesInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var created []string
-	for _, e := range input.Entities {
-		entity, err := h.store.CreateEntity(e.Name, e.EntityType, e.Observations)
-		if err != nil {
-			// Entity may already exist, try adding observations
-			for _, obs := range e.Observations {
-				_ = h.store.AddObservation(e.Name, obs)
-			}
-		} else {
-			created = append(created, entity.Name)
-		}
-		h.embedObservations(e.Name, e.Observations)
-		if e.EntityType != "session" {
-			h.autoDetectSuperseded(e.Name, e.Observations, storage.FactTypeDynamic)
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Created entities: %v", created)}},
-	}, nil
-}
-
-func (h *Handler) createOrUpdateEntities(args json.RawMessage) (*ToolCallResult, error) {
-	var input CreateEntitiesInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var results []string
-	for _, e := range input.Entities {
-		entity, err := h.store.CreateOrUpdateEntity(e.Name, e.EntityType, e.Observations)
-		if err != nil {
-			results = append(results, fmt.Sprintf("Error: %s - %v", e.Name, err))
-		} else {
-			results = append(results, fmt.Sprintf("%s (v%d)", entity.Name, entity.Version))
-			h.embedObservations(e.Name, e.Observations)
-			if e.EntityType != "session" {
-				h.autoDetectSuperseded(e.Name, e.Observations, storage.FactTypeDynamic)
-			}
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Created/updated: %s", strings.Join(results, ", "))}},
-	}, nil
-}
-
-func (h *Handler) createRelations(args json.RawMessage) (*ToolCallResult, error) {
-	var input CreateRelationsInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var created int
-	for _, r := range input.Relations {
-		if err := h.store.CreateRelation(r.From, r.To, r.RelationType); err == nil {
-			created++
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Created %d relations", created)}},
-	}, nil
-}
-
-func (h *Handler) addObservations(args json.RawMessage) (*ToolCallResult, error) {
-	var input AddObservationsInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var added int
-	for _, obs := range input.Observations {
-		// Determine fact type (default to dynamic for API compatibility)
-		factType := storage.FactTypeDynamic
-		if obs.FactType != "" {
-			factType = storage.FactType(obs.FactType)
-		}
-
-		var addedContents []string
-		for _, content := range obs.Contents {
-			var err error
-			if factType != storage.FactTypeDynamic {
-				err = h.store.AddObservationWithType(obs.EntityName, content, factType)
-			} else {
-				err = h.store.AddObservation(obs.EntityName, content)
-			}
-			if err == nil {
-				added++
-				addedContents = append(addedContents, content)
-			}
-		}
-		h.embedObservations(obs.EntityName, addedContents)
-		h.autoDetectSuperseded(obs.EntityName, addedContents, factType)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Added %d observations", added)}},
-	}, nil
-}
-
-func (h *Handler) deleteEntities(args json.RawMessage) (*ToolCallResult, error) {
-	var input DeleteEntitiesInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var deleted int
-	for _, name := range input.EntityNames {
-		if err := h.store.DeleteEntity(name); err == nil {
-			deleted++
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Deleted %d entities", deleted)}},
-	}, nil
-}
-
-func (h *Handler) deleteObservations(args json.RawMessage) (*ToolCallResult, error) {
-	var input DeleteObservationsInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var deleted int
-	for _, d := range input.Deletions {
-		for _, obs := range d.Observations {
-			if err := h.store.DeleteObservation(d.EntityName, obs); err == nil {
-				deleted++
-			}
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Deleted %d observations", deleted)}},
-	}, nil
-}
-
-func (h *Handler) deleteRelations(args json.RawMessage) (*ToolCallResult, error) {
-	var input DeleteRelationsInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var deleted int
-	for _, r := range input.Relations {
-		if err := h.store.DeleteRelation(r.From, r.To, r.RelationType); err == nil {
-			deleted++
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Deleted %d relations", deleted)}},
-	}, nil
-}
-
-func (h *Handler) readGraph() (*ToolCallResult, error) {
-	graph, err := h.store.ReadGraph()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read graph: %w", err)
-	}
-
-	data, err := json.Marshal(graph)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal graph: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: string(data)}},
-	}, nil
-}
-
-func (h *Handler) searchNodes(args json.RawMessage) (*ToolCallResult, error) {
-	var input SearchNodesInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	// Try hybrid search (FTS + vector) if embedder is available
-	if h.embedder != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		results, err := h.store.HybridSearchWithEmbedder(ctx, input.Query, h.embedder, 20)
-		if err == nil && len(results) > 0 {
-			return h.formatHybridResults(results)
-		}
-		// Fall through to FTS-only on error
-	}
-
-	// Fallback: FTS-only search
-	results, err := h.store.SearchWithLimit(input.Query, 20)
-	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
-	}
-
-	// Convert to entity list for output
-	entities := make([]map[string]any, len(results))
-	for i, r := range results {
-		entities[i] = map[string]any{
-			"name":         r.Name,
-			"entityType":   r.Type,
-			"observations": r.Observations,
-		}
-		if err := h.store.UpdateLastAccessed(r.Name); err != nil {
-			logger.Warn("failed to update last accessed", "entity", r.Name, "error", err)
-		}
-	}
-
-	data, err := json.Marshal(entities)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal results: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: string(data)}},
-	}, nil
-}
-
-// formatHybridResults converts FusedResults to MCP output format.
-func (h *Handler) formatHybridResults(results []storage.FusedResult) (*ToolCallResult, error) {
-	// Group results by entity to match expected output format
-	entityMap := make(map[string]*struct {
-		Name         string
-		Type         string
-		Observations []string
-		Score        float64
-	})
-
-	for _, r := range results {
-		key := r.EntityName
-		if existing, ok := entityMap[key]; ok {
-			// Add observation to existing entity
-			existing.Observations = append(existing.Observations, r.Content)
-			if r.FusionScore > existing.Score {
-				existing.Score = r.FusionScore
-			}
-		} else {
-			entityMap[key] = &struct {
-				Name         string
-				Type         string
-				Observations []string
-				Score        float64
-			}{
-				Name:         r.EntityName,
-				Type:         r.EntityType,
-				Observations: []string{r.Content},
-				Score:        r.FusionScore,
-			}
-		}
-	}
-
-	// Convert to output format, tracking access per entity
-	entities := make([]map[string]any, 0, len(entityMap))
-	for _, e := range entityMap {
-		entities = append(entities, map[string]any{
-			"name":         e.Name,
-			"entityType":   e.Type,
-			"observations": e.Observations,
-		})
-		if err := h.store.UpdateLastAccessed(e.Name); err != nil {
-			logger.Warn("failed to update last accessed", "entity", e.Name, "error", err)
-		}
-	}
-
-	data, err := json.Marshal(entities)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal results: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: string(data)}},
-	}, nil
-}
-
-func (h *Handler) openNodes(args json.RawMessage) (*ToolCallResult, error) {
-	var input OpenNodesInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var entities []map[string]any
-	for _, name := range input.Names {
-		entity, err := h.store.GetEntity(name)
-		if err != nil {
-			continue
-		}
-		entities = append(entities, map[string]any{
-			"name":         entity.Name,
-			"entityType":   entity.Type,
-			"observations": entity.Observations,
-		})
-		if err := h.store.UpdateLastAccessed(name); err != nil {
-			logger.Warn("failed to update last accessed", "entity", name, "error", err)
-		}
-	}
-
-	data, err := json.Marshal(entities)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal entities: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: string(data)}},
-	}, nil
-}
-
-func (h *Handler) getRecentContext(args json.RawMessage) (*ToolCallResult, error) {
-	var input GetRecentContextInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	hours := input.Hours
-	if hours <= 0 {
-		hours = 24
-	}
-	tokenBudget := input.TokenBudget
-	if tokenBudget <= 0 {
-		tokenBudget = 1000
-	}
-
-	results, err := h.store.GetRecentContext(hours, input.ProjectName, tokenBudget)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get recent context: %w", err)
-	}
-
-	seen := make(map[string]struct{})
-	for _, r := range results {
-		if _, ok := seen[r.EntityName]; !ok {
-			seen[r.EntityName] = struct{}{}
-			if err := h.store.UpdateLastAccessed(r.EntityName); err != nil {
-				logger.Warn("failed to update last accessed", "entity", r.EntityName, "error", err)
-			}
-		}
-	}
-
-	formatted := storage.FormatContextResults(results)
-	if formatted == "" {
-		formatted = "No recent memories found."
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: formatted}},
-	}, nil
-}
-
-func (h *Handler) summarizeEntity(args json.RawMessage) (*ToolCallResult, error) {
-	var input SummarizeEntityInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	entity, err := h.store.GetEntity(input.EntityName)
-	if err != nil {
-		return nil, fmt.Errorf("entity not found: %w", err)
-	}
-
-	relations, _ := h.store.ListRelations(input.EntityName)
-	history, _ := h.store.GetEntityHistory(input.EntityName)
-
-	// Build summary
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s (%s)\n", entity.Name, entity.Type))
-	sb.WriteString(fmt.Sprintf("Version: %d | Relations: %d\n\n", entity.Version, len(relations)))
-
-	// Group observations by fact type
-	if len(entity.Observations) > 0 {
-		sb.WriteString("## Observations\n")
-		for _, obs := range entity.Observations {
-			sb.WriteString("- " + obs + "\n")
-		}
-		sb.WriteString("\n")
-	}
-
-	// Relations
-	if len(relations) > 0 {
-		sb.WriteString("## Relations\n")
-		for _, r := range relations {
-			sb.WriteString(fmt.Sprintf("- %s -[%s]-> %s\n", r.From, r.Type, r.To))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Version history
-	if len(history) > 1 {
-		sb.WriteString(fmt.Sprintf("## History (%d versions)\n", len(history)))
-		for _, v := range history {
-			sb.WriteString(fmt.Sprintf("- v%d (created: %s)\n", v.Version, v.CreatedAt.Format("2006-01-02")))
-		}
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: sb.String()}},
-	}, nil
-}
-
-func (h *Handler) consolidateMemories(args json.RawMessage) (*ToolCallResult, error) {
-	var input ConsolidateMemoriesInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	var result string
-	var err error
-
-	if input.Mode == "semantic" {
-		if h.embedder == nil {
-			return &ToolCallResult{
-				Content: []ContentBlock{{Type: "text", Text: "semantic mode requires embedder"}},
-				IsError: true,
-			}, nil
-		}
-		threshold := input.Threshold
-		if threshold == 0 {
-			threshold = storage.DefaultSupersessionThreshold
-		}
-		result, err = h.store.ConsolidateWithSimilarity(input.EntityName, threshold)
-	} else {
-		result, err = h.store.ConsolidateObservations(input.EntityName)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("consolidation failed: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: result}},
-	}, nil
-}
-
-func (h *Handler) invalidateObservation(args json.RawMessage) (*ToolCallResult, error) {
-	var input InvalidateObservationInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if err := h.store.InvalidateObservation(input.EntityName, input.Content); err != nil {
-		return nil, fmt.Errorf("invalidate failed: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: `{"status":"invalidated"}`}},
-	}, nil
-}
-
-func (h *Handler) getEntityHistory(args json.RawMessage) (*ToolCallResult, error) {
-	var input GetEntityHistoryInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	history, err := h.store.GetObservationHistory(input.EntityName)
-	if err != nil {
-		return nil, fmt.Errorf("get history failed: %w", err)
-	}
-
-	type historyEntry struct {
-		Content    string  `json:"content"`
-		FactType   string  `json:"factType"`
-		ValidFrom  string  `json:"validFrom"`
-		ValidUntil *string `json:"validUntil"`
-	}
-
-	entries := make([]historyEntry, len(history))
-	for i, h := range history {
-		entry := historyEntry{
-			Content:   h.Content,
-			FactType:  h.FactType,
-			ValidFrom: h.ValidFrom().Format(time.RFC3339),
-		}
-		if h.ValidUntil.Valid {
-			var validUntilTime time.Time
-			if t, err := time.Parse("2006-01-02 15:04:05", h.ValidUntil.String); err == nil {
-				validUntilTime = t
-			} else if t, err := time.Parse(time.RFC3339, h.ValidUntil.String); err == nil {
-				validUntilTime = t
-			}
-			if !validUntilTime.IsZero() {
-				s := validUntilTime.Format(time.RFC3339)
-				entry.ValidUntil = &s
-			}
-		}
-		entries[i] = entry
-	}
-
-	data, err := json.Marshal(map[string]any{
-		"entityName": input.EntityName,
-		"history":    entries,
-		"count":      len(entries),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal history: %w", err)
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: string(data)}},
-	}, nil
-}
-
-func isSessionFactType(ft storage.FactType) bool {
-	return ft == storage.FactTypeSessionEvent ||
-		ft == storage.FactTypeSessionSummary ||
-		ft == storage.FactTypeSessionTurn
-}
-
-func (h *Handler) autoDetectSuperseded(entityName string, contents []string, factType storage.FactType) {
-	if h.embedder == nil {
-		return
-	}
-	if isSessionFactType(factType) {
-		return
-	}
-	for _, content := range contents {
-		expired, err := h.store.DetectAndExpireSuperseded(entityName, content, h.embedder, storage.DefaultSupersessionThreshold)
-		if err != nil {
-			logger.Warn("failed to detect superseded observations", "entity", entityName, "error", err)
-		} else if len(expired) > 0 {
-			logger.Info("auto-expired superseded observations", "entity", entityName, "count", len(expired))
-		}
-	}
-}
-
-func (h *Handler) embedObservations(entityName string, contents []string) {
-	if h.embedder == nil {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	loggedWarning := false
-	for _, content := range contents {
-		embedding, err := h.embedder.CreateEmbedding(ctx, content)
-		if err != nil {
-			if !loggedWarning {
-				logger.Warn("embedding failed, semantic search degraded",
-					"entity", entityName, "error", err)
-				loggedWarning = true
-			}
-			continue
-		}
-
-		obs := h.store.GetObservationWithID(entityName, content)
-		if obs == nil {
-			continue
-		}
-
-		_ = h.store.StoreEmbedding(obs.ID, embedding, "nomic-embed-text")
-	}
-}
-
-func (h *Handler) getContext(args json.RawMessage) (*ToolCallResult, error) {
-	var input GetContextInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	cfg := storage.DefaultContextConfig()
-	if input.TokenBudget > 0 {
-		cfg.TokenBudget = input.TokenBudget
-	}
-	if input.MinImportance > 0 {
-		cfg.MinImportance = input.MinImportance
-	}
-
-	results, err := h.store.GetContextForInjection(cfg, input.ProjectName, input.Query, h.embedder)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get context: %w", err)
-	}
-
-	seen := make(map[string]struct{})
-	for _, r := range results {
-		if _, ok := seen[r.EntityName]; !ok {
-			seen[r.EntityName] = struct{}{}
-			if err := h.store.UpdateLastAccessed(r.EntityName); err != nil {
-				logger.Warn("failed to update last accessed", "entity", r.EntityName, "error", err)
-			}
-		}
-	}
-
-	formatted := storage.FormatContextResults(results)
-	if formatted == "" {
-		formatted = "No relevant memories found."
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: formatted}},
-	}, nil
-}
-
-func (h *Handler) captureSession(args json.RawMessage) (*ToolCallResult, error) {
-	var input CaptureSessionInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	session, err := h.store.CreateSession(input.ProjectName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create session: %w", err)
-	}
-
-	for _, evt := range input.Events {
-		_ = h.store.CaptureSessionEvent(session.Name, storage.SessionEvent{
-			ToolName:  evt.ToolName,
-			FilePath:  evt.FilePath,
-			Command:   evt.Command,
-			Timestamp: evt.Timestamp,
-		})
-	}
-
-	if err := h.store.CompleteSession(session.Name, input.Summary); err != nil {
-		return nil, fmt.Errorf("failed to complete session: %w", err)
-	}
-
-	// Auto-embed the summary
-	h.embedObservations(session.Name, []string{input.Summary})
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Session captured: %s (%d events)", session.Name, len(input.Events))}},
-	}, nil
-}
-
-func (h *Handler) recallSessions(args json.RawMessage) (*ToolCallResult, error) {
-	var input RecallSessionsInput
-	if err := json.Unmarshal(args, &input); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	results, err := h.store.GetRecentSessionSummaries(input.ProjectName, input.Hours, input.TokenBudget)
-	if err != nil {
-		return nil, fmt.Errorf("failed to recall sessions: %w", err)
-	}
-
-	formatted := storage.FormatSessionRecall(results)
-	if formatted == "" {
-		formatted = "No recent sessions found."
-	}
-
-	return &ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: formatted}},
-	}, nil
+func float64Ptr(v float64) *float64 {
+	return &v
 }

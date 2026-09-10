@@ -13,7 +13,7 @@ type Request struct {
 
 type Response struct {
 	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id,omitempty"`
+	ID      any    `json:"id"`
 	Result  any    `json:"result,omitempty"`
 	Error   *Error `json:"error,omitempty"`
 }
@@ -91,15 +91,20 @@ type InputSchema struct {
 }
 
 type Property struct {
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-	Items       *Items `json:"items,omitempty"`
+	Type        string   `json:"type"`
+	Description string   `json:"description,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+	Minimum     *float64 `json:"minimum,omitempty"`
+	Maximum     *float64 `json:"maximum,omitempty"`
+	Items       *Items   `json:"items,omitempty"`
 }
 
 type Items struct {
-	Type       string              `json:"type"`
-	Properties map[string]Property `json:"properties,omitempty"`
-	Required   []string            `json:"required,omitempty"`
+	Type        string              `json:"type"`
+	Description string              `json:"description,omitempty"`
+	Enum        []string            `json:"enum,omitempty"`
+	Properties  map[string]Property `json:"properties,omitempty"`
+	Required    []string            `json:"required,omitempty"`
 }
 
 type ToolsListResult struct {
@@ -227,4 +232,8 @@ type InvalidateObservationInput struct {
 
 type GetEntityHistoryInput struct {
 	EntityName string `json:"entityName"`
+}
+
+type GetMemoryAnalyticsInput struct {
+	TopN int `json:"topN,omitempty"`
 }

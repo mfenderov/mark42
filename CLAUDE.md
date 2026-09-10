@@ -2,16 +2,17 @@
 
 ## Project Overview
 
-A local, privacy-first RAG memory system for Claude Code, built on SQLite with Go.
+A local, privacy-first memory layer for AI coding harnesses, built on SQLite with Go.
 
-**Purpose**: Replace JSON-based Memory MCP with SQLite-backed implementation offering superior search capabilities (FTS5 + future vector search).
+**Purpose**: Cross-harness persistent memory for AI coding tools (Claude Code, pi, opencode). SQLite-backed knowledge graph with hybrid search, session capture & recall. API-compatible with the JSON Memory MCP it originated from.
 
-**Status**: Phase 6 Complete — Core Intelligence
+**Status**: Phase 5 Complete — Cross-Harness & Lifecycle (adapters, distill, decay)
 
 **Key differentiators**:
 - Privacy-first: All data stays local (no cloud, no telemetry)
 - Single-file portability: One `memory.db` file for backup/sync
-- Drop-in replacement: Same MCP API as `@modelcontextprotocol/server-memory`
+- Cross-harness: Adapters for Claude Code (plugin + hooks), opencode (JS plugin), pi (MCP recall)
+- MCP-compatible: Superset of the `@modelcontextprotocol/server-memory` tool API
 - Incremental complexity: FTS5 + vector hybrid search with RRF fusion
 
 ## Quick Reference
@@ -24,6 +25,7 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 | `make build-all` | Build both CLI and server binaries |
 | `make test` | Run tests with race detector |
 | `make test-coverage` | Generate coverage report (HTML) |
+| `make crap` | CRAP quality gate (gocrap, max 30) |
 | `make run` | Build and run CLI with test.db |
 | `make lint` | Run golangci-lint |
 | `make fmt` | Format code (go fmt + goimports) |
@@ -32,7 +34,6 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 | `make install` | Install CLI binary to ~/bin |
 | `make install-server` | Install MCP server to ~/bin |
 | `make install-all` | Install both binaries to ~/bin |
-| `make install-plugin` | Build binaries to bin/ for plugin deployment |
 | `make migrate` | Migrate from JSON Memory MCP to SQLite |
 <!-- END AUTO-MANAGED -->
 
@@ -41,7 +42,7 @@ A local, privacy-first RAG memory system for Claude Code, built on SQLite with G
 <!-- AUTO-MANAGED: architecture -->
 ```
 cmd/
-  ├── memory/main.go   → CLI entry point (cobra, lipgloss)
+  ├── memory/main.go   → CLI entry point (thin, delegates to internal/cli)
   └── server/main.go   → MCP server entry point (JSON-RPC over stdio)
 internal/
   ├── storage/         → SQLite operations (sqlx-based)
@@ -55,22 +56,27 @@ internal/
   │   ├── vector.go    → Vector storage and cosine similarity
   │   ├── fusion.go    → RRF and weighted score fusion
   │   ├── consolidate.go → Observation deduplication
+  │   ├── context.go   → Context injection (importance + recency scoring)
+  │   ├── importance.go → Importance scoring (recency + centrality + access)
+  │   ├── decay.go     → Decay/archive of stale memories
+  │   ├── temporal.go  → Temporal validity (valid_from/valid_until)
+  │   ├── workdir.go   → Per-project working directory mapping
   │   ├── session.go   → Session capture & recall (sessions as entities)
   │   ├── migration.go → Goose migration runner
-  │   └── migrations/  → Goose Go migrations (001-008)
-  └── mcp/             → MCP protocol implementation
-      ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
-      └── handlers.go  → Tool handlers with hybrid search support
-.claude-plugin/
-  ├── plugin.json      → Plugin metadata
-  └── hooks.json       → Hook configuration (Go CLI commands)
-.mcp.json              → MCP server configuration
-agents/                → Specialized agents (memory-updater)
-skills/                → Skill definitions (memory-processor, codebase-analyzer)
-commands/              → Command documentation (init, status, sync, calibrate)
+  │   └── migrations/  → Goose Go migrations
+  ├── mcp/             → MCP protocol implementation (20 tools, JSON-RPC 2.0)
+  │   ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
+  │   └── handlers_*.go → Tool handlers, split by domain
+  ├── cli/             → Cobra command tree (entity, obs, rel, search, session, path, ...)
+  ├── distill/         → Structural session distillation pipeline
+  ├── paths/           → Neutral config paths (~/.mark42, legacy ~/.claude back-compat)
+  └── state/           → Local run state
+schemas/
+  └── session-capture.v1.json → Session capture contract
+.mcp.json              → MCP server configuration example
 ```
 
-**Data flow**: Claude Code (stdio) → MCP Server (Go, JSON-RPC) → Storage Layer → SQLite (FTS5 + embeddings)
+**Data flow**: Any AI Harness (Claude Code / Cursor / Windsurf / Pi / Cline) → MCP Server (stdio, JSON-RPC 2.0) → Storage Layer → SQLite (FTS5 + embeddings)
 
 **Storage patterns**:
 - **sqlx** for struct scanning (db tags, no manual Scan calls)
@@ -119,50 +125,54 @@ See `docs/ARCHITECTURE.md` for:
 
 **Search and exploration**:
 - `mark42 search <query>` - FTS5 full-text search (BM25 ranked)
-- `mark42 graph` - Export entire knowledge graph
+- `mark42 hybrid-search <query>` - Hybrid search (FTS5 + vector with RRF fusion)
+- `mark42 graph [--format json|dot]` - Export entire knowledge graph
 
 **Session management**:
 - `mark42 session capture <project>` - Capture session from JSON stdin
 - `mark42 session list [--project P] [--limit N]` - List captured sessions
 - `mark42 session get <name>` - Show session details + summary
 - `mark42 session recall [project] [--hours N] [--tokens N]` - Recall recent session summaries
+- `mark42 distill <session-name>` - Distill raw session events into structural summary
+
+**Path and state utilities**:
+- `mark42 path slug [dir]` - Compute canonical project slug
+- `mark42 path state-dir [dir]` - Compute state directory path
+
+**Memory lifecycle & maintenance**:
+- `mark42 decay stats|apply|archive|forget` - Manage memory decay and archival
+- `mark42 importance recalculate|stats` - Recalculate graph importance scores
+- `mark42 consolidate [--entity name]` - Deduplicate and consolidate similar observations
+- `mark42 embed test|generate|stats` - Manage observation vector embeddings
+- `mark42 workdir set|get|list|search` - Scoped multi-project container tags
 
 **Utilities**:
 - `mark42 init` - Initialize database schema
+- `mark42 upgrade` - Run pending database schema migrations
 - `mark42 stats` - Show database statistics
 - `mark42 version` - Display version info
-- `mark42 migrate --from <json> --to <db>` - Migrate from JSON Memory MCP
+- `mark42 migrate --from <json>` - Migrate from JSON Memory MCP
+- `mark42 analytics [--json] [--top N]` - Memory analytics dashboard (overview, decay curve, hotspots, activity)
+- `mark42 analytics tune [--apply]` - Usage-driven importance/decay tuning recommendations
 
-**Default database**: `~/.claude/memory.db` (override with `--db <path>`)
+**Default database**: `~/.mark42/memory.db` (legacy `~/.claude/memory.db` auto-detected; override with `--db <path>`)
 <!-- END AUTO-MANAGED -->
 
 ## Development Workflow
 
 1. **TDD Required**: Write failing test first
-2. **FTS5 Focus**: Phase 1 is keyword search only
-3. **API Compatibility**: Match existing Memory MCP tools exactly
+2. **Full suite**: `make test` (race detector) — never a subset
+3. **API Compatibility**: Core 10 tools match the JSON Memory MCP; 8 extension tools are additive
 
-## Plugin Structure
+## Harness Integration
 
-The project includes a complete Claude Code plugin implementation:
+`mark42` operates as a pure, universal MCP server (`mark42-server`). Rather than maintaining brittle, harness-specific plugin infrastructure and shell hooks, `mark42` integrates cleanly with any MCP-capable harness over standard JSON-RPC 2.0 stdio:
 
-**Agents** (specialized behavior):
-- `memory-updater.md` - Orchestrates CLAUDE.md updates and knowledge extraction
+- **Claude Code**: Add `mark42-server` to `.mcp.json` or `~/.claude.json`
+- **Cursor / Windsurf**: Add to IDE MCP settings as a stdio server
+- **Pi / OpenCode / Cline / Roo Code / Zed**: Add to MCP config
 
-**Skills** (reusable operations):
-- `memory-processor/SKILL.md` - Updates AUTO-MANAGED sections in CLAUDE.md
-- `codebase-analyzer/SKILL.md` - Analyzes code patterns and conventions
-
-**Commands** (user-facing):
-- `init.md` - Initialize plugin and database
-- `status.md` - Show memory system status
-- `sync.md` - Synchronize dirty files to memory
-- `calibrate.md` - Tune memory extraction parameters
-
-**Hooks** (lifecycle integration via Go CLI):
-- `mark42 hook session-start` - Injects session recall + knowledge graph context
-- `mark42 hook post-tool-use` - Tracks modified files + session events
-- `mark42 hook stop` - Triggers session capture + memory sync
+Memory retrieval and capture happen natively through standard MCP tool invocations (`get_context`, `recall_sessions`, `add_observations`, `capture_session`).
 
 ## Key Files
 
@@ -170,7 +180,9 @@ The project includes a complete Claude Code plugin implementation:
 - `docs/DESIGN_DECISIONS.md` - Rationale for SQLite, Go, FTS5-first, hybrid search
 - `internal/storage/store.go` - Database schema definitions and initialization
 - `internal/storage/search.go` - FTS5 search implementation (BM25 ranking)
-- `internal/mcp/handlers.go` - MCP tool implementations (JSON-RPC handlers)
+- `internal/mcp/handlers*.go` - MCP tool implementations (JSON-RPC handlers)
+- `internal/cli/` - Cobra command tree (entity, obs, rel, search, session, paths)
+- `internal/distill/` - Structural session distillation pipeline
 - `cmd/server/main.go` - MCP server entry point (stdio communication)
 - `Makefile` - Build commands with version tagging
 - `.gitignore` - Excludes binary, test.db, coverage reports, IDE files
@@ -179,7 +191,6 @@ The project includes a complete Claude Code plugin implementation:
 
 - **Unit tests**: Each package has `*_test.go`
 - **Integration tests**: `test/integration/` with real SQLite
-- **Benchmark**: Compare against JSON Memory MCP
 
 ## Dependencies
 
@@ -214,8 +225,10 @@ The project includes a complete Claude Code plugin implementation:
 | `recall_sessions` | ✅ GetRecentSessionSummaries | ✅ DONE | Cross-session recall |
 | `invalidate_observation` | ✅ InvalidateObservation | ✅ DONE | Temporal validity |
 | `get_entity_history` | ✅ GetObservationHistory | ✅ DONE | Full observation history |
+| `get_memory_analytics` | ✅ GetMemoryAnalytics | ✅ DONE | Overview, decay curve, hotspots, activity |
+| `get_tuning_recommendation` | ✅ RecommendTuning | ✅ DONE | Usage-driven decay/importance suggestions |
 
-**All 18 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 20 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
@@ -243,6 +256,12 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ Go CLI hook commands (`mark42 hook {session-start,post-tool-use,stop}`)
 - ✅ Stop hook fires every session (not just file-edit sessions)
 - ✅ `Embedder` interface for testable auto-embed (fake embedder in tests)
+- ✅ access_count tracking wired into importance scoring (H2.6)
+- ✅ Temporal validity: valid_from/valid_until, InvalidateObservation, GetObservationHistory (H2.3)
+- ✅ Auto-detection of superseded observations on write (cosine similarity) (H2.3)
+- ✅ invalidate_observation and get_entity_history MCP tools (H2.3)
+- ✅ Semantic consolidation mode with embedding similarity (H2.4)
+- ✅ Query-aware context injection in get_context (H2.5)
 
 **Phase 4 (Complete)**: Session Capture & Recall ✅
 - ✅ Sessions modeled as entities (no new tables, reuses FTS5+vector infrastructure)
@@ -252,18 +271,18 @@ The project includes a complete Claude Code plugin implementation:
 - ✅ Hook integration: post-tool-use tracks events, stop triggers capture, session-start injects recall
 - ✅ New fact types: `session_event`, `session_summary`
 
-**Phase 6 (Complete)**: Core Intelligence ✅
-- ✅ access_count tracking wired into importance scoring (H2.6)
-- ✅ Temporal validity: valid_from/valid_until, InvalidateObservation, GetObservationHistory (H2.3)
-- ✅ Auto-detection of superseded observations on write (cosine similarity) (H2.3)
-- ✅ invalidate_observation and get_entity_history MCP tools (H2.3)
-- ✅ Semantic consolidation mode with embedding similarity (H2.4)
-- ✅ Query-aware context injection in get_context (H2.5)
+**Phase 5 (Complete)**: Cross-Harness & Lifecycle ✅
+- ✅ Harness adapter contract: thin shims → CLI calls + MCP recall (`adapters/`)
+- ✅ Claude adapter extracted to `internal/adapter/claude`; opencode JS plugin adapter; pi MCP recall adapter
+- ✅ Neutral config paths (`~/.mark42`) with legacy `~/.claude` back-compat
+- ✅ `mark42 distill` — structural session distillation pipeline
+- ✅ Importance scoring, decay/archive commands, per-project workdirs
 
-**Phase 7**: Analytics & Advanced Decay (Future)
-- Automatic importance decay for stale memories
-- Memory analytics (decay curves, most-accessed entities)
-- Smarter consolidation with vector similarity
+**Phase 6 (Complete)**: Analytics ✅
+- ✅ Persisted importance/decay config (settings table, migration 011)
+- ✅ `mark42 analytics` dashboard — overview, decay curve, access hotspots, fact-type breakdown, activity
+- ✅ `mark42 analytics tune [--apply]` — usage-driven decay/importance recommendations with rationale
+- ✅ `get_memory_analytics` and `get_tuning_recommendation` read-only MCP tools
 
 ## Go Conventions
 

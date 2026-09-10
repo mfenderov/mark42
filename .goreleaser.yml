@@ -12,7 +12,7 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X main.Version={{.Version}}
+      - -X github.com/mfenderov/mark42/internal/cli.Version={{.Version}}
 
   - id: server
     main: ./cmd/server
