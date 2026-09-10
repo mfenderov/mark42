@@ -31,15 +31,15 @@ mark42 upgrade
 **Symptoms**: All operations fail, database appears corrupted.
 
 **Solution**:
-1. Back up the corrupted file: `cp ~/.claude/memory.db ~/.claude/memory.db.bak`
+1. Back up the corrupted file: `cp ~/.mark42/memory.db ~/.mark42/memory.db.bak`
 2. Attempt repair:
    ```bash
-   sqlite3 ~/.claude/memory.db ".recover" | sqlite3 ~/.claude/memory_new.db
-   mv ~/.claude/memory_new.db ~/.claude/memory.db
+   sqlite3 ~/.mark42/memory.db ".recover" | sqlite3 ~/.mark42/memory_new.db
+   mv ~/.mark42/memory_new.db ~/.mark42/memory.db
    ```
 3. If repair fails, delete and reinitialize:
    ```bash
-   rm ~/.claude/memory.db
+   rm ~/.mark42/memory.db
    mark42 init
    ```
 
@@ -58,7 +58,7 @@ INSERT INTO entities_fts(entities_fts) VALUES('rebuild');
 
 Or via sqlite3:
 ```bash
-sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALUES('rebuild');"
+sqlite3 ~/.mark42/memory.db "INSERT INTO observations_fts(observations_fts) VALUES('rebuild');"
 ```
 
 #### Hybrid search not finding semantic matches
@@ -103,7 +103,7 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
    ```
 3. Check database size:
    ```bash
-   ls -lh ~/.claude/memory.db
+   ls -lh ~/.mark42/memory.db
    ```
 
 #### High memory usage
@@ -121,12 +121,12 @@ sqlite3 ~/.claude/memory.db "INSERT INTO observations_fts(observations_fts) VALU
 **Symptoms**: No memory context injected at session start.
 
 **Checklist**:
-1. Database exists: `ls ~/.claude/memory.db`
+1. Database exists: `ls ~/.mark42/memory.db` (or legacy `~/.claude/memory.db`)
 2. Binary is in PATH: `which mark42`
-3. Hook is executable: `ls -l ~/.claude-plugin/hooks/session-start.py`
-4. Check hook output manually:
+3. Hook configuration exists in `hooks/hooks.json`
+4. Test the Go CLI hook manually:
    ```bash
-   CLAUDE_PROJECT_DIR=$(pwd) python3 ~/.claude-plugin/hooks/session-start.py
+   CLAUDE_PROJECT_DIR=$(pwd) mark42 hook session-start
    ```
 
 #### "command not found: mark42"
@@ -190,7 +190,7 @@ mark42 context --token-budget 3000 --min-importance 0.2
 mark42 stats
 
 # Check schema version
-sqlite3 ~/.claude/memory.db "SELECT * FROM goose_db_version;"
+sqlite3 ~/.mark42/memory.db "SELECT * FROM goose_db_version;"
 
 # Check embedding coverage
 mark42 embed stats
@@ -202,7 +202,7 @@ mark42 decay stats
 mark42 importance stats
 
 # List all tables
-sqlite3 ~/.claude/memory.db ".tables"
+sqlite3 ~/.mark42/memory.db ".tables"
 ```
 
 ## Getting Help

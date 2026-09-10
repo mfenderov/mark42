@@ -134,19 +134,33 @@ See `docs/ARCHITECTURE.md` for:
 
 **Search and exploration**:
 - `mark42 search <query>` - FTS5 full-text search (BM25 ranked)
-- `mark42 graph` - Export entire knowledge graph
+- `mark42 hybrid-search <query>` - Hybrid search (FTS5 + vector with RRF fusion)
+- `mark42 graph [--format json|dot]` - Export entire knowledge graph
 
 **Session management**:
 - `mark42 session capture <project>` - Capture session from JSON stdin
 - `mark42 session list [--project P] [--limit N]` - List captured sessions
 - `mark42 session get <name>` - Show session details + summary
 - `mark42 session recall [project] [--hours N] [--tokens N]` - Recall recent session summaries
+- `mark42 distill <session-name>` - Distill raw session events into structural summary
+
+**Path and state utilities**:
+- `mark42 path slug [dir]` - Compute canonical project slug
+- `mark42 path state-dir [dir]` - Compute state directory path
+
+**Memory lifecycle & maintenance**:
+- `mark42 decay stats|apply|archive|forget` - Manage memory decay and archival
+- `mark42 importance recalculate|stats` - Recalculate graph importance scores
+- `mark42 consolidate [--entity name]` - Deduplicate and consolidate similar observations
+- `mark42 embed test|generate|stats` - Manage observation vector embeddings
+- `mark42 workdir set|get|list|search` - Scoped multi-project container tags
 
 **Utilities**:
 - `mark42 init` - Initialize database schema
+- `mark42 upgrade` - Run pending database schema migrations
 - `mark42 stats` - Show database statistics
 - `mark42 version` - Display version info
-- `mark42 migrate --from <json> --to <db>` - Migrate from JSON Memory MCP
+- `mark42 migrate --from <json>` - Migrate from JSON Memory MCP
 - `mark42 analytics [--json] [--top N]` - Memory analytics dashboard (overview, decay curve, hotspots, activity)
 - `mark42 analytics tune [--apply]` - Usage-driven importance/decay tuning recommendations
 
@@ -186,6 +200,7 @@ Claude Code plugin components:
 - `mark42 hook session-start` - Injects session recall + knowledge graph context
 - `mark42 hook post-tool-use` - Tracks modified files + session events
 - `mark42 hook stop` - Triggers session capture + memory sync
+- `mark42 hook pre-compact` - Preserves memory context prior to conversation compaction
 
 ## Key Files
 

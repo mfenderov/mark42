@@ -114,9 +114,17 @@ func (s *Server) Run(ctx context.Context) error {
 			if len(line) == 0 {
 				continue
 			}
+			if !json.Valid(line) {
+				s.sendError(nil, mcp.ErrCodeParse, "Parse error", nil)
+				continue
+			}
 			var req mcp.Request
 			if err := json.Unmarshal(line, &req); err != nil {
-				s.sendError(nil, mcp.ErrCodeParse, "Parse error", err)
+				s.sendError(nil, mcp.ErrCodeInvalidRequest, "Invalid Request", err)
+				continue
+			}
+			if req.JSONRPC != "2.0" || strings.TrimSpace(req.Method) == "" {
+				s.sendError(req.ID, mcp.ErrCodeInvalidRequest, "Invalid Request", nil)
 				continue
 			}
 			s.handleRequest(ctx, &req)
@@ -196,7 +204,7 @@ func (s *Server) sendResult(id, result any) {
 }
 
 func (s *Server) sendError(id any, code int, message string, data any) {
-	if id == nil && code != mcp.ErrCodeParse {
+	if id == nil && code != mcp.ErrCodeParse && code != mcp.ErrCodeInvalidRequest {
 		return
 	}
 	resp := mcp.Response{
