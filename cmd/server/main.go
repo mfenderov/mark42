@@ -125,24 +125,20 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) handleRequest(ctx context.Context, req *mcp.Request) {
-	// A request without an ID or a method starting with notifications/ is a notification.
-	// Per JSON-RPC 2.0 and MCP spec, notifications MUST NEVER receive any response, even on error.
-	if req.ID == nil || strings.HasPrefix(req.Method, "notifications/") {
-		if req.Method == "notifications/initialized" {
-			s.initialized = true
-		}
-		return
-	}
-
 	switch req.Method {
 	case "initialize":
 		s.handleInitialize(req)
+	case "notifications/initialized":
+		s.initialized = true
 	case "tools/list":
 		s.handleToolsList(req)
 	case "tools/call":
 		s.handleToolsCall(ctx, req)
 	default:
-		s.sendError(req.ID, mcp.ErrCodeMethodNotFound, "Method not found", nil)
+		// Per JSON-RPC 2.0, notifications (no ID or notifications/*) must never receive error responses.
+		if req.ID != nil && !strings.HasPrefix(req.Method, "notifications/") {
+			s.sendError(req.ID, mcp.ErrCodeMethodNotFound, "Method not found", nil)
+		}
 	}
 }
 
@@ -188,6 +184,9 @@ func (s *Server) handleToolsCall(ctx context.Context, req *mcp.Request) {
 }
 
 func (s *Server) sendResult(id, result any) {
+	if id == nil {
+		return
+	}
 	resp := mcp.Response{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -197,6 +196,9 @@ func (s *Server) sendResult(id, result any) {
 }
 
 func (s *Server) sendError(id any, code int, message string, data any) {
+	if id == nil && code != mcp.ErrCodeParse {
+		return
+	}
 	resp := mcp.Response{
 		JSONRPC: "2.0",
 		ID:      id,
