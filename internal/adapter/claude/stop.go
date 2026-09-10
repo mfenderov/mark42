@@ -127,6 +127,20 @@ const (
 	maxContextLen = 200
 )
 
+func selectRecentMessages(lines []string, totalLen, maxSize int) []string {
+	if totalLen <= maxSize {
+		return lines
+	}
+	accum := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		accum += len(lines[i])
+		if accum > maxSize {
+			return lines[i+1:]
+		}
+	}
+	return lines
+}
+
 func buildSessionDigest(transcriptPath string) string {
 	f, err := os.Open(transcriptPath)
 	if err != nil {
@@ -134,24 +148,35 @@ func buildSessionDigest(transcriptPath string) string {
 	}
 	defer f.Close()
 
-	var sb strings.Builder
+	var lines []string
+	totalLen := 0
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 
+	var msgBuf strings.Builder
 	for scanner.Scan() {
-		if sb.Len() >= maxDigestSize {
-			break
+		msgBuf.Reset()
+		appendMessageText(&msgBuf, scanner.Bytes())
+		if msgBuf.Len() > 0 {
+			formatted := msgBuf.String()
+			lines = append(lines, formatted)
+			totalLen += len(formatted)
 		}
-		appendMessageText(&sb, scanner.Bytes())
 	}
 
-	if err := scanner.Err(); err != nil && sb.Len() == 0 {
+	if err := scanner.Err(); err != nil && len(lines) == 0 {
 		fmt.Fprintf(os.Stderr, "[mark42] digest scanner error: %v\n", err)
+	}
+
+	recent := selectRecentMessages(lines, totalLen, maxDigestSize)
+	var sb strings.Builder
+	for _, line := range recent {
+		sb.WriteString(line)
 	}
 
 	result := strings.TrimSpace(sb.String())
 	if len(result) > maxDigestSize {
-		result = result[:maxDigestSize]
+		result = result[len(result)-maxDigestSize:]
 	}
 	return result
 }

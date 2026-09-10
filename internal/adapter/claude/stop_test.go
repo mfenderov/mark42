@@ -83,6 +83,25 @@ func TestBuildSessionDigest(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves trailing messages when exceeding 30KB", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "transcript.jsonl")
+
+		var sb strings.Builder
+		sb.WriteString(`{"type":"user","message":{"role":"user","content":"EARLY_MESSAGE_AT_START"}}` + "\n")
+		msg := strings.Repeat("a", 400)
+		for range 150 {
+			sb.WriteString(`{"type":"user","message":{"role":"user","content":"` + msg + `"}}` + "\n")
+		}
+		sb.WriteString(`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"LATEST_MESSAGE_AT_END"}]}}` + "\n")
+		os.WriteFile(path, []byte(sb.String()), 0o644)
+
+		digest := buildSessionDigest(path)
+		if !strings.Contains(digest, "LATEST_MESSAGE_AT_END") {
+			t.Errorf("digest should contain latest trailing message, got length %d", len(digest))
+		}
+	})
+
 	t.Run("handles missing transcript gracefully", func(t *testing.T) {
 		digest := buildSessionDigest("/nonexistent/path.jsonl")
 		if digest != "" {

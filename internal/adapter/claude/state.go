@@ -63,13 +63,14 @@ func clearFile(path string) {
 	_ = os.WriteFile(path, []byte(""), 0o644)
 }
 
-// touchFlag creates a flag file. Returns true if created, false if it already exists.
+// touchFlag creates a flag file atomically. Returns true if created, false if it already exists.
 func touchFlag(path string) bool {
-	if _, err := os.Stat(path); err == nil {
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
 		return false
 	}
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, []byte(""), 0o644)
+	_ = f.Close()
 	return true
 }
 
