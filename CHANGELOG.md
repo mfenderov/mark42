@@ -2,6 +2,24 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.3.3 - 2026-09-10
+#### Bug Fixes
+- (**ci**) remove legacy plugin paths from cog and goreleaser configs (#43) - (1683850) - Mark Fenderov
+- (**ci**) use tag ref for release workflow dispatch and normalize concurrency key (#41) - (148ae48) - Mark Fenderov
+- (**ci**) update cocogitto-action v4 inputs to use command and args - (d0c23cd) - Mark Fenderov
+- address feedback on mcp server flags, install dirs, and state isolation (#42) - (b1e3f28) - Mark Fenderov
+#### Refactoring
+- transition to pure mcp server architecture (#40) - (54d4099) - Mark Fenderov
+#### Miscellaneous Chores
+- (**deps**) Bump github.com/pressly/goose/v3 from 3.27.1 to 3.28.0 - (34553f2) - dependabot[bot]
+- (**deps**) Bump modernc.org/sqlite from 1.49.1 to 1.58.0 - (937beeb) - dependabot[bot]
+- (**deps**) Bump cocogitto/cocogitto-action from 3 to 4 - (477e20b) - dependabot[bot]
+- (**deps**) Bump actions/setup-go from 6 to 7 - (af5b2bd) - dependabot[bot]
+- (**deps**) Bump actions/checkout from 6 to 7 - (bcec430) - dependabot[bot]
+- (**deps**) Bump actions/setup-node from 6 to 7 - (e7a009b) - dependabot[bot]
+
+- - -
+
 ## v3.3.2 - 2026-09-10
 #### Bug Fixes
 - **(ci)** dispatch release.yml via workflow_dispatch for npm trusted publishing (#39) - (7d156d2) - Mark Fenderov
