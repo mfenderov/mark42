@@ -78,7 +78,7 @@ func TestServer_ToolCallAsNotificationExecutesWithoutResponse(t *testing.T) {
 
 	handler := mcp.NewHandler(store)
 	var outBuf bytes.Buffer
-	input := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"create_entities","arguments":{"entities":[{"name":"NotificationEntity","entityType":"test","observations":["created via notification"]}]}}}` + "\n"
+	input := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"remember","arguments":{"topic":"NotificationEntity","facts":["created via notification"]}}}` + "\n"
 
 	server := &Server{
 		handler: handler,

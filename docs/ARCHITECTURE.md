@@ -248,28 +248,39 @@ $$RRF(d) = \sum_{m \in \text{strategies}} \frac{1}{k + \text{rank}_m(d)}$$
 
 ## Data Flow
 
-### Create Entity / Observation
+### Remember (Store / Update Knowledge)
 
 ```
-1. Harness: mcp__memory__create_entities({entities: [...]})
+1. Harness: mcp__memory__remember({topic: "...", facts: [...]})
 2. MCP Server: Parse request and validate schema
-3. SQLite: INSERT INTO entities (name, entity_type) VALUES (?, ?)
-4. SQLite: INSERT INTO observations (entity_id, content, fact_type) VALUES (?, ?, ?)
+3. SQLite: Ensure entity exists in entities (name, entity_type, container_tag)
+4. SQLite: INSERT OR IGNORE INTO observations (entity_id, content, fact_type)
 5. Triggers: SQLite triggers automatically update observations_fts and entities_fts
-6. [Auto-Embed]: Local embedding client generates vector embedding
-7. SQLite: INSERT INTO observation_embeddings VALUES (?, blob, model, dims)
-8. MCP Server: Return structured success response with itemized diagnostics
+6. [Auto-Embed]: Local embedding client generates vector embeddings
+7. SQLite: INSERT OR REPLACE INTO observation_embeddings VALUES (?, blob, model, dims)
+8. SQLite: Link relations in relations table if provided
+9. MCP Server: Return structured success response
 ```
 
-### Search Nodes
+### Recall (Retrieve Knowledge)
 
 ```
-1. Harness: mcp__memory__search_nodes({query: "..."})
+1. Harness: mcp__memory__recall({query: "...", topic: "..."})
+2. MCP Server: Parse request and route:
+   - If topic provided: Retrieve entity, active observations, relations, and version history
+   - If query provided: Execute hybrid search (FTS5 BM25 + cosine vector similarity with RRF)
+   - If empty: Retrieve high-priority project context and recent session summaries
+3. MCP Server: Return formatted memories
+```
+
+### Forget (Deprecate / Delete Knowledge)
+
+```
+1. Harness: mcp__memory__forget({topic: "...", fact: "...", permanent: false})
 2. MCP Server: Parse request
-3. Storage: Execute FTS5 BM25 search on virtual tables
-4. Storage: Generate query embedding and execute VectorSearchWithModel
-5. Storage: Fuse candidates using Reciprocal Rank Fusion (k=60)
-6. MCP Server: Return top-ranked entities with observation snippets
+   - If permanent: true -> Hard-delete from observations or entities (cascades)
+   - If permanent: false -> Soft-invalidate by setting valid_until = CURRENT_TIMESTAMP
+3. MCP Server: Return confirmation
 ```
 
 ## File Structure
@@ -295,6 +306,7 @@ mark42/
 ├── internal/
 │   ├── storage/               # SQLite storage, FTS5, embeddings, RRF fusion
 │   │   ├── store.go           # Lifecycle and schema
+│   │   ├── verbs.go           # 3-verb core storage operations (Remember, Recall, Forget)
 │   │   ├── search.go          # FTS5 full-text search
 │   │   ├── vector.go          # Vector BLOB search & cosine similarity
 │   │   ├── fusion.go          # Reciprocal Rank Fusion (RRF)
@@ -302,8 +314,8 @@ mark42/
 │   │   ├── temporal.go        # Bitemporal validity & superseding
 │   │   ├── importance.go      # Query-time decay & importance scoring
 │   │   └── migrations/        # Versioned Goose Go migrations (001-011)
-│   ├── mcp/                   # JSON-RPC 2.0 protocol and 20 tool handlers
-│   ├── cli/                   # Cobra commands, formatters, and flags
+│   ├── mcp/                   # JSON-RPC 2.0 protocol and 3 tool handlers (remember, recall, forget)
+│   ├── cli/                   # Cobra commands (remember, recall, forget + admin tools)
 │   ├── distill/               # Structural session distillation
 │   ├── state/                 # State management and Strangler Fig migration
 │   └── paths/                 # Neutral path resolution (~/.mark42)

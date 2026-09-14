@@ -9,13 +9,25 @@ import (
 
 // Store manages the SQLite database for memory storage.
 type Store struct {
-	db   *sqlx.DB
-	path string
+	db       *sqlx.DB
+	path     string
+	embedder Embedder
 }
 
 // DB returns the underlying sqlx.DB for direct access when needed.
 func (s *Store) DB() *sqlx.DB {
 	return s.db
+}
+
+// WithEmbedder sets an embedder client for vector embeddings and semantic search.
+func (s *Store) WithEmbedder(embedder Embedder) *Store {
+	s.embedder = embedder
+	return s
+}
+
+// Embedder returns the configured embedder or nil if none.
+func (s *Store) Embedder() Embedder {
+	return s.embedder
 }
 
 // NewStore creates a new Store, initializing the database and schema.

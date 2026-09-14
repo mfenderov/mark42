@@ -109,16 +109,16 @@ No external plugins, hooks, or language-specific adapters required. Memory is au
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │    AI Client (Claude Code / Copilot / Cursor / Windsurf)    │
-│  Standard MCP Tools (get_context, capture_session, search)  │
+│            Unified MCP Verbs (remember, recall, forget)     │
 └──────────────────────────┬──────────────────────────────────┘
                            │ JSON-RPC 2.0 (stdio)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    mark42-server (Go)                        │
 │                                                             │
-│  Knowledge Graph    Session Capture    Context Injection     │
-│  (entities, obs,    (capture, recall,  (importance, recency, │
-│   relations)         events, summary)   project boost)       │
+│  Remember            Recall             Forget              │
+│  (upsert entity,     (topic, hybrid     (soft invalidate    │
+│   facts, relations)   search, context)   or hard delete)    │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                            ▼
@@ -143,34 +143,24 @@ No external plugins, hooks, or language-specific adapters required. Memory is au
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## MCP Tools (20 total)
+## MCP Tools (The 3-Verb Architecture)
 
 | Tool | Description |
 |------|-------------|
-| `create_entities` | Create nodes in the knowledge graph |
-| `create_or_update_entities` | Create or update with versioning support |
-| `create_relations` | Create edges between nodes |
-| `add_observations` | Add properties with optional fact types |
-| `delete_entities` | Remove nodes (cascades to observations/relations) |
-| `delete_observations` | Remove specific observations |
-| `delete_relations` | Remove edges |
-| `read_graph` | Retrieve the entire graph |
-| `search_nodes` | Hybrid search: FTS5 + vector (RRF fusion) |
-| `open_nodes` | Retrieve specific nodes by name |
-| `get_context` | Importance-ranked memories for context injection |
-| `get_recent_context` | Recency-first retrieval for mid-session use |
-| `summarize_entity` | Entity summary with observations, relations, history |
-| `consolidate_memories` | Deduplicate similar observations |
-| `capture_session` | Capture session summary + tool-use events |
-| `recall_sessions` | Recall recent session summaries for continuity |
-| `invalidate_observation` | Mark an observation as no longer valid (temporal) |
-| `get_entity_history` | Full observation history, including superseded |
-| `get_memory_analytics` | Aggregate stats: overview, decay curve, access hotspots, activity |
-| `get_tuning_recommendation` | Usage-driven importance/decay config suggestions with rationale |
+| `remember` | Store or update knowledge under a topic (user preferences, facts, decisions, rules, recurring patterns, milestones) |
+| `recall` | Retrieve memories via hybrid search (`query`), topic inspection (`topic`), or general context injection (default) |
+| `forget` | Invalidate or delete knowledge (soft-invalidation by default to preserve temporal history, or permanent deletion) |
 
 ## CLI
 
 ```bash
+# 3-Verb Interface
+mark42 remember "Go Conventions" "Use table-driven tests" --type pattern
+mark42 recall --topic "Go Conventions"
+mark42 recall "testing patterns"
+mark42 recall --project my-project
+mark42 forget "Go Conventions" "Use table-driven tests"
+
 # Entity management
 mark42 entity create "Go Conventions" "pattern" --obs "Use table-driven tests"
 mark42 entity get "Go Conventions"

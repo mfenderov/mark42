@@ -62,14 +62,17 @@ clean:
 install: build
 	mkdir -p ~/bin
 	cp $(BINARY) ~/bin/
+	@if [ "$$(uname -s)" = "Darwin" ]; then codesign -s - -f ~/bin/$(BINARY) 2>/dev/null || true; fi
 
 install-server: build-server
 	mkdir -p ~/bin
 	cp $(SERVER) ~/bin/
+	@if [ "$$(uname -s)" = "Darwin" ]; then codesign -s - -f ~/bin/$(SERVER) 2>/dev/null || true; fi
 
 install-all: build-all
 	mkdir -p ~/bin
 	cp $(BINARY) $(SERVER) ~/bin/
+	@if [ "$$(uname -s)" = "Darwin" ]; then codesign -s - -f ~/bin/$(BINARY) ~/bin/$(SERVER) 2>/dev/null || true; fi
 
 ## Migration (from JSON Memory MCP)
 

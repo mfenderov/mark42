@@ -4,16 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-
-	"github.com/charmbracelet/log"
 
 	"github.com/mfenderov/mark42/internal/storage"
 )
-
-var logger = log.NewWithOptions(os.Stderr, log.Options{
-	ReportTimestamp: false,
-})
 
 // Handler processes MCP tool calls using the storage layer.
 type Handler struct {
@@ -29,6 +22,9 @@ func NewHandler(store *storage.Store) *Handler {
 // WithEmbedder adds an embedding client for semantic search and auto-embedding.
 func (h *Handler) WithEmbedder(client storage.Embedder) *Handler {
 	h.embedder = client
+	if h.store != nil {
+		h.store.WithEmbedder(client)
+	}
 	return h
 }
 
@@ -36,322 +32,94 @@ func (h *Handler) WithEmbedder(client storage.Embedder) *Handler {
 func (h *Handler) Tools() []Tool {
 	return []Tool{
 		{
-			Name:        "create_entities",
-			Description: "Create multiple new entities in the knowledge graph",
+			Name:        "remember",
+			Description: "Store or update knowledge in memory under a topic. Call this proactively whenever learning user preferences, personal facts, important decisions, rules, recurring patterns, or session milestones across any subject.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
-					"entities": {
-						Type:        "array",
-						Description: "Array of entities to create",
-						Items: &Items{
-							Type: "object",
-							Properties: map[string]Property{
-								"name":         {Type: "string", Description: "Entity name"},
-								"entityType":   {Type: "string", Description: "Entity type"},
-								"observations": {Type: "array", Description: "Initial observations", Items: &Items{Type: "string"}},
-							},
-							Required: []string{"name", "entityType", "observations"},
-						},
-					},
-				},
-				Required: []string{"entities"},
-			},
-		},
-		{
-			Name:        "create_or_update_entities",
-			Description: "Create new entities or update existing ones with versioning support. If an entity exists, creates a new version.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"entities": {
-						Type:        "array",
-						Description: "Array of entities to create or update",
-						Items: &Items{
-							Type: "object",
-							Properties: map[string]Property{
-								"name":         {Type: "string", Description: "Entity name"},
-								"entityType":   {Type: "string", Description: "Entity type"},
-								"observations": {Type: "array", Description: "Observations for this version", Items: &Items{Type: "string"}},
-							},
-							Required: []string{"name", "entityType", "observations"},
-						},
-					},
-				},
-				Required: []string{"entities"},
-			},
-		},
-		{
-			Name:        "create_relations",
-			Description: "Create multiple new relations between entities in the knowledge graph",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"relations": {
-						Type:        "array",
-						Description: "Array of relations to create",
-						Items: &Items{
-							Type: "object",
-							Properties: map[string]Property{
-								"from":         {Type: "string", Description: "Source entity name"},
-								"to":           {Type: "string", Description: "Target entity name"},
-								"relationType": {Type: "string", Description: "Relation type"},
-							},
-							Required: []string{"from", "to", "relationType"},
-						},
-					},
-				},
-				Required: []string{"relations"},
-			},
-		},
-		{
-			Name:        "add_observations",
-			Description: "WHEN: when you newly discover project conventions, architectural decisions, or user preferences. Add new observations to existing entities in the knowledge graph. Call proactively, do not wait to be asked.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"observations": {
-						Type:        "array",
-						Description: "Array of observations to add",
-						Items: &Items{
-							Type: "object",
-							Properties: map[string]Property{
-								"entityName": {Type: "string", Description: "Entity name to add observations to"},
-								"contents":   {Type: "array", Description: "Observation contents", Items: &Items{Type: "string"}},
-								"factType": {
-									Type:        "string",
-									Description: "Optional fact type: 'static' (permanent), 'dynamic' (session), 'session_turn' (conversation)",
-									Enum:        []string{"static", "dynamic", "session_turn"},
-								},
-							},
-							Required: []string{"entityName", "contents"},
-						},
-					},
-				},
-				Required: []string{"observations"},
-			},
-		},
-		{
-			Name:        "delete_entities",
-			Description: "Delete multiple entities and their associated relations from the knowledge graph",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"entityNames": {Type: "array", Description: "Entity names to delete", Items: &Items{Type: "string"}},
-				},
-				Required: []string{"entityNames"},
-			},
-		},
-		{
-			Name:        "delete_observations",
-			Description: "Delete specific observations from entities in the knowledge graph",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"deletions": {
-						Type:        "array",
-						Description: "Array of deletions",
-						Items: &Items{
-							Type: "object",
-							Properties: map[string]Property{
-								"entityName":   {Type: "string", Description: "Entity name"},
-								"observations": {Type: "array", Description: "Observations to delete", Items: &Items{Type: "string"}},
-							},
-							Required: []string{"entityName", "observations"},
-						},
-					},
-				},
-				Required: []string{"deletions"},
-			},
-		},
-		{
-			Name:        "delete_relations",
-			Description: "Delete multiple relations from the knowledge graph",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"relations": {
-						Type:        "array",
-						Description: "Array of relations to delete",
-						Items: &Items{
-							Type: "object",
-							Properties: map[string]Property{
-								"from":         {Type: "string", Description: "Source entity name"},
-								"to":           {Type: "string", Description: "Target entity name"},
-								"relationType": {Type: "string", Description: "Relation type"},
-							},
-							Required: []string{"from", "to", "relationType"},
-						},
-					},
-				},
-				Required: []string{"relations"},
-			},
-		},
-		{
-			Name:        "read_graph",
-			Description: "Read the entire knowledge graph",
-			InputSchema: InputSchema{
-				Type:       "object",
-				Properties: map[string]Property{},
-			},
-		},
-		{
-			Name:        "search_nodes",
-			Description: "WHEN: before coding or answering, when you need prior decisions. Search for nodes in the knowledge graph based on a query. Use when get_context results are too broad.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"query": {Type: "string", Description: "Search query"},
-				},
-				Required: []string{"query"},
-			},
-		},
-		{
-			Name:        "open_nodes",
-			Description: "Open specific nodes in the knowledge graph by their names",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"names": {Type: "array", Description: "Entity names to retrieve", Items: &Items{Type: "string"}},
-				},
-				Required: []string{"names"},
-			},
-		},
-		{
-			Name:        "get_context",
-			Description: "WHEN: at session start and before major tasks. Get memories optimized for context injection, ordered by importance and fact type. Returns project conventions, architecture rules, and user preferences. Call first, then recall_sessions.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"projectName":   {Type: "string", Description: "Current project name for boosting relevant memories"},
-					"tokenBudget":   {Type: "integer", Description: "Maximum tokens to include (default: 2000)"},
-					"minImportance": {Type: "number", Description: "Minimum importance score (0-1, default: 0.3)"},
-					"query":         {Type: "string", Description: "Optional search query to focus context on relevant entities"},
-				},
-			},
-		},
-		{
-			Name:        "get_recent_context",
-			Description: "Get recently accessed memories, prioritizing recency over importance. For mid-session use.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"hours":       {Type: "integer", Description: "Time window in hours (default: 24)"},
-					"projectName": {Type: "string", Description: "Current project name for boosting relevant memories"},
-					"tokenBudget": {Type: "integer", Description: "Maximum tokens to include (default: 1000)"},
-				},
-			},
-		},
-		{
-			Name:        "summarize_entity",
-			Description: "Get a consolidated summary of an entity with observations grouped by fact type and metadata",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"entityName": {Type: "string", Description: "Name of the entity to summarize"},
-				},
-				Required: []string{"entityName"},
-			},
-		},
-		{
-			Name:        "consolidate_memories",
-			Description: "Merge duplicate or similar observations for an entity, keeping the most comprehensive version",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"entityName": {Type: "string", Description: "Name of the entity whose observations to consolidate"},
-					"mode": {
+					"topic": {
 						Type:        "string",
-						Description: "Consolidation mode: 'semantic' uses embedding similarity, default uses substring matching",
-						Enum:        []string{"exact", "substring", "semantic"},
+						Description: "The subject, entity, person, project, or concept name (e.g. 'user-preferences', 'alice', 'travel-plans', 'auth-system')",
 					},
-					"threshold": {
-						Type:        "number",
-						Description: "Similarity threshold for semantic mode (0.0-1.0, default 0.85)",
-						Minimum:     float64Ptr(0.0),
-						Maximum:     float64Ptr(1.0),
-					},
-				},
-				Required: []string{"entityName"},
-			},
-		},
-		{
-			Name:        "capture_session",
-			Description: "WHEN: when concluding a user task or at session end. Capture a completed session with a summary and optional tool-use events. Call this to preserve progress for future sessions, then print a one-line receipt of what was saved.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"projectName": {Type: "string", Description: "Project name for the session"},
-					"summary":     {Type: "string", Description: "What was accomplished in this session"},
-					"events": {
+					"facts": {
 						Type:        "array",
-						Description: "Tool-use events from the session",
+						Description: "One or more statements, rules, or observations to record",
+						Items:       &Items{Type: "string"},
+					},
+					"type": {
+						Type:        "string",
+						Description: "Optional category or entity type (e.g. 'person', 'preference', 'decision', 'project', 'concept'). Default: 'concept'",
+					},
+					"fact_type": {
+						Type:        "string",
+						Description: "Optional persistence level: 'static' (durable/evergreen fact or preference), 'dynamic' (active/changing state), or 'session' (conversation milestone/summary). Default: 'static'",
+						Enum:        []string{"static", "dynamic", "session"},
+					},
+					"relations": {
+						Type:        "array",
+						Description: "Optional links to related topics",
 						Items: &Items{
 							Type: "object",
 							Properties: map[string]Property{
-								"toolName":  {Type: "string", Description: "Tool name (Edit, Bash, etc.)"},
-								"filePath":  {Type: "string", Description: "File path if applicable"},
-								"command":   {Type: "string", Description: "Command if Bash tool"},
-								"timestamp": {Type: "string", Description: "ISO 8601 timestamp"},
+								"to":   {Type: "string", Description: "Target topic name"},
+								"type": {Type: "string", Description: "Relationship type (e.g. 'depends_on', 'implements', 'relates_to')"},
 							},
-							Required: []string{"toolName"},
+							Required: []string{"to", "type"},
 						},
 					},
+					"project": {
+						Type:        "string",
+						Description: "Optional namespace or container tag to scope this memory (e.g. workspace, project, or domain)",
+					},
 				},
-				Required: []string{"projectName", "summary"},
+				Required: []string{"topic", "facts"},
 			},
 		},
 		{
-			Name:        "recall_sessions",
-			Description: "WHEN: at session start, right after get_context. Recall recent session summaries for a project to restore previous progress and maintain cross-session continuity.",
+			Name:        "recall",
+			Description: "Retrieve memories from mark42. Call without arguments at the start of a conversation to load core preferences, durable facts, and recent context. Provide 'query' to search across memories using semantic and keyword search, or 'topic' to inspect a specific subject (takes precedence over query).",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
-					"projectName": {Type: "string", Description: "Project name to filter sessions"},
-					"hours":       {Type: "integer", Description: "Time window in hours (default: 72)"},
-					"tokenBudget": {Type: "integer", Description: "Maximum tokens to include (default: 1500)"},
+					"query": {
+						Type:        "string",
+						Description: "Search query to find relevant memories, facts, preferences, or past discussions",
+					},
+					"topic": {
+						Type:        "string",
+						Description: "Specific topic, entity, person, or concept name to inspect in detail",
+					},
+					"project": {
+						Type:        "string",
+						Description: "Optional namespace, project, or container tag to scope the search or context",
+					},
+					"limit": {
+						Type:        "integer",
+						Description: "Maximum number of results to return (default: 10)",
+					},
 				},
 			},
 		},
 		{
-			Name:        "invalidate_observation",
-			Description: "Mark a specific observation as no longer valid (expired). The observation will be hidden from normal queries but preserved in history.",
+			Name:        "forget",
+			Description: "Remove or invalidate knowledge when information changes, is superseded, or is no longer true. By default, soft-invalidates the fact (hiding it from future recall while preserving history). Set 'permanent: true' only to permanently delete. WARNING: Omitting 'fact' invalidates the ENTIRE topic.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
-					"entityName": {Type: "string", Description: "Entity name"},
-					"content":    {Type: "string", Description: "Exact content of the observation to invalidate"},
+					"topic": {
+						Type:        "string",
+						Description: "Topic, entity, person, or concept name to forget from",
+					},
+					"fact": {
+						Type:        "string",
+						Description: "Exact text or substring of the specific fact to forget. If omitted, invalidates all facts under the entire topic.",
+					},
+					"permanent": {
+						Type:        "boolean",
+						Description: "Whether to permanently delete from SQLite (true) or soft-invalidate with valid_until timestamp (false). Default: false",
+					},
 				},
-				Required: []string{"entityName", "content"},
-			},
-		},
-		{
-			Name:        "get_entity_history",
-			Description: "Get the full history of observations for an entity, including expired ones with their validity timestamps.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"entityName": {Type: "string", Description: "Name of the entity"},
-				},
-				Required: []string{"entityName"},
-			},
-		},
-		{
-			Name:        "get_memory_analytics",
-			Description: "Get aggregate database-wide statistics: overview counts, decay curve, access hotspots, fact-type breakdown, and recent session activity.",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]Property{
-					"topN": {Type: "number", Description: "Number of top-accessed observations to include (default: 10)"},
-				},
-			},
-		},
-		{
-			Name:        "get_tuning_recommendation",
-			Description: "Get usage-driven suggestions for the importance/decay config, with rationale for each suggested change.",
-			InputSchema: InputSchema{
-				Type:       "object",
-				Properties: map[string]Property{},
+				Required: []string{"topic"},
 			},
 		},
 	}
@@ -359,30 +127,9 @@ func (h *Handler) Tools() []Tool {
 
 // toolDispatch maps tool names to handler methods (method expressions).
 var toolDispatch = map[string]func(*Handler, context.Context, json.RawMessage) (*ToolCallResult, error){
-	"create_entities":           (*Handler).createEntities,
-	"create_or_update_entities": (*Handler).createOrUpdateEntities,
-	"create_relations":          (*Handler).createRelations,
-	"add_observations":          (*Handler).addObservations,
-	"delete_entities":           (*Handler).deleteEntities,
-	"delete_observations":       (*Handler).deleteObservations,
-	"delete_relations":          (*Handler).deleteRelations,
-	"read_graph": func(h *Handler, ctx context.Context, _ json.RawMessage) (*ToolCallResult, error) {
-		return h.readGraph(ctx)
-	},
-	"search_nodes":           (*Handler).searchNodes,
-	"open_nodes":             (*Handler).openNodes,
-	"get_context":            (*Handler).getContext,
-	"get_recent_context":     (*Handler).getRecentContext,
-	"summarize_entity":       (*Handler).summarizeEntity,
-	"consolidate_memories":   (*Handler).consolidateMemories,
-	"capture_session":        (*Handler).captureSession,
-	"recall_sessions":        (*Handler).recallSessions,
-	"invalidate_observation": (*Handler).invalidateObservation,
-	"get_entity_history":     (*Handler).getEntityHistory,
-	"get_memory_analytics":   (*Handler).getMemoryAnalytics,
-	"get_tuning_recommendation": func(h *Handler, ctx context.Context, _ json.RawMessage) (*ToolCallResult, error) {
-		return h.getTuningRecommendation(ctx)
-	},
+	"remember": (*Handler).handleRemember,
+	"recall":   (*Handler).handleRecall,
+	"forget":   (*Handler).handleForget,
 }
 
 // CallToolContext executes the named tool with the given context and arguments.
@@ -399,8 +146,4 @@ func (h *Handler) CallToolContext(ctx context.Context, name string, args json.Ra
 // CallTool executes the named tool with the given arguments.
 func (h *Handler) CallTool(name string, args json.RawMessage) (*ToolCallResult, error) {
 	return h.CallToolContext(context.Background(), name, args)
-}
-
-func float64Ptr(v float64) *float64 {
-	return &v
 }

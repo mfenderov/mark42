@@ -648,6 +648,113 @@ func TestWorkflow_EndToEnd(t *testing.T) {
 	store.Close()
 }
 
+// TestWorkflow_ThreeVerbsLifecycle verifies the unified Remember, Recall, and Forget verbs.
+func TestWorkflow_ThreeVerbsLifecycle(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "verbs_lifecycle.db")
+
+	store, err := storage.NewStore(dbPath)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// 1. Remember: Store topic with facts and relation
+	remRes, err := store.Remember(ctx, storage.RememberParams{
+		Topic:      "PaymentGateway",
+		Facts:      []string{"Uses Stripe API v2024", "Webhook signature verification required"},
+		EntityType: "service",
+		FactType:   storage.FactTypeStatic,
+		Relations: []storage.RelationParam{
+			{To: "OrderService", Type: "notifies"},
+		},
+		Project: "checkout",
+	})
+	if err != nil {
+		t.Fatalf("Remember failed: %v", err)
+	}
+	if remRes.ObservationsAdded != 2 {
+		t.Errorf("expected 2 observations added, got %d", remRes.ObservationsAdded)
+	}
+	if remRes.RelationsCreated != 1 {
+		t.Errorf("expected 1 relation created, got %d", remRes.RelationsCreated)
+	}
+
+	// 2. Recall by Topic
+	recTopic, err := store.Recall(ctx, storage.RecallParams{
+		Topic: "PaymentGateway",
+	})
+	if err != nil {
+		t.Fatalf("Recall topic failed: %v", err)
+	}
+	if recTopic.Type != "topic" || len(recTopic.Topic.Observations) != 2 || len(recTopic.Relations) != 1 {
+		t.Errorf("unexpected topic recall: %+v", recTopic)
+	}
+
+	// 3. Recall by Query
+	recQuery, err := store.Recall(ctx, storage.RecallParams{
+		Query: "Stripe webhook",
+	})
+	if err != nil {
+		t.Fatalf("Recall query failed: %v", err)
+	}
+	if recQuery.Type != "search" || len(recQuery.SearchResults) == 0 {
+		t.Errorf("expected search results for Stripe webhook")
+	}
+
+	// 4. Recall Default Context
+	recCtx, err := store.Recall(ctx, storage.RecallParams{
+		Project: "checkout",
+	})
+	if err != nil {
+		t.Fatalf("Recall context failed: %v", err)
+	}
+	if recCtx.Type != "context" || len(recCtx.Context) == 0 {
+		t.Errorf("expected context items for checkout project")
+	}
+
+	// 5. Forget Fact (soft invalidate)
+	forgetFact, err := store.Forget(ctx, storage.ForgetParams{
+		Topic:     "PaymentGateway",
+		Fact:      "Webhook signature verification required",
+		Permanent: false,
+	})
+	if err != nil {
+		t.Fatalf("Forget fact failed: %v", err)
+	}
+	if forgetFact.Count != 1 {
+		t.Errorf("expected 1 count for forget fact, got %d", forgetFact.Count)
+	}
+
+	recAfterForget, _ := store.Recall(ctx, storage.RecallParams{Topic: "PaymentGateway"})
+	if len(recAfterForget.Topic.Observations) != 1 || recAfterForget.Topic.Observations[0] != "Uses Stripe API v2024" {
+		t.Errorf("expected only remaining fact after soft forget, got %v", recAfterForget.Topic.Observations)
+	}
+
+	// 6. Forget Topic (permanent delete)
+	forgetTopic, err := store.Forget(ctx, storage.ForgetParams{
+		Topic:     "PaymentGateway",
+		Permanent: true,
+	})
+	if err != nil {
+		t.Fatalf("Forget topic failed: %v", err)
+	}
+	if forgetTopic.Count < 1 {
+		t.Errorf("expected at least 1 count for permanent forget topic")
+	}
+
+	_, err = store.GetEntity("PaymentGateway")
+	if err != storage.ErrNotFound {
+		t.Errorf("expected ErrNotFound for deleted entity, got %v", err)
+	}
+}
+
 // init sets up test timeout
 func init() {
 	// Ensure tests don't hang

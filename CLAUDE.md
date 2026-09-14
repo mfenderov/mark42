@@ -62,12 +62,14 @@ internal/
   │   ├── temporal.go  → Temporal validity (valid_from/valid_until)
   │   ├── workdir.go   → Per-project working directory mapping
   │   ├── session.go   → Session capture & recall (sessions as entities)
+  │   ├── verbs.go     → 3-verb core storage operations (Remember, Recall, Forget)
   │   ├── migration.go → Goose migration runner
   │   └── migrations/  → Goose Go migrations
-  ├── mcp/             → MCP protocol implementation (20 tools, JSON-RPC 2.0)
+  ├── mcp/             → MCP protocol implementation (3 tools: remember, recall, forget, JSON-RPC 2.0)
   │   ├── types.go     → JSON-RPC 2.0 types, MCP protocol types
-  │   └── handlers_*.go → Tool handlers, split by domain
-  ├── cli/             → Cobra command tree (entity, obs, rel, search, session, path, ...)
+  │   ├── handlers.go  → MCP server tools definition and dispatch
+  │   └── handlers_verbs.go → Tool handlers for remember, recall, forget
+  ├── cli/             → Cobra command tree (verbs: remember, recall, forget; admin: entity, obs, rel, ...)
   ├── distill/         → Structural session distillation pipeline
   ├── paths/           → Neutral config paths (~/.mark42, legacy ~/.claude back-compat)
   └── state/           → Local run state
@@ -108,6 +110,11 @@ See `docs/ARCHITECTURE.md` for:
 ## CLI Commands
 
 <!-- AUTO-MANAGED: cli-commands -->
+**3-Verb Interface**:
+- `mark42 remember <topic> <facts...> [--type T] [--rel "to:type"] [--fact-type static|dynamic|session] [--project P]` - Store or update knowledge under a topic
+- `mark42 recall [query] [--topic T] [--project P] [--limit N]` - Retrieve memories by query, topic, or project context
+- `mark42 forget <topic> [fact] [--permanent]` - Invalidate or delete knowledge from memory
+
 **Entity management**:
 - `mark42 entity create <name> <type> [--obs "observation"]` - Create entity with observations
 - `mark42 entity get <name>` - Retrieve entity with observations
@@ -172,16 +179,19 @@ See `docs/ARCHITECTURE.md` for:
 - **Cursor / Windsurf**: Add to IDE MCP settings as a stdio server
 - **Pi / OpenCode / Cline / Roo Code / Zed**: Add to MCP config
 
-Memory retrieval and capture happen natively through standard MCP tool invocations (`get_context`, `recall_sessions`, `add_observations`, `capture_session`).
+Memory retrieval and capture happen natively through standard MCP tool invocations (`recall`, `remember`, `forget`).
 
 ## Key Files
 
 - `docs/ARCHITECTURE.md` - System design, schema, search algorithms
 - `docs/DESIGN_DECISIONS.md` - Rationale for SQLite, Go, FTS5-first, hybrid search
+- `internal/storage/verbs.go` - 3-verb core storage API (Remember, Recall, Forget)
 - `internal/storage/store.go` - Database schema definitions and initialization
 - `internal/storage/search.go` - FTS5 search implementation (BM25 ranking)
-- `internal/mcp/handlers*.go` - MCP tool implementations (JSON-RPC handlers)
-- `internal/cli/` - Cobra command tree (entity, obs, rel, search, session, paths)
+- `internal/mcp/handlers.go` - MCP server tool definitions and dispatch
+- `internal/mcp/handlers_verbs.go` - MCP tool implementations (remember, recall, forget)
+- `internal/cli/verbs.go` - CLI commands for remember, recall, forget
+- `internal/cli/` - Cobra command tree (verbs + admin tools: entity, obs, rel, search, session, paths)
 - `internal/distill/` - Structural session distillation pipeline
 - `cmd/server/main.go` - MCP server entry point (stdio communication)
 - `Makefile` - Build commands with version tagging
@@ -207,28 +217,11 @@ Memory retrieval and capture happen natively through standard MCP tool invocatio
 
 | Tool | Storage Layer | MCP Handler | Status |
 |------|---------------|-------------|--------|
-| `create_entities` | ✅ CreateEntity | ✅ DONE | Implemented |
-| `create_or_update_entities` | ✅ CreateOrUpdateEntity | ✅ DONE | Versioning support |
-| `create_relations` | ✅ CreateRelation | ✅ DONE | Implemented |
-| `add_observations` | ✅ AddObservation | ✅ DONE | Implemented |
-| `delete_entities` | ✅ DeleteEntity | ✅ DONE | Implemented |
-| `delete_observations` | ✅ DeleteObservation | ✅ DONE | Implemented |
-| `delete_relations` | ✅ DeleteRelation | ✅ DONE | Implemented |
-| `read_graph` | ✅ ReadGraph | ✅ DONE | Implemented |
-| `search_nodes` | ✅ Search | ✅ DONE | Implemented |
-| `open_nodes` | ✅ GetEntity | ✅ DONE | Implemented |
-| `get_context` | ✅ GetContextForInjection | ✅ DONE | Context injection |
-| `get_recent_context` | ✅ GetRecentContext | ✅ DONE | Recency-first retrieval |
-| `summarize_entity` | ✅ GetEntity+ListRelations | ✅ DONE | Entity summary with metadata |
-| `consolidate_memories` | ✅ ConsolidateObservations | ✅ DONE | Observation deduplication |
-| `capture_session` | ✅ CreateSession+Events | ✅ DONE | Session capture with events |
-| `recall_sessions` | ✅ GetRecentSessionSummaries | ✅ DONE | Cross-session recall |
-| `invalidate_observation` | ✅ InvalidateObservation | ✅ DONE | Temporal validity |
-| `get_entity_history` | ✅ GetObservationHistory | ✅ DONE | Full observation history |
-| `get_memory_analytics` | ✅ GetMemoryAnalytics | ✅ DONE | Overview, decay curve, hotspots, activity |
-| `get_tuning_recommendation` | ✅ RecommendTuning | ✅ DONE | Usage-driven decay/importance suggestions |
+| `remember` | ✅ Store.Remember | ✅ DONE | Store/update topic, facts, relations, auto-embed |
+| `recall` | ✅ Store.Recall | ✅ DONE | Search, topic inspection, or context injection |
+| `forget` | ✅ Store.Forget | ✅ DONE | Soft-invalidation (default) or permanent deletion |
 
-**All 20 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
+**All 3 MCP tools implemented**. Server communicates via JSON-RPC 2.0 over stdio.
 
 ## Roadmap
 
