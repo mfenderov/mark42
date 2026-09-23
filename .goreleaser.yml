@@ -34,6 +34,26 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+homebrew_casks:
+  - name: mark42
+    repository:
+      owner: mfenderov
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/mfenderov/mark42"
+    description: "Local, privacy-first RAG memory system for Claude Code"
+    binaries:
+      - mark42
+      - mark42-server
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mark42"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mark42-server"]
+          end
+
 changelog:
   sort: asc
   filters:
