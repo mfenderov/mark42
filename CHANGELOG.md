@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.4.0 - 2026-09-23
+#### Features
+- publish homebrew cask to mfenderov/tap on release - (b7fdc9c) - mfenderov
+#### Documentation
+- (**readme**) add VS Code Copilot setup and update architecture diagram - (aeab611) - Mark Fenderov
+
+- - -
+
 ## v3.3.4 - 2026-09-10
 #### Bug Fixes
 - (**mcp**) update .mcp.json to invoke mark42-server directly instead of npx wrapper - (d9a05a3) - Mark Fenderov
