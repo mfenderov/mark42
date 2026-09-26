@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.5.1 - 2026-09-26
+#### Bug Fixes
+- (**release**) emit postflight_steps in Homebrew cask - (920a54e) - mfenderov
+
+- - -
+
 ## v3.5.0 - 2026-09-26
 #### Features
 - (**mcp**) advertise memory loop via instructions and WHEN triggers - (506cf6f) - mfenderov
