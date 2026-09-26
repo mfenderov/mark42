@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v3.5.0 - 2026-09-26
+#### Features
+- (**mcp**) advertise memory loop via instructions and WHEN triggers - (506cf6f) - mfenderov
+
+- - -
+
 ## v3.4.0 - 2026-09-23
 #### Features
 - publish homebrew cask to mfenderov/tap on release - (b7fdc9c) - mfenderov
