@@ -61,6 +61,16 @@ type InitializeResult struct {
 	ProtocolVersion string             `json:"protocolVersion"`
 	Capabilities    ServerCapabilities `json:"capabilities"`
 	ServerInfo      ServerInfo         `json:"serverInfo"`
+	Instructions    string             `json:"instructions,omitempty"`
+}
+
+// ServerInstructions returns the global memory loop advertised on initialize.
+func ServerInstructions() string {
+	return "Memory loop for mark42. At session start call get_context then recall_sessions " +
+		"to restore project conventions and previous progress. Before coding call search_nodes " +
+		"when prior decisions are needed. When you newly discover conventions or preferences " +
+		"call add_observations proactively. When concluding a task or at session end call " +
+		"capture_session, then print a one-line receipt of what was saved."
 }
 
 type ServerCapabilities struct {

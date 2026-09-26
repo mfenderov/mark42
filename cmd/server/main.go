@@ -168,6 +168,7 @@ func (s *Server) handleInitialize(req *mcp.Request) {
 			Name:    "mark42",
 			Version: Version,
 		},
+		Instructions: mcp.ServerInstructions(),
 	}
 
 	s.sendResult(req.ID, result)

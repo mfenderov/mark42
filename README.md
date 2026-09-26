@@ -87,6 +87,21 @@ mkdir -p ~/bin && make install-server   # Installs mark42-server to ~/bin
 }
 ```
 
+#### opencode (`opencode.json`)
+```json
+{
+  "mcp": {
+    "mark42": {
+      "type": "local",
+      "command": ["mark42-server"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Memory loop (add to `AGENTS.md`): at session start call `get_context` then `recall_sessions`. Before coding call `search_nodes` for prior decisions. When you learn a convention call `add_observations`. At task end call `capture_session` and print one line for what was saved.
+
 No external plugins, hooks, or language-specific adapters required. Memory is automatically available in any tool supporting MCP.
 
 ## Architecture

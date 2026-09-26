@@ -106,7 +106,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "add_observations",
-			Description: "Add new observations to existing entities in the knowledge graph. Call this to proactively remember newly discovered project conventions, architectural decisions, and user preferences.",
+			Description: "WHEN: when you newly discover project conventions, architectural decisions, or user preferences. Add new observations to existing entities in the knowledge graph. Call proactively, do not wait to be asked.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -197,7 +197,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "search_nodes",
-			Description: "Search for nodes in the knowledge graph based on a query",
+			Description: "WHEN: before coding or answering, when you need prior decisions. Search for nodes in the knowledge graph based on a query. Use when get_context results are too broad.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -219,7 +219,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "get_context",
-			Description: "Get memories optimized for context injection, ordered by importance and fact type. Call this at session start to retrieve project conventions, architecture rules, and user preferences.",
+			Description: "WHEN: at session start and before major tasks. Get memories optimized for context injection, ordered by importance and fact type. Returns project conventions, architecture rules, and user preferences. Call first, then recall_sessions.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -277,7 +277,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "capture_session",
-			Description: "Capture a completed session or milestone with a summary and optional tool-use events. Call this when concluding a user task to preserve progress for future sessions.",
+			Description: "WHEN: when concluding a user task or at session end. Capture a completed session with a summary and optional tool-use events. Call this to preserve progress for future sessions, then print a one-line receipt of what was saved.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -303,7 +303,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "recall_sessions",
-			Description: "Recall recent session summaries for a project to understand what was done in previous sessions and maintain cross-session continuity.",
+			Description: "WHEN: at session start, right after get_context. Recall recent session summaries for a project to restore previous progress and maintain cross-session continuity.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
