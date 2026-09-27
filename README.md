@@ -100,7 +100,7 @@ mkdir -p ~/bin && make install-server   # Installs mark42-server to ~/bin
 }
 ```
 
-Memory loop (add to `AGENTS.md`): at session start call `get_context` then `recall_sessions`. Before coding call `search_nodes` for prior decisions. When you learn a convention call `add_observations`. At task end call `capture_session` and print one line for what was saved.
+Memory loop (add to `AGENTS.md`): at session start call `recall` with no arguments. Before coding call `recall` with a query for prior decisions. When you learn a convention call `remember` proactively. At task end call `remember` with a session summary and print one line for what was saved.
 
 No external plugins, hooks, or language-specific adapters required. Memory is automatically available in any tool supporting MCP.
 

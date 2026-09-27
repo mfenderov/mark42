@@ -20,11 +20,9 @@ func TestHandler_Tools_DescriptionsHaveUsageTriggers(t *testing.T) {
 	}
 
 	triggers := map[string][]string{
-		"get_context":      {"session start"},
-		"recall_sessions":  {"session start", "previous"},
-		"search_nodes":     {"before"},
-		"add_observations": {"newly", "discover"},
-		"capture_session":  {"conclud", "end"},
+		"remember": {"newly", "discover", "conclud"},
+		"recall":   {"session start", "before"},
+		"forget":   {"no longer", "superseded", "changes"},
 	}
 
 	for name, keywords := range triggers {
@@ -55,7 +53,7 @@ func TestInitializeResult_HasInstructions(t *testing.T) {
 		return
 	}
 	lower := strings.ToLower(result.Instructions)
-	for _, kw := range []string{"get_context", "recall_sessions", "capture_session"} {
+	for _, kw := range []string{"recall", "remember"} {
 		if !strings.Contains(lower, kw) {
 			t.Errorf("Instructions lacks %q, got: %q", kw, result.Instructions)
 		}
@@ -65,7 +63,7 @@ func TestInitializeResult_HasInstructions(t *testing.T) {
 func TestServerInstructions_Content(t *testing.T) {
 	text := mcp.ServerInstructions()
 	lower := strings.ToLower(text)
-	for _, kw := range []string{"get_context", "recall_sessions", "search_nodes", "add_observations", "capture_session"} {
+	for _, kw := range []string{"recall", "remember"} {
 		if !strings.Contains(lower, kw) {
 			t.Errorf("ServerInstructions lacks %q, got: %q", kw, text)
 		}

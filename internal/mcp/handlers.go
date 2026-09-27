@@ -33,7 +33,7 @@ func (h *Handler) Tools() []Tool {
 	return []Tool{
 		{
 			Name:        "remember",
-			Description: "Store or update knowledge in memory under a topic. Call this proactively whenever learning user preferences, personal facts, important decisions, rules, recurring patterns, or session milestones across any subject.",
+			Description: "WHEN: when you newly discover project conventions, architectural decisions, user preferences, or conclude a task. Store or update knowledge in memory under a topic. Call proactively whenever learning user preferences, personal facts, important decisions, rules, recurring patterns, or session milestones across any subject.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -77,7 +77,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "recall",
-			Description: "Retrieve memories from mark42. Call without arguments at the start of a conversation to load core preferences, durable facts, and recent context. Provide 'query' to search across memories using semantic and keyword search, or 'topic' to inspect a specific subject (takes precedence over query).",
+			Description: "WHEN: at session start and before coding or answering, when you need prior decisions. Retrieve memories from mark42. Call without arguments at the start of a conversation to load core preferences, durable facts, and recent context. Provide 'query' to search across memories using semantic and keyword search, or 'topic' to inspect a specific subject (takes precedence over query).",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -102,7 +102,7 @@ func (h *Handler) Tools() []Tool {
 		},
 		{
 			Name:        "forget",
-			Description: "Remove or invalidate knowledge when information changes, is superseded, or is no longer true. By default, soft-invalidates the fact (hiding it from future recall while preserving history). Set 'permanent: true' only to permanently delete. WARNING: Omitting 'fact' invalidates the ENTIRE topic.",
+			Description: "WHEN: when information changes, is superseded, or is no longer true. Remove or invalidate knowledge. By default, soft-invalidates the fact (hiding it from future recall while preserving history). Set 'permanent: true' only to permanently delete. WARNING: Omitting 'fact' invalidates the ENTIRE topic.",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
