@@ -20,7 +20,7 @@ mark42 --db /path/to/custom/memory.db
 | `MARK42_PROJECT_DIR` | (none) | Project directory for CLI session capture |
 | `CLAUDE_PROJECT_DIR` | (none) | Legacy fallback project directory |
 
-Context injection budgets and thresholds are specified dynamically via MCP tool parameters (e.g. `tokenBudget`, `minImportance` in `get_context`) and persisted settings in the `settings` table (tuned via `mark42 analytics tune --apply`).
+Context injection budgets and thresholds are specified dynamically via MCP tool parameters (e.g. `query` and `project` scoping in `recall`) and persisted settings in the `settings` table (tuned via `mark42 analytics tune --apply`).
 
 ## Ollama Configuration
 

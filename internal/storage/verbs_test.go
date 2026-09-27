@@ -31,6 +31,37 @@ func newTestStoreWithDB(t *testing.T) *storage.Store {
 	return store
 }
 
+func TestStore_Remember_SessionAliasAndValidation(t *testing.T) {
+	store := newTestStoreWithDB(t)
+	defer store.Close()
+	ctx := context.Background()
+
+	// "session" (the MCP/CLI surface spelling) must land as session_turn.
+	if _, err := store.Remember(ctx, storage.RememberParams{
+		Topic:    "standup",
+		Facts:    []string{"Shipped login page"},
+		FactType: storage.FactType("session"),
+	}); err != nil {
+		t.Fatalf("Remember with session fact type failed: %v", err)
+	}
+	turns, err := store.GetObservationsByFactType(storage.FactTypeSessionTurn)
+	if err != nil {
+		t.Fatalf("GetObservationsByFactType failed: %v", err)
+	}
+	if len(turns) != 1 || turns[0].Content != "Shipped login page" {
+		t.Errorf("expected session fact stored as session_turn, got %v", turns)
+	}
+
+	// Unknown fact types must be rejected, not stored literally.
+	if _, err := store.Remember(ctx, storage.RememberParams{
+		Topic:    "standup",
+		Facts:    []string{"Bogus"},
+		FactType: storage.FactType("banana"),
+	}); err == nil {
+		t.Error("expected error for unknown fact type, got nil")
+	}
+}
+
 func TestStore_Remember_CreateAndUpsert(t *testing.T) {
 	store := newTestStoreWithDB(t)
 	defer store.Close()

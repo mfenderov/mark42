@@ -63,6 +63,20 @@ type ForgetResult struct {
 	Permanent bool
 }
 
+// normalizeFactType maps the user-facing fact type spellings to storage
+// types and rejects anything unrecognized, so a typo can never be stored
+// literally and silently drop out of every typed query.
+func normalizeFactType(ft FactType) (FactType, error) {
+	switch ft {
+	case FactTypeStatic, FactTypeDynamic, FactTypeSessionTurn:
+		return ft, nil
+	case "session":
+		return FactTypeSessionTurn, nil
+	default:
+		return "", fmt.Errorf("invalid fact type %q: want static, dynamic, or session", string(ft))
+	}
+}
+
 // Remember stores or updates knowledge in memory under a topic.
 func (s *Store) Remember(ctx context.Context, params RememberParams) (*RememberResult, error) {
 	if strings.TrimSpace(params.Topic) == "" {
@@ -77,6 +91,10 @@ func (s *Store) Remember(ctx context.Context, params RememberParams) (*RememberR
 	factType := params.FactType
 	if factType == "" {
 		factType = FactTypeStatic
+	}
+	factType, err := normalizeFactType(factType)
+	if err != nil {
+		return nil, err
 	}
 
 	// 1. Ensure entity exists

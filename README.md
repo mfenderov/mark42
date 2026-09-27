@@ -231,7 +231,7 @@ Applied. New config saved.
 - **Phase 3** ✅ Intelligence — Auto-embed on write, recency-boosted context injection, consolidation
 - **Phase 4** ✅ Session Capture & Recall — Cross-session continuity, capture/recall tools, session entities
 - **Phase 5** ✅ Pure MCP Architecture — Universal stdio MCP server for all AI harnesses, neutral config paths (`~/.mark42`), distill pipeline, importance scoring, decay/archive commands, per-project workdirs
-- **Phase 6** ✅ Analytics — Memory analytics dashboard (`mark42 analytics`), usage-driven tuning recommendations (`mark42 analytics tune`), persisted importance/decay config, read-only MCP tools (`get_memory_analytics`, `get_tuning_recommendation`)
+- **Phase 6** ✅ Analytics — Memory analytics dashboard (`mark42 analytics`), usage-driven tuning recommendations (`mark42 analytics tune`), persisted importance/decay config (CLI-only maintenance, out of the agent toolset)
 
 ## License
 
