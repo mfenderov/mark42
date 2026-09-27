@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## v4.0.0 - 2026-09-27
+#### Features
+- (**mcp**) simplify tool surface to 3-verb architecture - (aed7577) - Mark Fenderov
+- (**mcp**) adapt memory-loop triggers to 3-verb surface - (19546dc) - Mark Fenderov
+#### Bug Fixes
+- validate remember fact types; update stale docs - (988211b) - mfenderov
+
+- - -
 ## v3.5.1 - 2026-09-26
 #### Bug Fixes
 - (**release**) emit postflight_steps in Homebrew cask - (920a54e) - mfenderov
