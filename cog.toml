@@ -1,0 +1,7 @@
+tag_prefix = "v"
+
+branch_whitelist = ["main"]
+
+pre_bump_hooks = [
+    "jq --arg v '{{version}}' '.version = $v' npm/package.json > npm/package.json.tmp && mv npm/package.json.tmp npm/package.json",
+]

@@ -1,0 +1,295 @@
+package storage
+
+import (
+	"database/sql"
+	"errors"
+	"time"
+)
+
+// ErrNotFound is returned when an entity is not found.
+var ErrNotFound = errors.New("not found")
+
+// Entity represents a node in the knowledge graph.
+type Entity struct {
+	ID           int64     `db:"id"`
+	Name         string    `db:"name"`
+	Type         string    `db:"entity_type"`
+	Observations []string  `db:"-"` // Loaded separately, not a column
+	CreatedAt    time.Time `db:"created_at"`
+	// Versioning fields (Phase 2.3)
+	Version      int   `db:"version"`
+	IsLatest     bool  `db:"is_latest"`
+	SupersedesID int64 `db:"supersedes_id"` // ID of previous version (0 if none)
+}
+
+// ErrEntityExists is returned when attempting to create an entity that already exists.
+var ErrEntityExists = errors.New("entity already exists")
+
+// ensureEntityAbsent returns ErrEntityExists when an entity with this name
+// already exists (no UNIQUE constraint, must check manually).
+func ensureEntityAbsent(tx *sql.Tx, name string) error {
+	var existingID int64
+	err := tx.QueryRow("SELECT id FROM entities WHERE name = ?", name).Scan(&existingID)
+	if err == nil {
+		return ErrEntityExists
+	}
+	if err != sql.ErrNoRows {
+		return err
+	}
+	return nil
+}
+
+// resolveEntityVersion determines the supersedes ID and new version for an
+// entity write: (0, 1) for new entities; for existing ones it unmarks the
+// current latest and returns (currentID, currentVersion+1).
+func resolveEntityVersion(tx *sql.Tx, name string) (int64, int, error) {
+	var existingID int64
+	var existingVersion int
+	err := tx.QueryRow(
+		"SELECT id, COALESCE(version, 1) FROM entities WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)",
+		name,
+	).Scan(&existingID, &existingVersion)
+
+	if err == sql.ErrNoRows {
+		return 0, 1, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if _, err := tx.Exec(
+		"UPDATE entities SET is_latest = 0 WHERE id = ?",
+		existingID,
+	); err != nil {
+		return 0, 0, err
+	}
+	return existingID, existingVersion + 1, nil
+}
+
+// CreateEntity creates a new entity with optional observations.
+// Returns ErrEntityExists if an entity with this name already exists.
+func (s *Store) CreateEntity(name, entityType string, observations []string) (*Entity, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := ensureEntityAbsent(tx, name); err != nil {
+		return nil, err
+	}
+
+	// Insert entity
+	result, err := tx.Exec(
+		"INSERT INTO entities (name, entity_type) VALUES (?, ?)",
+		name, entityType,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert observations
+	for _, obs := range observations {
+		_, err := tx.Exec(
+			"INSERT INTO observations (entity_id, content) VALUES (?, ?)",
+			id, obs,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &Entity{
+		ID:           id,
+		Name:         name,
+		Type:         entityType,
+		Observations: observations,
+		CreatedAt:    time.Now(),
+	}, nil
+}
+
+// CreateOrUpdateEntity creates a new entity or a new version if one exists.
+// If an entity with the same name exists, creates a new version and marks old as not latest.
+func (s *Store) CreateOrUpdateEntity(name, entityType string, observations []string) (*Entity, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Resolve version chain: first version for new entities, otherwise mark
+	// the current version as superseded and continue the chain.
+	supersedesID, newVersion, err := resolveEntityVersion(tx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert new entity/version
+	result, err := tx.Exec(
+		"INSERT INTO entities (name, entity_type, version, is_latest, supersedes_id) VALUES (?, ?, ?, 1, ?)",
+		name, entityType, newVersion, sql.NullInt64{Int64: supersedesID, Valid: supersedesID > 0},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert observations
+	for _, obs := range observations {
+		_, err := tx.Exec(
+			"INSERT INTO observations (entity_id, content) VALUES (?, ?)",
+			id, obs,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &Entity{
+		ID:           id,
+		Name:         name,
+		Type:         entityType,
+		Observations: observations,
+		CreatedAt:    time.Now(),
+		Version:      newVersion,
+		IsLatest:     true,
+		SupersedesID: supersedesID,
+	}, nil
+}
+
+// GetEntityHistory returns all versions of an entity, newest first.
+func (s *Store) GetEntityHistory(name string) ([]*Entity, error) {
+	var entities []Entity
+	err := s.db.Select(&entities, `
+		SELECT id, name, entity_type, created_at,
+		       COALESCE(version, 1) as version,
+		       COALESCE(is_latest, 1) as is_latest,
+		       COALESCE(supersedes_id, 0) as supersedes_id
+		FROM entities
+		WHERE name = ?
+		ORDER BY version DESC
+	`, name)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(entities) == 0 {
+		return nil, ErrNotFound
+	}
+
+	// Convert to pointer slice for API compatibility
+	result := make([]*Entity, len(entities))
+	for i := range entities {
+		result[i] = &entities[i]
+	}
+	return result, nil
+}
+
+// GetEntity retrieves an entity by name, including its observations.
+// Returns the latest version only.
+func (s *Store) GetEntity(name string) (*Entity, error) {
+	var entity Entity
+	err := s.db.Get(&entity, `
+		SELECT id, name, entity_type, created_at,
+		       COALESCE(version, 1) as version,
+		       COALESCE(is_latest, 1) as is_latest,
+		       COALESCE(supersedes_id, 0) as supersedes_id
+		FROM entities
+		WHERE name = ? AND (is_latest = 1 OR is_latest IS NULL)`,
+		name)
+
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Load observations — only return currently valid observations (valid_until IS NULL)
+	err = s.db.Select(&entity.Observations,
+		"SELECT content FROM observations WHERE entity_id = ? AND valid_until IS NULL ORDER BY created_at",
+		entity.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &entity, nil
+}
+
+// ListEntities returns all entities, optionally filtered by type.
+// Only returns latest versions.
+func (s *Store) ListEntities(entityType string) ([]*Entity, error) {
+	var entities []Entity
+	var err error
+
+	query := `SELECT id, name, entity_type, created_at,
+	                 COALESCE(version, 1) as version,
+	                 COALESCE(is_latest, 1) as is_latest,
+	                 COALESCE(supersedes_id, 0) as supersedes_id
+	          FROM entities WHERE is_latest = 1 OR is_latest IS NULL ORDER BY name`
+
+	if entityType == "" {
+		err = s.db.Select(&entities, query)
+	} else {
+		query = `SELECT id, name, entity_type, created_at,
+		                COALESCE(version, 1) as version,
+		                COALESCE(is_latest, 1) as is_latest,
+		                COALESCE(supersedes_id, 0) as supersedes_id
+		         FROM entities WHERE entity_type = ? AND (is_latest = 1 OR is_latest IS NULL) ORDER BY name`
+		err = s.db.Select(&entities, query, entityType)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to pointer slice for API compatibility
+	result := make([]*Entity, len(entities))
+	for i := range entities {
+		result[i] = &entities[i]
+	}
+	return result, nil
+}
+
+// DeleteEntity removes an entity and its observations (via CASCADE).
+func (s *Store) DeleteEntity(name string) error {
+	result, err := s.db.Exec("DELETE FROM entities WHERE name = ?", name)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// CountObservations returns the total number of observations (for testing).
+func (s *Store) CountObservations() int {
+	var count int
+	_ = s.db.QueryRow("SELECT COUNT(*) FROM observations").Scan(&count)
+	return count
+}

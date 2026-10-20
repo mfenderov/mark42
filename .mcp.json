@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mark42": {
+      "type": "stdio",
+      "command": "mark42-server"
+    }
+  }
+}

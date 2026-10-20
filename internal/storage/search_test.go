@@ -1,0 +1,279 @@
+package storage_test
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/mfenderov/mark42/internal/storage"
+)
+
+func TestSearch_ByObservationContent(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TDD", "pattern", []string{
+		"Test-Driven Development methodology",
+		"Red-Green-Refactor cycle",
+	})
+	store.CreateEntity("BDD", "pattern", []string{
+		"Behavior-Driven Development",
+	})
+	store.CreateEntity("konfig", "project", []string{
+		"Go configuration library",
+	})
+
+	// Search should find entities with matching observations
+	results, err := store.Search("development")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("expected 2 results for 'development', got %d", len(results))
+	}
+
+	// Verify TDD and BDD are in results
+	names := make(map[string]bool)
+	for _, r := range results {
+		names[r.Name] = true
+	}
+	if !names["TDD"] {
+		t.Error("expected TDD in results")
+	}
+	if !names["BDD"] {
+		t.Error("expected BDD in results")
+	}
+}
+
+func TestSearch_ByEntityName(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TDD", "pattern", []string{"some observation"})
+	store.CreateEntity("konfig", "project", []string{"other observation"})
+
+	// Search by entity name
+	results, err := store.Search("TDD")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for 'TDD', got %d", len(results))
+	}
+	if results[0].Name != "TDD" {
+		t.Errorf("expected TDD, got %q", results[0].Name)
+	}
+}
+
+func TestSearch_Stemming(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("Testing", "pattern", []string{
+		"Unit testing is important",
+		"Tests should be fast",
+	})
+
+	// Porter stemming should match "test" to "testing" and "tests"
+	results, err := store.Search("test")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for 'test' (via stemming), got %d", len(results))
+	}
+}
+
+func TestSearch_NoResults(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TDD", "pattern", []string{"Test-Driven Development"})
+
+	results, err := store.Search("nonexistent")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestSearch_WithLimit(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Create many entities
+	for i := 0; i < 10; i++ {
+		store.CreateEntity(
+			"pattern"+string(rune('A'+i)),
+			"pattern",
+			[]string{"common keyword here"},
+		)
+	}
+
+	results, err := store.SearchWithLimit("keyword", 3)
+	if err != nil {
+		t.Fatalf("SearchWithLimit failed: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Errorf("expected 3 results with limit, got %d", len(results))
+	}
+}
+
+func TestSearch_IncludesObservations(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TDD", "pattern", []string{
+		"Test-Driven Development",
+		"Red-Green-Refactor",
+	})
+
+	results, err := store.Search("TDD")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Results should include observations
+	if len(results[0].Observations) != 2 {
+		t.Errorf("expected 2 observations in result, got %d", len(results[0].Observations))
+	}
+}
+
+func TestSearch_ExcludesSessionEvents(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("SessEntity", "test", []string{"searchable static content"})
+	if err := store.AddObservationWithType("SessEntity", `{"toolName":"Edit","filePath":"/a.go"}`, storage.FactTypeSessionEvent); err != nil {
+		t.Fatalf("AddObservationWithType failed: %v", err)
+	}
+
+	results, err := store.Search("searchable")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	for _, obs := range results[0].Observations {
+		if strings.Contains(obs, "toolName") {
+			t.Error("session_event observation should be excluded from search results")
+		}
+	}
+}
+
+func TestTopObservations(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TopEntity", "test", nil)
+	for i := 0; i < 5; i++ {
+		content := fmt.Sprintf("obs-%d", i)
+		if err := store.AddObservation("TopEntity", content); err != nil {
+			t.Fatalf("AddObservation failed: %v", err)
+		}
+		if err := store.SetObservationImportance("TopEntity", content, float64(i)); err != nil {
+			t.Fatalf("SetObservationImportance failed: %v", err)
+		}
+	}
+
+	entity, err := store.GetEntity("TopEntity")
+	if err != nil {
+		t.Fatalf("GetEntity failed: %v", err)
+	}
+
+	obs, err := store.TopObservations(entity.ID, 3)
+	if err != nil {
+		t.Fatalf("TopObservations failed: %v", err)
+	}
+
+	if len(obs) != 3 {
+		t.Fatalf("expected 3 observations, got %d", len(obs))
+	}
+
+	want := []string{"obs-4", "obs-3", "obs-2"}
+	for i, w := range want {
+		if obs[i] != w {
+			t.Errorf("obs[%d] = %q, want %q", i, obs[i], w)
+		}
+	}
+}
+
+func TestReadGraph(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("TDD", "pattern", []string{"Test-Driven Development"})
+	store.CreateEntity("Simple Design", "pattern", []string{"Kent Beck's rules"})
+	store.CreateRelation("TDD", "Simple Design", "enables")
+
+	graph, err := store.ReadGraph()
+	if err != nil {
+		t.Fatalf("ReadGraph failed: %v", err)
+	}
+
+	if len(graph.Entities) != 2 {
+		t.Errorf("expected 2 entities in graph, got %d", len(graph.Entities))
+	}
+	if len(graph.Relations) != 1 {
+		t.Errorf("expected 1 relation in graph, got %d", len(graph.Relations))
+	}
+}
+
+func TestSearch_EmptyAndSpecialCharacters(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.CreateEntity("SpecialChars", "test", []string{"testing symbols: !@#$%^&*() and \"quotes\""})
+
+	// Empty query returns empty without error
+	results, err := store.Search("")
+	if err != nil {
+		t.Fatalf("expected nil error for empty query, got: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty query, got %d", len(results))
+	}
+
+	// Whitespace query returns empty without error
+	results, err = store.Search("   \t\n  ")
+	if err != nil {
+		t.Fatalf("expected nil error for whitespace query, got: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for whitespace query, got %d", len(results))
+	}
+
+	// Query with special characters and quotes searches cleanly without syntax crash
+	results, err = store.Search("symbols: !@#$%^&*()")
+	if err != nil {
+		t.Fatalf("search with symbols failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+}
+
+func TestSearch_ClosedDBReturnsError(t *testing.T) {
+	store := newTestStore(t)
+	store.Close()
+
+	// When database is closed, search MUST return an error, never swallow it
+	_, err := store.Search("anything")
+	if err == nil {
+		t.Fatal("expected error on closed database, got nil")
+	}
+}
